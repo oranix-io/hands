@@ -7,6 +7,7 @@
 
 import { Container, getRandom } from "@cloudflare/containers";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 
 import { authMiddleware } from "./middleware/auth";
 import { handleListApps, handleCreateApp, handleGetApp } from "./routes/apps";
@@ -46,6 +47,27 @@ export class ApkParserContainer extends Container<Env> {
 // ---------- Hono app ----------
 
 const app = new Hono<{ Bindings: Env }>();
+
+// CORS for the admin UI hosted at quiver-admin.pages.dev (and any other
+// pages.dev preview URLs). In production you'd lock this down further.
+app.use(
+  "*",
+  cors({
+    origin: (origin) => {
+      if (!origin) return "*";
+      if (origin === "https://quiver-admin.pages.dev") return origin;
+      if (origin === "http://localhost:5173") return origin;
+      // Allow any *.quiver-admin.pages.dev preview URL
+      if (/^https:\/\/[a-f0-9]+\.quiver-admin\.pages\.dev$/.test(origin)) {
+        return origin;
+      }
+      return origin;
+    },
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["content-type", "authorization"],
+    credentials: false,
+  }),
+);
 
 // Public — health check (no auth)
 app.get("/health", handleHealth);

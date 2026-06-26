@@ -11,6 +11,12 @@
 
 const TOKEN = (import.meta as any).env?.VITE_ADMIN_API_TOKEN ?? "";
 
+// API base URL: in production, point at the deployed Worker; in dev, Vite
+// proxies /api → wrangler dev. Override at build time with VITE_API_BASE_URL.
+const API_BASE =
+  (import.meta as any).env?.VITE_API_BASE_URL ??
+  (import.meta.env?.PROD ? "https://quiver-worker.artin.workers.dev" : "");
+
 export class ApiError extends Error {
   constructor(public status: number, public body: unknown, message: string) {
     super(message);
@@ -69,7 +75,7 @@ async function request<T>(
   if (init.admin && TOKEN) {
     headers.set("authorization", `Bearer ${TOKEN}`);
   }
-  const res = await fetch(path, { ...init, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   const text = await res.text();
   let body: unknown = text;
   try {
@@ -147,7 +153,7 @@ export const uploadApk = async (
 ): Promise<{ file_hash: string; r2_key: string; size_bytes: number; original_filename: string }> => {
   const fd = new FormData();
   fd.append("apk", file);
-  const res = await fetch(`/api/apps/${appId}/upload`, {
+  const res = await fetch(`${API_BASE}/api/apps/${appId}/upload`, {
     method: "POST",
     headers: TOKEN ? { authorization: `Bearer ${TOKEN}` } : {},
     body: fd,
@@ -163,7 +169,7 @@ export const listAuditLogs = (appId: string) =>
 
 // Parse APK via Container (admin route)
 export const parseApk = async (file: File): Promise<any> => {
-  const res = await fetch(`/api/parse-apk`, {
+  const res = await fetch(`${API_BASE}/api/parse-apk`, {
     method: "POST",
     headers: {
       authorization: TOKEN ? `Bearer ${TOKEN}` : "",
