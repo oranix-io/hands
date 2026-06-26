@@ -38,7 +38,7 @@ export async function handleCreateApp(c: Context<{ Bindings: Env }>) {
 }
 
 export async function handleGetApp(c: Context<{ Bindings: Env }>) {
-  const appId = c.req.param("appId");
+  const appId = c.req.param("appId") ?? "";
   const row = await c.env.DB.prepare(
     "SELECT id, slug, name, platform, created_at FROM apps WHERE id = ?1",
   ).bind(appId).first<{ id: string; slug: string; name: string; platform: string; created_at: number }>();

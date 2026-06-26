@@ -8,7 +8,7 @@
 import type { Context } from "hono";
 
 export async function handleListVersions(c: Context<{ Bindings: Env }>) {
-  const appId = c.req.param("appId");
+  const appId = c.req.param("appId") ?? "";
   const channel = c.req.query("channel");
   const enabled = c.req.query("enabled");
 
@@ -38,7 +38,8 @@ export async function handleListVersions(c: Context<{ Bindings: Env }>) {
 }
 
 export async function handleGetVersion(c: Context<{ Bindings: Env }>) {
-  const { appId, versionId } = c.req.param();
+  const appId = c.req.param("appId") ?? "";
+  const versionId = c.req.param("versionId") ?? "";
   const row = await c.env.DB.prepare(
     `SELECT v.*, a.slug AS app_slug
      FROM versions v JOIN apps a ON a.id = v.app_id
@@ -60,7 +61,7 @@ export async function handleCreateVersion(c: Context<{ Bindings: Env }>) {
   // 2. POST /api/versions — admin sends parsed metadata + R2 key (uploaded via signed PUT URL) → DB row
   //
   // For now, accept JSON body with pre-uploaded R2 key + parsed metadata.
-  const appId = c.req.param("appId");
+  const appId = c.req.param("appId") ?? "";
   const body = (await c.req.json()) as {
     channel: string;
     version_name: string;
@@ -95,7 +96,8 @@ export async function handleCreateVersion(c: Context<{ Bindings: Env }>) {
 }
 
 export async function handleUpdateVersion(c: Context<{ Bindings: Env }>) {
-  const { appId, versionId } = c.req.param();
+  const appId = c.req.param("appId") ?? "";
+  const versionId = c.req.param("versionId") ?? "";
   const body = (await c.req.json()) as { enabled?: boolean; channel?: string };
 
   const updates: string[] = [];
@@ -123,7 +125,8 @@ export async function handleUpdateVersion(c: Context<{ Bindings: Env }>) {
 }
 
 export async function handleDeleteVersion(c: Context<{ Bindings: Env }>) {
-  const { appId, versionId } = c.req.param();
+  const appId = c.req.param("appId") ?? "";
+  const versionId = c.req.param("versionId") ?? "";
   await c.env.DB.prepare(
     "DELETE FROM versions WHERE id = ?1 AND app_id = ?2",
   ).bind(versionId, appId).run();

@@ -9,7 +9,7 @@
 import type { Context } from "hono";
 
 export async function handleListChannels(c: Context<{ Bindings: Env }>) {
-  const appId = c.req.param("appId");
+  const appId = c.req.param("appId") ?? "";
   const { results } = await c.env.DB.prepare(
     "SELECT id, app_id, slug, name, created_at FROM channels WHERE app_id = ?1 ORDER BY created_at DESC",
   ).bind(appId).all();
@@ -17,7 +17,7 @@ export async function handleListChannels(c: Context<{ Bindings: Env }>) {
 }
 
 export async function handleCreateChannel(c: Context<{ Bindings: Env }>) {
-  const appId = c.req.param("appId");
+  const appId = c.req.param("appId") ?? "";
   const body = (await c.req.json()) as { slug: string; name: string };
   if (!body.slug || !body.name) {
     return c.json({ error: "slug, name required" }, 400);

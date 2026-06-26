@@ -12,6 +12,6 @@
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "env.d.ts", "test/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

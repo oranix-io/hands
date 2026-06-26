@@ -8,8 +8,9 @@
 import type { Context } from "hono";
 
 export async function handleListAuditLogs(c: Context<{ Bindings: Env }>) {
-  const appId = c.req.param("appId");
-  const limit = Math.min(Number(c.req.query("limit") ?? "100"), 500);
+  const appId = c.req.param("appId") ?? "";
+  const limitRaw = c.req.query("limit") ?? "100";
+  const limit = Math.min(Number(limitRaw), 500);
   const { results } = await c.env.DB.prepare(
     `SELECT id, app_id, action, actor, payload, created_at
      FROM audit_logs

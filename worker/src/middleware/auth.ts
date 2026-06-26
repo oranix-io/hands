@@ -9,7 +9,7 @@
 import type { MiddlewareHandler } from "hono";
 
 export const authMiddleware: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
-  const env = c.env.ENVIRONMENT;
+  const env: string = c.env.ENVIRONMENT;
 
   // Production: trust Cloudflare Access JWT in `cf-access-jwt-assertion` header
   if (env === "production") {
