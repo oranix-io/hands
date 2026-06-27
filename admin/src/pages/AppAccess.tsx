@@ -60,10 +60,16 @@ function AppMemberList({
 }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const [principalFilter, setPrincipalFilter] = useState<"all" | "human" | "agent">("all");
   const members = useQuery({
     queryKey: ["app-members", appId],
     queryFn: () => listAppMembers(appId),
   });
+  const filteredMembers = (members.data?.members ?? []).filter((m) =>
+    principalFilter === "all"
+      ? true
+      : m.principal_type === principalFilter,
+  );
 
   const update = useMutation({
     mutationFn: ({ accountId, role }: { accountId: string; role: AppMember["app_role"] }) =>
@@ -96,24 +102,41 @@ function AppMemberList({
 
   return (
     <div className="card !p-4 text-sm">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold">App members</h3>
-        <span className="text-xs text-slate-500">
-          {members.data?.members.length ?? "—"} member
-          {members.data?.members.length === 1 ? "" : "s"}
-        </span>
-      </div>
       {members.isLoading && <p className="text-slate-500">Loading…</p>}
       {members.error && (
         <p className="text-red-600">Failed: {(members.error as Error).message}</p>
       )}
-      {members.data && members.data.members.length === 0 && (
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-semibold">App members</h3>
+        <div className="flex items-center gap-2">
+          <select
+            className="input text-xs py-0.5"
+            value={principalFilter}
+            onChange={(e) =>
+              setPrincipalFilter(e.target.value as "all" | "human" | "agent")
+            }
+            title="Filter by principal type"
+          >
+            <option value="all">All types</option>
+            <option value="human">Humans only</option>
+            <option value="agent">Agents only</option>
+          </select>
+          <span className="text-xs text-slate-500">
+            {filteredMembers.length} member{filteredMembers.length === 1 ? "" : "s"}
+            {principalFilter !== "all" && (
+              <span className="ml-1">({principalFilter})</span>
+            )}
+          </span>
+        </div>
+      </div>
+      {members.data && filteredMembers.length === 0 && (
         <p className="text-slate-500 text-sm">
-          No app members yet. Add someone below or wait for them to accept
-          an invite.
+          {principalFilter === "all"
+            ? "No app members yet. Add someone below or wait for them to accept an invite."
+            : `No ${principalFilter} app members.`}
         </p>
       )}
-      {members.data && members.data.members.length > 0 && (
+      {members.data && filteredMembers.length > 0 && (
         <table className="w-full text-sm">
           <thead>
             <tr className="text-slate-500 text-left border-b border-slate-100">
@@ -121,11 +144,12 @@ function AppMemberList({
               <th className="font-normal py-1 pr-2">Type</th>
               <th className="font-normal py-1 pr-2">App role</th>
               <th className="font-normal py-1 pr-2">Joined</th>
+              <th className="font-normal py-1 pr-2">Last login</th>
               {canManage && <th className="font-normal py-1">Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {members.data.members.map((m) => (
+            {filteredMembers.map((m) => (
               <tr
                 key={m.account_id}
                 className="border-b border-slate-50 hover:bg-slate-50"
@@ -137,8 +161,14 @@ function AppMemberList({
                       <span className="ml-1 text-xs text-slate-500">(you)</span>
                     )}
                   </div>
-                  <div className="text-xs text-slate-500 font-mono">
-                    {m.provider_subject.slice(0, 16)}…
+                  <div className="text-xs text-slate-500">
+                    {m.username ? (
+                      <span className="font-mono">@{m.username}</span>
+                    ) : (
+                      <span className="font-mono">
+                        {m.provider_subject.slice(0, 16)}…
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="py-2 pr-2">
@@ -173,6 +203,11 @@ function AppMemberList({
                 </td>
                 <td className="py-2 pr-2 text-xs text-slate-500">
                   {new Date(m.joined_at).toISOString().slice(0, 10)}
+                </td>
+                <td className="py-2 pr-2 text-xs text-slate-500">
+                  {m.last_login_at
+                    ? new Date(m.last_login_at).toISOString().slice(0, 10)
+                    : "—"}
                 </td>
                 {canManage && (
                   <td className="py-2 text-xs">
