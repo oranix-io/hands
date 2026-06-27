@@ -1,11 +1,14 @@
 # syntax=docker/dockerfile:1
 # APK metadata parser — Cloudflare Container image
-# Force rebuild 2026-06-26 18:01 UTC to fix aapt ENOENT (use --include=dev so tsx ships).
+#
+# Bumped from `node:20-alpine` (musl libc) to `node:24-bookworm-slim` (glibc)
+# so the Android SDK build-tools (aapt, apksigner) — which are glibc ELFs —
+# can actually exec. Also bumped Node 20 → 24 LTS.
 #
 # Uses `aapt` + `apksigner` from Android SDK build-tools (NOT full Android SDK).
 # These are small standalone binaries that read APK files, which is all we need.
 
-FROM node:20-alpine AS base
+FROM node:24-bookworm-slim AS base
 
 # Install aapt + apksigner from Android SDK build-tools
 # Source: https://github.com/iBotPeaches/Apktool/blob/master/INSTALL.md
@@ -13,8 +16,13 @@ FROM node:20-alpine AS base
 ARG ANDROID_SDK_VERSION=34.0.0
 ARG ANDROID_CMDLINE_TOOLS_URL=https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
 
-# Install JDK + unzip + wget
-RUN apk add --no-cache openjdk17-jre-headless unzip wget bash
+# Install JDK + unzip + wget + ca-certificates (Java for sdkmanager runtime)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jre-headless \
+    ca-certificates \
+    wget \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Download Android command-line tools + accept licenses + install build-tools
 RUN mkdir -p /opt/android-sdk/cmdline-tools && \
