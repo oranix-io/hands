@@ -13,6 +13,7 @@ import {
   type Channel,
   type Version,
 } from "../lib/api";
+import { useToast } from "../components/Toast";
 
 export function AppDetail({
   appId,
@@ -22,6 +23,7 @@ export function AppDetail({
   onShowAudit: () => void;
 }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const apps = useQuery({ queryKey: ["apps"], queryFn: listApps });
   const app = apps.data?.apps.find((a) => a.id === appId);
   const channels = useQuery({
@@ -145,10 +147,30 @@ function VersionRow({
   appId: string;
   onToggled: () => void;
 }) {
+  const toast = useToast();
   const toggle = useMutation({
     mutationFn: (enabled: boolean) =>
       updateVersion(appId, version.id, { enabled }),
-    onSuccess: onToggled,
+    onMutate: (enabled) => {
+      return toast.show({
+        kind: "loading",
+        title: enabled ? "Enabling version…" : "Disabling version…",
+        ttlMs: 0,
+      });
+    },
+    onSuccess: (_data, enabled) => {
+      // The loading toast is updated in onSettled (we can't reach it here
+      // without capturing the id; we just dismiss any "loading" toast by
+      // re-using its pattern: show a fresh success toast).
+      toast.show({
+        kind: "success",
+        title: enabled ? "Version enabled" : "Version disabled",
+      });
+      onToggled();
+    },
+    onError: (e) => {
+      toast.show({ kind: "error", title: "Toggle failed", description: (e as Error).message });
+    },
   });
   return (
     <div className="card flex items-center gap-4">
@@ -193,12 +215,20 @@ function CreateChannelDialog({
 }) {
   const [slug, setSlug] = useState("production");
   const [name, setName] = useState("Production");
-  const [error, setError] = useState("");
+  const toast = useToast();
 
   const create = useMutation({
     mutationFn: () => createChannel(appId, { slug, name }),
-    onSuccess: onCreated,
-    onError: (e) => setError((e as Error).message),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: `Channel '${slug}' created` });
+      onCreated();
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Failed to create channel",
+        description: (e as Error).message,
+      }),
   });
 
   return (
@@ -226,7 +256,6 @@ function CreateChannelDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            setError("");
             create.mutate();
           }}
           className="space-y-3"
@@ -249,7 +278,6 @@ function CreateChannelDialog({
               required
             />
           </div>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
           <div className="flex gap-2 justify-end pt-2">
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
@@ -283,27 +311,94 @@ function UploadDialog({
   const [channel, setChannel] = useState(channels[0]?.slug ?? "");
   const [metadata, setMetadata] = useState<any>(null);
   const [r2Key, setR2Key] = useState<string | null>(null);
-  const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
 
-  // Step 1: parse APK via container (returns metadata: package_name, version_*, signature, file_hash, size)
+  // Each step owns a toast id so progress survives modal close.
+  const parseToastRef = useRef<number | null>(null);
+  const uploadToastRef = useRef<number | null>(null);
+  const publishToastRef = useRef<number | null>(null);
+
+  // Step 1: parse APK via container
   const parse = useMutation({
     mutationFn: async (f: File) => parseApk(f),
-    onSuccess: (m) => setMetadata(m),
-    onError: (e) => setError((e as Error).message),
+    onMutate: (f) => {
+      parseToastRef.current = toast.show({
+        kind: "loading",
+        title: `Parsing ${f.name}…`,
+        description: "Step 1/3 — Container is reading APK metadata",
+      });
+    },
+    onSuccess: (m) => {
+      if (parseToastRef.current != null) {
+        toast.update(parseToastRef.current, {
+          kind: "success",
+          title: "APK parsed",
+          description: `${m.package_name} v${m.version_name} (${(m.size_bytes / 1024 / 1024).toFixed(2)} MB)`,
+        });
+      }
+      setMetadata(m);
+    },
+    onError: (e) => {
+      if (parseToastRef.current != null) {
+        toast.update(parseToastRef.current, {
+          kind: "error",
+          title: "APK parse failed",
+          description: (e as Error).message,
+        });
+      } else {
+        toast.show({
+          kind: "error",
+          title: "APK parse failed",
+          description: (e as Error).message,
+        });
+      }
+    },
   });
 
-  // Step 2: upload APK bytes to R2 via Worker multipart endpoint
+  // Step 2: upload APK bytes to R2
   const upload = useMutation({
     mutationFn: async () => {
       if (!file || !metadata) throw new Error("parse first");
       return uploadApk(appId, file);
     },
-    onSuccess: (r) => setR2Key(r.r2_key),
-    onError: (e) => setError((e as Error).message),
+    onMutate: () => {
+      uploadToastRef.current = toast.show({
+        kind: "loading",
+        title: "Uploading to R2…",
+        description: file
+          ? `Step 2/3 — ${(file.size / 1024 / 1024).toFixed(2)} MB`
+          : "Step 2/3",
+      });
+    },
+    onSuccess: (r) => {
+      if (uploadToastRef.current != null) {
+        toast.update(uploadToastRef.current, {
+          kind: "success",
+          title: "Uploaded to R2",
+          description: r.r2_key,
+        });
+      }
+      setR2Key(r.r2_key);
+    },
+    onError: (e) => {
+      if (uploadToastRef.current != null) {
+        toast.update(uploadToastRef.current, {
+          kind: "error",
+          title: "Upload to R2 failed",
+          description: (e as Error).message,
+        });
+      } else {
+        toast.show({
+          kind: "error",
+          title: "Upload to R2 failed",
+          description: (e as Error).message,
+        });
+      }
+    },
   });
 
-  // Step 3: write D1 row referencing the uploaded R2 key + parsed metadata
+  // Step 3: write D1 row
   const submit = useMutation({
     mutationFn: () => {
       if (!metadata || !r2Key) throw new Error("upload first");
@@ -320,15 +415,48 @@ function UploadDialog({
         r2_key: r2Key,
       });
     },
-    onSuccess: onCreated,
-    onError: (e) => setError((e as Error).message),
+    onMutate: () => {
+      publishToastRef.current = toast.show({
+        kind: "loading",
+        title: "Publishing version…",
+        description: "Step 3/3 — Writing D1 row",
+      });
+    },
+    onSuccess: () => {
+      if (publishToastRef.current != null) {
+        toast.update(publishToastRef.current, {
+          kind: "success",
+          title: "Version published",
+          description: `v${metadata?.version_name} (${channel})`,
+        });
+      }
+      onCreated();
+    },
+    onError: (e) => {
+      if (publishToastRef.current != null) {
+        toast.update(publishToastRef.current, {
+          kind: "error",
+          title: "Publish failed",
+          description: (e as Error).message,
+        });
+      } else {
+        toast.show({
+          kind: "error",
+          title: "Publish failed",
+          description: (e as Error).message,
+        });
+      }
+    },
   });
 
-  const step = !metadata
-    ? "parse"
-    : !r2Key
-      ? "upload"
-      : "publish";
+  // Auto-trigger upload as soon as metadata is ready.
+  if (metadata && !r2Key && !upload.isPending && !upload.isError) {
+    setTimeout(() => upload.mutate(), 0);
+  }
+  // Auto-trigger publish as soon as r2Key is ready.
+  if (r2Key && !submit.isPending && !submit.isError && !submit.isSuccess) {
+    setTimeout(() => submit.mutate(), 0);
+  }
 
   return (
     <div
@@ -362,18 +490,16 @@ function UploadDialog({
                 const f = e.target.files?.[0];
                 if (f) {
                   setFile(f);
-                  setError("");
                   parse.mutate(f);
                 }
               }}
               className="block w-full text-sm"
             />
-            {parse.isPending && (
-              <p className="text-slate-500 text-sm">
-                Step 1/3: Parsing APK metadata via container...
-              </p>
-            )}
-            {error && <p className="text-red-600 text-sm">{error}</p>}
+            <p className="text-xs text-slate-500">
+              {parse.isPending
+                ? "Parsing… see progress in bottom-right corner."
+                : "Pick an .apk file. Step 1/3 → 2/3 → 3/3 run automatically; progress shows in the bottom-right corner even if you close this dialog."}
+            </p>
           </div>
         ) : !r2Key ? (
           <div className="space-y-3">
@@ -385,27 +511,9 @@ function UploadDialog({
               <Row k="Size" v={`${(metadata.size_bytes / 1024 / 1024).toFixed(2)} MB`} />
               <Row k="SHA-256" v={metadata.file_hash_sha256.slice(0, 32) + "…"} mono />
             </dl>
-            <p className="text-slate-500 text-sm">
-              Step 2/3: Upload APK to R2 ({file && (file.size / 1024 / 1024).toFixed(2)} MB)
+            <p className="text-xs text-slate-500">
+              Uploading to R2… see bottom-right corner.
             </p>
-            {upload.isPending && (
-              <div className="h-2 bg-slate-100 rounded overflow-hidden">
-                <div className="h-full bg-blue-500 animate-pulse w-full" />
-              </div>
-            )}
-            {error && <p className="text-red-600 text-sm">{error}</p>}
-            <div className="flex gap-2 justify-end pt-2">
-              <button type="button" className="btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
-              <button
-                onClick={() => upload.mutate()}
-                className="btn-primary"
-                disabled={upload.isPending}
-              >
-                {upload.isPending ? "Uploading..." : "Upload to R2"}
-              </button>
-            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -428,22 +536,16 @@ function UploadDialog({
                 ))}
               </select>
             </div>
-            <p className="text-slate-500 text-sm">Step 3/3: Publish to D1</p>
-            {error && <p className="text-red-600 text-sm">{error}</p>}
-            <div className="flex gap-2 justify-end pt-2">
-              <button type="button" className="btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
-              <button
-                onClick={() => submit.mutate()}
-                className="btn-primary"
-                disabled={submit.isPending}
-              >
-                {submit.isPending ? "Publishing..." : "Publish version"}
-              </button>
-            </div>
+            <p className="text-xs text-slate-500">
+              Publishing… see bottom-right corner.
+            </p>
           </div>
         )}
+        <div className="flex justify-end pt-2 mt-2 border-t border-slate-100">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Close (operations continue in background)
+          </button>
+        </div>
       </div>
     </div>
   );

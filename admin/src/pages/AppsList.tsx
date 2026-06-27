@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { listApps, createApp, type App } from "../lib/api";
+import { useToast } from "../components/Toast";
 
 export function AppsList({ onSelectApp }: { onSelectApp: (id: string) => void }) {
   const qc = useQueryClient();
@@ -77,12 +78,25 @@ function CreateAppDialog({
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [platform, setPlatform] = useState("android");
-  const [error, setError] = useState("");
+  const toast = useToast();
 
   const create = useMutation({
     mutationFn: () => createApp({ slug, name, platform }),
-    onSuccess: onCreated,
-    onError: (e) => setError((e as Error).message),
+    onMutate: () =>
+      toast.show({
+        kind: "loading",
+        title: `Creating app '${slug}'…`,
+      }),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: `App '${slug}' created` });
+      onCreated();
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Failed to create app",
+        description: (e as Error).message,
+      }),
   });
 
   return (
@@ -110,7 +124,6 @@ function CreateAppDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            setError("");
             create.mutate();
           }}
           className="space-y-3"
@@ -146,7 +159,6 @@ function CreateAppDialog({
               <option value="ios">iOS</option>
             </select>
           </div>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
           <div className="flex gap-2 justify-end pt-2">
             <button
               type="button"
