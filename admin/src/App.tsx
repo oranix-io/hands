@@ -15,6 +15,8 @@ import { Settings } from "./pages/Settings";
 import { Publishing } from "./pages/Publishing";
 import { Builds } from "./pages/Builds";
 import { Releases } from "./pages/Releases";
+import { OrgSettings } from "./pages/OrgSettings";
+import { AcceptInvite } from "./pages/AcceptInvite";
 import { getAuthMe, loginUrl, logout, type AuthAccount } from "./lib/api";
 
 function RaftIcon({ className = "" }: { className?: string }) {
@@ -59,6 +61,17 @@ function Header({ account }: { account: AuthAccount }) {
               Apps
             </NavLink>
             <NavLink
+              to="/orgs/placeholder"
+              className={({ isActive }) =>
+                `px-3 py-1.5 rounded-md text-sm ${
+                  isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
+                }`
+              }
+              title="Org settings (real org_id will be wired after P5.1 ships)"
+            >
+              Org
+            </NavLink>
+            <NavLink
               to="/settings"
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-md text-sm ${
@@ -72,7 +85,17 @@ function Header({ account }: { account: AuthAccount }) {
         </div>
         <div className="flex items-center gap-3 text-sm">
           <div className="text-right leading-tight">
-            <div className="font-medium">{account.display_name}</div>
+            <div className="font-medium flex items-center gap-1 justify-end">
+              {account.display_name}
+              {account.principal_type === "agent" && (
+                <span
+                  className="badge-purple text-xs"
+                  title="Raft agent principal"
+                >
+                  agent
+                </span>
+              )}
+            </div>
             <div className="text-xs text-slate-500">
               {account.server_slug || account.server_id}
             </div>
@@ -201,6 +224,18 @@ function ReleasesRoute() {
   return <Releases appId={appId} />;
 }
 
+function OrgSettingsRoute() {
+  const { orgId } = useParams();
+  if (!orgId) return null;
+  return <OrgSettings orgId={orgId} />;
+}
+
+function AcceptInviteRoute() {
+  const { token } = useParams();
+  if (!token) return null;
+  return <AcceptInvite token={token} />;
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -259,6 +294,8 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
       <Routes>
         <Route path="/" element={<AppsListWithNav />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/orgs/:orgId" element={<OrgSettingsRoute />} />
+        <Route path="/invites/:token" element={<AcceptInviteRoute />} />
         <Route path="/apps/:appId" element={<AppShell />}>
           <Route index element={<AppDetailRoute />} />
           <Route path="publish" element={<PublishingRoute />} />
