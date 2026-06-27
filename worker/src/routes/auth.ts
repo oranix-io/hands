@@ -116,6 +116,14 @@ function safeJsonSlice(text: string): string {
   return text.replace(/code=[^&\s"]+/g, "code=<redacted>").slice(0, 500);
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function isUserAllowed(env: Env, userinfo: RaftUserinfo): boolean {
   const serverIds = (env.RAFT_ALLOWED_SERVER_IDS || "")
     .split(",")
@@ -310,7 +318,27 @@ export async function handleAuthLogin(c: Context<{ Bindings: Env }>) {
   setup.searchParams.set("client_id", config.clientId);
   setup.searchParams.set("return_to", callbackUrl(c));
   setup.searchParams.set("scope", "openid profile");
-  return c.redirect(setup.toString(), 302);
+  const setupUrl = setup.toString();
+  const accept = c.req.header("accept") || "";
+  if (accept.includes("text/html")) {
+    c.header("cache-control", "no-store");
+    return c.html(
+      `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0;url=${escapeHtml(setupUrl)}" />
+    <title>Redirecting to Raft</title>
+    <script>location.replace(${JSON.stringify(setupUrl)});</script>
+  </head>
+  <body>
+    <a href="${escapeHtml(setupUrl)}">Continue to Raft</a>
+  </body>
+</html>`,
+    );
+  }
+  return c.redirect(setupUrl, 302);
 }
 
 export async function handleRaftCallback(c: Context<{ Bindings: Env }>) {

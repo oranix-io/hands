@@ -200,13 +200,13 @@ function AuthGate() {
               Admin access requires Login with Raft.
             </p>
           </div>
-          <button
-            className="inline-flex w-full items-center justify-center gap-3 rounded-md border-2 border-slate-950 bg-yellow-300 px-5 py-3 font-black text-slate-950 shadow-[6px_6px_0_#020617] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[8px_8px_0_#020617] active:translate-x-1 active:translate-y-1 active:shadow-[3px_3px_0_#020617]"
-            onClick={() => window.location.assign(loginUrl())}
+          <a
+            className="inline-flex w-full items-center justify-center gap-3 rounded-none border-2 border-slate-950 bg-[#ffd440] px-5 py-3 font-black text-slate-950 shadow-[6px_6px_0_#020617] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[8px_8px_0_#020617] active:translate-x-1 active:translate-y-1 active:shadow-[3px_3px_0_#020617]"
+            href={loginUrl()}
           >
             <RaftIcon className="h-6 w-6 text-slate-950" />
             Login with Raft
-          </button>
+          </a>
           <p className="text-xs text-slate-500">
             Cloudflare Access and browser-visible API tokens are not used.
           </p>
