@@ -66,6 +66,26 @@ export function currentActor(c: Context<any>): string {
   return c.get("admin_actor") || "admin";
 }
 
+export function currentActorInfo(c: Context<any>): {
+  id: string | null;
+  type: "human" | "agent" | "system";
+  display_name: string;
+} {
+  const account = c.get("admin_account") as AdminAccount | undefined;
+  if (account) {
+    return {
+      id: account.id,
+      type: account.principal_type,
+      display_name: accountActor(account),
+    };
+  }
+  return {
+    id: null,
+    type: "system",
+    display_name: currentActor(c),
+  };
+}
+
 export async function loadAccountFromSession(
   env: Env,
   token: string | undefined,

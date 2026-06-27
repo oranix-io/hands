@@ -171,8 +171,12 @@ export interface Channel {
 export interface AuditLogEntry {
   id: string;
   app_id: string;
+  app_slug?: string;
+  app_name?: string;
   action: string;
   actor: string;
+  actor_id?: string | null;
+  actor_type?: "human" | "agent" | "system" | null;
   payload: string;
   created_at: number;
 }
@@ -208,6 +212,77 @@ export interface AuthAccount {
   display_name: string;
   avatar_url: string | null;
   actor: string;
+}
+
+export interface Org {
+  id: string;
+  slug: string;
+  name: string;
+  external_provider: string;
+  external_id: string;
+  created_at: number;
+  archived: number;
+  org_role?: "owner" | "admin" | "member" | "viewer";
+}
+
+export interface OrgMember {
+  id: string;
+  org_id: string;
+  account_id: string;
+  org_role: "owner" | "admin" | "member" | "viewer";
+  invited_by: string | null;
+  joined_at: number;
+  provider: "raft";
+  provider_subject: string;
+  server_id: string;
+  server_slug: string | null;
+  principal_type: "human" | "agent";
+  server_role: string | null;
+  username: string | null;
+  display_name: string;
+  avatar_url: string | null;
+  last_login_at: number;
+}
+
+export interface AppMember {
+  id: string;
+  app_id: string;
+  account_id: string;
+  app_role: "admin" | "publisher" | "viewer";
+  invited_by: string | null;
+  joined_at: number;
+  provider: "raft";
+  provider_subject: string;
+  server_id: string;
+  server_slug: string | null;
+  principal_type: "human" | "agent";
+  server_role: string | null;
+  username: string | null;
+  display_name: string;
+  avatar_url: string | null;
+  last_login_at: number;
+}
+
+export interface Invite {
+  id: string;
+  org_id: string;
+  app_id: string | null;
+  email: string;
+  role: string;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  message: string | null;
+  created_at: number;
+  expires_at: number;
+  accepted_at?: number | null;
+  accepted_by?: string | null;
+  revoked_at?: number | null;
+  revoked_by?: string | null;
+  invited_by?: string | null;
+  invited_by_display_name?: string | null;
+  org_name?: string;
+  app_name?: string | null;
+  app_slug?: string | null;
+  invite_url?: string;
 }
 
 async function request<T>(
@@ -271,6 +346,68 @@ export const getPublicVersion = (appId: string, versionId: string) =>
 
 export const listApps = () =>
   request<{ apps: App[] }>(`/api/apps`, { admin: true });
+
+export const listOrgs = () =>
+  request<{ orgs: Org[] }>(`/api/orgs`, { admin: true });
+
+export const listOrgMembers = (orgId: string) =>
+  request<{ members: OrgMember[] }>(`/api/orgs/${orgId}/members`, { admin: true });
+
+export const updateOrgMember = (
+  orgId: string,
+  accountId: string,
+  orgRole: OrgMember["org_role"],
+) =>
+  request<{ ok: boolean }>(`/api/orgs/${orgId}/members/${accountId}`, {
+    method: "PATCH",
+    admin: true,
+    body: JSON.stringify({ org_role: orgRole }),
+  });
+
+export const removeOrgMember = (orgId: string, accountId: string) =>
+  request<{ ok: boolean }>(`/api/orgs/${orgId}/members/${accountId}`, {
+    method: "DELETE",
+    admin: true,
+  });
+
+export const listOrgInvites = (orgId: string, status?: string) =>
+  request<{ invites: Invite[] }>(
+    `/api/orgs/${orgId}/invites${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    { admin: true },
+  );
+
+export const createOrgInvite = (
+  orgId: string,
+  input: {
+    email: string;
+    role: string;
+    app_id?: string | null;
+    message?: string | null;
+  },
+) =>
+  request<Invite & { invite_url: string }>(`/api/orgs/${orgId}/invites`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify(input),
+  });
+
+export const resendOrgInvite = (orgId: string, inviteId: string) =>
+  request<{ ok: boolean; invite_url: string; expires_at: number }>(
+    `/api/orgs/${orgId}/invites/${inviteId}/resend`,
+    { method: "POST", admin: true },
+  );
+
+export const revokeOrgInvite = (orgId: string, inviteId: string) =>
+  request<{ ok: boolean }>(`/api/orgs/${orgId}/invites/${inviteId}`, {
+    method: "DELETE",
+    admin: true,
+  });
+
+export const listOrgAuditLogs = (orgId: string, limit = 100) =>
+  request<{ logs: AuditLogEntry[] }>(
+    `/api/orgs/${orgId}/audit-logs?limit=${limit}`,
+    { admin: true },
+  );
 
 export const createApp = (input: {
   slug: string;
@@ -362,6 +499,45 @@ export const createVersion = (
 
 export const listAuditLogs = (appId: string) =>
   request<{ logs: AuditLogEntry[] }>(`/api/apps/${appId}/audit-logs`, { admin: true });
+
+export const listAppMembers = (appId: string) =>
+  request<{ members: AppMember[] }>(`/api/apps/${appId}/members`, { admin: true });
+
+export const addAppMember = (
+  appId: string,
+  input: { account_id: string; app_role: AppMember["app_role"] },
+) =>
+  request<{ ok: boolean }>(`/api/apps/${appId}/members`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify(input),
+  });
+
+export const updateAppMember = (
+  appId: string,
+  accountId: string,
+  appRole: AppMember["app_role"],
+) =>
+  request<{ ok: boolean }>(`/api/apps/${appId}/members/${accountId}`, {
+    method: "PATCH",
+    admin: true,
+    body: JSON.stringify({ app_role: appRole }),
+  });
+
+export const removeAppMember = (appId: string, accountId: string) =>
+  request<{ ok: boolean }>(`/api/apps/${appId}/members/${accountId}`, {
+    method: "DELETE",
+    admin: true,
+  });
+
+export const getInvite = (token: string) =>
+  request<Invite>(`/api/invites/${token}`);
+
+export const acceptInvite = (token: string) =>
+  request<{ ok: boolean; org_id: string; app_id: string | null }>(
+    `/api/invites/${token}/accept`,
+    { method: "POST", admin: true },
+  );
 
 // ---------- Operations (SSE + log) ----------
 

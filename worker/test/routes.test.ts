@@ -251,6 +251,9 @@ function makeMockDb() {
       revoked_at INTEGER,
       revoked_by TEXT REFERENCES raft_accounts(id) ON DELETE SET NULL
     );
+    CREATE UNIQUE INDEX idx_invites_pending_email
+      ON invites(org_id, email)
+      WHERE status = 'pending';
     INSERT INTO organizations
       (id, slug, name, external_provider, external_id, created_at, archived)
       VALUES ('default', 'default', 'Default', 'local', 'default', 1, 0);
@@ -514,6 +517,119 @@ describe("quiver route handlers — SQL smoke", () => {
     expect(teamApps.results).toEqual([
       { id: "a2", org_id: "raft_s2", slug: "team-app" },
     ]);
+  });
+
+  it("permission helpers resolve org/app roles", async () => {
+    const now = Date.now();
+    await env.DB
+      .prepare(
+        `INSERT INTO organizations
+         (id, slug, name, external_provider, external_id, created_at, archived)
+         VALUES (?, ?, ?, 'raft', ?, ?, 0)`,
+      )
+      .bind("raft_perm", "perm", "Permission Org", "perm", now)
+      .run();
+    await env.DB
+      .prepare(
+        `INSERT INTO raft_accounts
+         (id, provider, provider_subject, server_id, server_slug, principal_type,
+          server_role, username, display_name, avatar_url, raw_profile,
+          created_at, updated_at, last_login_at)
+         VALUES (?, 'raft', ?, 'perm', 'perm', ?, NULL, ?, ?, NULL, '{}', ?, ?, ?)`,
+      )
+      .bind("publisher1", "sub-publisher", "human", "publisher", "Publisher", now, now, now)
+      .run();
+    await env.DB
+      .prepare("INSERT INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind("app-perm", "raft_perm", "perm-app", "Permission App", "android", now)
+      .run();
+    await env.DB
+      .prepare("INSERT INTO org_members (id, org_id, account_id, org_role, joined_at) VALUES (?, ?, ?, ?, ?)")
+      .bind("orgmem-perm", "raft_perm", "publisher1", "viewer", now)
+      .run();
+    await env.DB
+      .prepare("INSERT INTO app_members (id, app_id, account_id, app_role, joined_at) VALUES (?, ?, ?, ?, ?)")
+      .bind("appmem-perm", "app-perm", "publisher1", "publisher", now)
+      .run();
+
+    const {
+      getOrgMemberRole,
+      getAppMemberRole,
+      getEffectiveRole,
+      isAppAtLeast,
+      isOrgAtLeast,
+    } = await import("../src/lib/permissions");
+
+    await expect(getOrgMemberRole(env.DB as any, "raft_perm", "publisher1"))
+      .resolves.toBe("viewer");
+    await expect(getAppMemberRole(env.DB as any, "app-perm", "publisher1"))
+      .resolves.toBe("publisher");
+    await expect(getEffectiveRole(env.DB as any, "publisher1", { appId: "app-perm" }))
+      .resolves.toMatchObject({
+        org_id: "raft_perm",
+        org_role: "viewer",
+        app_role: "publisher",
+      });
+    expect(isOrgAtLeast("admin", "member")).toBe(true);
+    expect(isOrgAtLeast("viewer", "member")).toBe(false);
+    expect(isAppAtLeast("publisher", "viewer")).toBe(true);
+    expect(isAppAtLeast("viewer", "publisher")).toBe(false);
+  });
+
+  it("invites allow only one pending email per org", async () => {
+    const now = Date.now();
+    await env.DB
+      .prepare(
+        `INSERT INTO organizations
+         (id, slug, name, external_provider, external_id, created_at, archived)
+         VALUES (?, ?, ?, 'raft', ?, ?, 0)`,
+      )
+      .bind("raft_invite", "invite", "Invite Org", "invite", now)
+      .run();
+    await env.DB
+      .prepare(
+        `INSERT INTO raft_accounts
+         (id, provider, provider_subject, server_id, server_slug, principal_type,
+          server_role, username, display_name, avatar_url, raw_profile,
+          created_at, updated_at, last_login_at)
+         VALUES (?, 'raft', ?, 'invite', 'invite', ?, NULL, ?, ?, NULL, '{}', ?, ?, ?)`,
+      )
+      .bind("inviter1", "sub-inviter", "human", "inviter", "Inviter", now, now, now)
+      .run();
+    await env.DB
+      .prepare(
+        `INSERT INTO invites
+         (id, org_id, email, role, token, invited_by, status, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      )
+      .bind("invite1", "raft_invite", "alice@example.com", "member", "token1", "inviter1", now, now + 1)
+      .run();
+
+    await expect(
+      env.DB
+        .prepare(
+          `INSERT INTO invites
+           (id, org_id, email, role, token, invited_by, status, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+        )
+        .bind("invite2", "raft_invite", "alice@example.com", "member", "token2", "inviter1", now, now + 2)
+        .run(),
+    ).rejects.toThrow(/UNIQUE|SQLITE_CONSTRAINT/);
+
+    await env.DB
+      .prepare("UPDATE invites SET status = 'revoked' WHERE id = ?")
+      .bind("invite1")
+      .run();
+    await expect(
+      env.DB
+        .prepare(
+          `INSERT INTO invites
+           (id, org_id, email, role, token, invited_by, status, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+        )
+        .bind("invite3", "raft_invite", "alice@example.com", "member", "token3", "inviter1", now, now + 3)
+        .run(),
+    ).resolves.toMatchObject({ success: true });
   });
 
   it("FK cascade deletes versions when app is deleted", async () => {
