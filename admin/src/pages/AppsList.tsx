@@ -11,14 +11,29 @@ export function AppsList({ onSelectApp }: { onSelectApp: (id: string) => void })
   });
 
   const [showCreate, setShowCreate] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Phase 1: filter archived client-side (server doesn't yet support query param).
+  const visible = data?.apps.filter((a) => showArchived || !a.archived) ?? [];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Apps</h1>
-        <button className="btn-primary" onClick={() => setShowCreate(true)}>
-          + New app
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="rounded"
+            />
+            Show archived ({data?.apps.filter((a) => a.archived).length ?? 0})
+          </label>
+          <button className="btn-primary" onClick={() => setShowCreate(true)}>
+            + New app
+          </button>
+        </div>
       </div>
 
       {isLoading && <p className="text-slate-500">Loading...</p>}
@@ -26,14 +41,18 @@ export function AppsList({ onSelectApp }: { onSelectApp: (id: string) => void })
         <p className="text-red-600">Failed: {(error as Error).message}</p>
       )}
 
-      {data?.apps.length === 0 && (
+      {visible.length === 0 && !isLoading && (
         <p className="text-slate-500">
-          No apps yet. Click "+ New app" to create your first one.
+          {showArchived
+            ? "No apps yet. Click \"+ New app\" to create your first one."
+            : data?.apps.some((a) => a.archived)
+              ? "All apps are archived. Toggle \"Show archived\" to view them."
+              : "No apps yet. Click \"+ New app\" to create your first one."}
         </p>
       )}
 
       <div className="grid gap-3">
-        {data?.apps.map((app) => (
+        {visible.map((app) => (
           <AppRow key={app.id} app={app} onSelect={() => onSelectApp(app.id)} />
         ))}
       </div>
@@ -52,17 +71,32 @@ export function AppsList({ onSelectApp }: { onSelectApp: (id: string) => void })
 }
 
 function AppRow({ app, onSelect }: { app: App; onSelect: () => void }) {
+  const isArchived = !!app.archived;
   return (
     <button
       onClick={onSelect}
-      className="card hover:border-blue-300 text-left transition-colors w-full"
+      className={`card text-left transition-colors w-full ${
+        isArchived
+          ? "opacity-60 hover:border-slate-400"
+          : "hover:border-blue-300"
+      }`}
     >
       <div className="flex items-center justify-between">
-        <div>
-          <div className="text-lg font-medium">{app.name}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="text-lg font-medium">{app.name}</div>
+            {isArchived && (
+              <span className="badge-gray text-xs">📦 Archived</span>
+            )}
+          </div>
           <div className="text-sm text-slate-500 font-mono">{app.slug}</div>
+          {app.description && (
+            <div className="text-sm text-slate-600 mt-1 line-clamp-2">
+              {app.description}
+            </div>
+          )}
         </div>
-        <span className="badge-blue">{app.platform}</span>
+        <span className="badge-blue ml-3">{app.platform}</span>
       </div>
     </button>
   );

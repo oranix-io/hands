@@ -27,6 +27,9 @@ export interface App {
   slug: string;
   name: string;
   platform: string;
+  description: string | null;
+  archived: number;       // 0 = active, 1 = archived (soft-delete)
+  archived_at: number | null;
   created_at: number;
 }
 

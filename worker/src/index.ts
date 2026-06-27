@@ -23,7 +23,7 @@ import {
   handleAuthMe,
   handleRaftCallback,
 } from "./routes/auth";
-import { handleListApps, handleCreateApp, handleGetApp } from "./routes/apps";
+import { handleListApps, handleCreateApp, handleGetApp, handleArchiveApp } from "./routes/apps";
 import {
   handlePublicGetLatestVersion,
   handlePublicListChannels,
@@ -267,6 +267,7 @@ admin.onError((err, c) => {
 admin.get("/api/apps", handleListApps);
 admin.post("/api/apps", handleCreateApp);
 admin.get("/api/apps/:appId", handleGetApp);
+admin.post("/api/apps/:appId/archive", handleArchiveApp);
 
 admin.post("/api/apps/:appId/versions", handleCreateVersion);
 admin.patch("/api/apps/:appId/versions/:versionId", handleUpdateVersion);
