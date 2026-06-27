@@ -32,7 +32,7 @@ export async function handleListVersions(c: Context<{ Bindings: Env }>) {
   const { results } = await c.env.DB.prepare(
     `SELECT id, app_id, channel, version_name, version_code, package_name,
             signature_sha256, min_sdk, target_sdk, size_bytes, file_hash,
-            r2_key, enabled, created_at
+            r2_key, enabled, changelog, created_at
      FROM versions
      WHERE ${conditions.join(" AND ")}
      ORDER BY created_at DESC
@@ -78,6 +78,7 @@ export async function handleCreateVersion(c: Context<{ Bindings: Env }>) {
     size_bytes: number;
     file_hash: string;
     r2_key: string;
+    changelog?: string;
   };
 
   // Validate required fields — versions.r2_key is NOT NULL in schema, so
@@ -157,6 +158,7 @@ export async function insertVersion(
     size_bytes: number;
     file_hash: string;
     r2_key: string;
+    changelog?: string;
   },
   id: string = crypto.randomUUID(),
 ): Promise<string> {
@@ -165,8 +167,8 @@ export async function insertVersion(
       `INSERT INTO versions
        (id, app_id, channel, version_name, version_code, package_name,
         signature_sha256, min_sdk, target_sdk, size_bytes, file_hash,
-        r2_key, enabled, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, ?13)`,
+        r2_key, enabled, changelog, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, ?13, ?14)`,
     )
     .bind(
       id,
@@ -181,6 +183,7 @@ export async function insertVersion(
       body.size_bytes,
       body.file_hash,
       body.r2_key,
+      body.changelog ?? null,
       Date.now(),
     )
     .run();

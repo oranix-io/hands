@@ -324,6 +324,7 @@ function UploadDialog({
   const [channel, setChannel] = useState(channels[0]?.slug ?? "");
   const [metadata, setMetadata] = useState<any>(null);
   const [r2Key, setR2Key] = useState<string | null>(null);
+  const [changelog, setChangelog] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
@@ -426,6 +427,7 @@ function UploadDialog({
         size_bytes: metadata.size_bytes,
         file_hash: metadata.file_hash_sha256,
         r2_key: r2Key,
+        changelog: changelog.trim() || undefined,
       });
     },
     onMutate: () => {
@@ -549,6 +551,15 @@ function UploadDialog({
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="label">Changelog (markdown, optional)</label>
+              <textarea
+                className="input font-mono text-xs min-h-[80px]"
+                value={changelog}
+                onChange={(e) => setChangelog(e.target.value)}
+                placeholder="## What's new\n- Fixed login bug\n- Updated onboarding flow"
+              />
             </div>
             <button
               type="button"

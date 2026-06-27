@@ -46,6 +46,7 @@ export interface Version {
   size_bytes: number;
   file_hash: string;
   enabled: number;
+  changelog: string | null;
   created_at: number;
   download_url?: string;
 }

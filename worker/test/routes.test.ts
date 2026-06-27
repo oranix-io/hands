@@ -59,6 +59,7 @@ function makeMockDb() {
       min_sdk INTEGER, target_sdk INTEGER,
       size_bytes INTEGER NOT NULL, file_hash TEXT NOT NULL,
       r2_key TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+      changelog TEXT,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
     );
