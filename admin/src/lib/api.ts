@@ -47,6 +47,9 @@ export interface Version {
   file_hash: string;
   enabled: number;
   changelog: string | null;
+  should_force_update: number;
+  availability_at: number | null;
+  provenance_json: string;
   created_at: number;
   download_url?: string;
 }

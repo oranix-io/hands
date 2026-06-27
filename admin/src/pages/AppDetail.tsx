@@ -325,6 +325,14 @@ function UploadDialog({
   const [metadata, setMetadata] = useState<any>(null);
   const [r2Key, setR2Key] = useState<string | null>(null);
   const [changelog, setChangelog] = useState("");
+  const [shouldForceUpdate, setShouldForceUpdate] = useState(false);
+  const [availabilityAt, setAvailabilityAt] = useState<string>(""); // ISO datetime-local string; empty = immediate
+  const [provenance, setProvenance] = useState({
+    git_commit: "",
+    git_branch: "",
+    ci_url: "",
+    source: "web",
+  });
   const fileRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
@@ -428,6 +436,16 @@ function UploadDialog({
         file_hash: metadata.file_hash_sha256,
         r2_key: r2Key,
         changelog: changelog.trim() || undefined,
+        should_force_update: shouldForceUpdate,
+        availability_at: availabilityAt
+          ? new Date(availabilityAt).getTime()
+          : undefined,
+        provenance: {
+          ...provenance,
+          git_commit: provenance.git_commit.trim() || undefined,
+          git_branch: provenance.git_branch.trim() || undefined,
+          ci_url: provenance.ci_url.trim() || undefined,
+        },
       });
     },
     onMutate: () => {
@@ -560,6 +578,59 @@ function UploadDialog({
                 onChange={(e) => setChangelog(e.target.value)}
                 placeholder="## What's new\n- Fixed login bug\n- Updated onboarding flow"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={shouldForceUpdate}
+                  onChange={(e) => setShouldForceUpdate(e.target.checked)}
+                />
+                Force update (clients must install, no skip)
+              </label>
+              <div>
+                <label className="label">Availability (leave blank for immediate)</label>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={availabilityAt}
+                  onChange={(e) => setAvailabilityAt(e.target.value)}
+                />
+              </div>
+              <details className="text-xs">
+                <summary className="text-slate-500 cursor-pointer hover:text-slate-700">
+                  Provenance (git / CI)
+                </summary>
+                <div className="space-y-1 mt-2 pl-3 border-l-2 border-slate-100">
+                  <input
+                    className="input text-xs font-mono"
+                    placeholder="git commit (sha)"
+                    value={provenance.git_commit}
+                    onChange={(e) => setProvenance({ ...provenance, git_commit: e.target.value })}
+                  />
+                  <input
+                    className="input text-xs font-mono"
+                    placeholder="git branch"
+                    value={provenance.git_branch}
+                    onChange={(e) => setProvenance({ ...provenance, git_branch: e.target.value })}
+                  />
+                  <input
+                    className="input text-xs font-mono"
+                    placeholder="ci url"
+                    value={provenance.ci_url}
+                    onChange={(e) => setProvenance({ ...provenance, ci_url: e.target.value })}
+                  />
+                  <select
+                    className="input text-xs"
+                    value={provenance.source}
+                    onChange={(e) => setProvenance({ ...provenance, source: e.target.value })}
+                  >
+                    <option value="web">web</option>
+                    <option value="cli">cli</option>
+                    <option value="ci">ci</option>
+                  </select>
+                </div>
+              </details>
             </div>
             <button
               type="button"

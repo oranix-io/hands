@@ -60,6 +60,9 @@ function makeMockDb() {
       size_bytes INTEGER NOT NULL, file_hash TEXT NOT NULL,
       r2_key TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
       changelog TEXT,
+      should_force_update INTEGER NOT NULL DEFAULT 0,
+      availability_at INTEGER,
+      provenance_json TEXT NOT NULL DEFAULT '{}',
       created_at INTEGER NOT NULL,
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
     );
