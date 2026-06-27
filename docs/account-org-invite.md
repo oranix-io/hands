@@ -8,32 +8,55 @@ Scope: long-lived schema and admin UX for organizations, teams, memberships, inv
 
 ## 1. Goals
 
-Quiver today authenticates via Login with Raft (migration 0004) — `raft_accounts` + `raft_sessions`. A single human account can sign in and operate on any app.
+Quiver today authenticates via Login with Raft (migration 0004) — `raft_accounts` + `raft_sessions`. A human account can sign in and operate on any app. **Agents (Raft `type='agent'`) are also first-class principals** — they can log in, get a session cookie, and act on Quiver.
 
 What's missing:
-- **Organizations** — group of apps owned by one team (multiple humans can co-own)
-- **Teams** — subsets of humans within an org with different roles (admin / publisher / viewer)
+- **Organizations** — group of apps owned by one team (humans + agents can co-own)
+- **Members** — humans/agents ↔ org association with `org_role`
+- **App members** — humans/agents ↔ app association with `app_role` (additive over org)
 - **Invites** — onboarding flow: owner emails a teammate → token + role → recipient accepts → account joins team
-- **Role-based access control (RBAC)** — currently any signed-in user can do anything. We need app-level + org-level roles.
+- **Role-based access control (RBAC)** — currently any signed-in principal can do anything. We need app-level + org-level roles.
+
+### 1.1 Design decision: org boundary = Raft `server_id`
+
+**Key principle:** A Quiver organization aligns 1:1 with a Raft server. Every principal (human or agent) that logs in to a given Raft server is automatically a member of that server's org.
+
+Rationale (from @Codex-Kuikly-KMP专家 review):
+- Agents in particular benefit — no separate "invite" ceremony needed for every agent; the moment a Raft agent is provisioned to a server, they can act on Quiver.
+- Same-server login → same org. Cross-server → different org. No manual linking.
+- Org identity = `(external_provider='raft', external_id=server_id)`.
+
+```
+Single Raft server "acme-corp"      →  One Quiver organization
+  ├─ human alice@acme.com           →  org_member(role='owner')
+  ├─ human bob@acme.com             →  org_member(role='admin')
+  ├─ agent  assistant-1              →  org_member(role='member')
+  └─ agent  assistant-2              →  org_member(role='viewer')
+```
+
+First human to log in is automatically promoted to `owner`. Subsequent principals default to `member` (humans) or `viewer` (agents). Admin can promote/demote.
 
 Reference model: Vercel (Personal Account → Team → Project → Member roles), Supabase (Organization → Project → Member roles), Cloudflare (Account → Workspace → Member roles).
 
 ## 2. Hierarchy
 
 ```
-organizations                       -- top-level container (multiple per quiver install)
-└── members                         -- human/agent ↔ org association with org_role
-    └── (org_role: 'owner' | 'admin' | 'member')
+organizations                       -- top-level container; aligned with Raft server
+├ org_role enum: 'owner' | 'admin' | 'member' | 'viewer'   (apply to humans + agents)
+└── org_members                    -- principal ↔ org association
+    └── (org_role, joined_at, invited_by)
 
 apps                                 -- now scoped to an organization
-└── app_members                      -- human/agent ↔ app association with app_role
+└── app_members                      -- principal ↔ app association (additive)
     └── (app_role: 'admin' | 'publisher' | 'viewer')
 
 invites                              -- pending memberships (email + token + role + expiry)
-    └── (status: 'pending' | 'accepted' | 'revoked' | 'expired')
+└── status: 'pending' | 'accepted' | 'revoked' | 'expired'
 ```
 
-Key separation: **org members** (can manage org-level resources like billing + team) vs **app members** (can publish/manage a specific app). A user can be in both — e.g., org admin + app viewer on a specific app.
+Key separation: **org members** (can manage org-level resources like billing + team) vs **app members** (can publish/manage a specific app). A principal can be in both — e.g., org admin + app viewer on a specific app.
+
+**Humans and agents are interchangeable in the membership model.** `principal_type` lives in `raft_accounts` (already there from migration 0004) but does NOT affect org membership shape — only default role assignment differs (humans default to 'member', agents default to 'viewer').
 
 ## 3. Tables (Phase 5 work — see §7)
 
@@ -236,7 +259,17 @@ const url = new URL(c.req.url);
 
 ### 5.3 Agent (Raft `type='agent'`) handling
 
-Agents can be org_members and app_members too. Default: org_role='member', app_role='viewer' (read-only). Org admin can promote an agent to publisher/admin explicitly. Audit log captures `actor_type='agent'` for all agent actions.
+**Agents are first-class principals.** They can log in via Login with Raft the same way humans do, get a session cookie, and act on Quiver with the same per-endpoint RBAC checks.
+
+Default role assignment on first login:
+- Human: `org_role='member'`, `app_role=null` (not a member of any app yet — must be granted per app)
+- Agent: `org_role='viewer'`, `app_role=null`
+
+Admin can promote an agent to `publisher` or `admin` explicitly via the same UI as for humans — there's no separate "agent permissions" page.
+
+Audit log captures `actor_type='agent'` for all agent actions. UI shows an "agent" badge next to the actor's name.
+
+**Why we didn't do "first-class agent permissions" as a separate dimension:** Humans and agents have the same actions in Quiver (create app, upload build, release, etc.). The only difference is the default role + UI affordances. A future "automation only" or "agent-token" distinction can be added on top of `actor_type` if needed (e.g., a "machine tokens" page).
 
 ## 6. Admin UI changes
 
@@ -288,12 +321,24 @@ URL: /invites/:token
 
 This is a NEW phase (Phase 5), larger than Phase 1-2. Estimated ~3-4 weeks.
 
+### Phase 5.0 — auth context injection (prerequisite for 5.1) (0.5 day)
+
+Before adding org tables, the auth flow needs to know which org a principal is in. Modify `worker/src/routes/auth.ts`:
+- On successful Raft login, after upserting `raft_accounts`, **upsert the org** (idempotent: one org per `(external_provider='raft', external_id=server_id)`).
+- Upsert `org_members` row linking `raft_accounts.id` to `org.id`:
+  - First principal on a server: role='owner' if human, 'admin' if agent
+  - Subsequent principals: default role='member' (human) or 'viewer' (agent)
+  - Honor an explicit role in the JWT `server_role` claim if present (e.g., if Raft says the principal is an admin, set Quiver org_role='admin' on first join)
+- The new session is enriched with `c.get("org_id")` and `c.get("org_role")` for downstream middleware.
+
+This is a single small change to `worker/src/routes/auth.ts` that makes org context available everywhere, without yet touching the new tables (we'll add those in P5.1).
+
 ### Phase 5.1 — schema + bootstrap (1 day)
 
-- Migration `0008_account_org_team.sql`:
+- Migration `0016_account_org_team.sql` (use 0016+ since 0008-0015 are taken):
   - Create `organizations`, `org_members`, `app_members`, `invites`
   - Add `apps.org_id`, `audit_logs.actor_id`, `audit_logs.actor_type`
-  - Backfill: insert default org, link all existing raft_accounts to it, link all existing apps to it, backfill audit_logs.actor_id
+  - Backfill: insert default orgs per distinct `server_id` in `raft_accounts`, link all existing raft_accounts to their org, link all existing apps to a 'default' org (Phase 5.0 already linked raft accounts to the right orgs at login time)
 - No UI changes yet
 
 ### Phase 5.2 — auth helpers (2 days)
