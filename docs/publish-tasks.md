@@ -290,11 +290,11 @@ Depends on: existing Login with Raft migration `0004_raft_auth.sql`.
 
 | Task | Status | Estimate | Notes |
 |---|---|---|---|
-| P5.4.1 `admin/src/pages/OrgSettings.tsx` (General / Members / Invites / Audit tabs) | 🟡 IN_PROGRESS | 2 days | Page scaffold + General tab wired to /api/auth/me; other 3 tabs still endpoint placeholders (commit `62d6c9b`) |
-| P5.4.2 Members tab: table + edit role + remove | 🔵 TODO | 4h | Needs GET /api/orgs/:orgId/members + PATCH /api/orgs/:orgId/members/:accountId |
-| P5.4.3 Invites tab: pending invites table + resend/revoke + create-invite modal | 🔵 TODO | 4h | After P5.3 invite endpoints |
-| P5.4.4 AppDetail: new "Access" tab (app_members + invite-to-app) | 🟡 IN_PROGRESS | 1 day | Page scaffold (commit `62d6c9b`); endpoint notes for GET/POST /api/apps/:appId/members. Real data after P5.3 invite endpoints + P5.2 role middleware |
-| P5.4.5 `admin/src/pages/AcceptInvite.tsx` (public magic link landing) | 🟡 IN_PROGRESS | 4h | Page scaffold + sign-in-or-accept UI; endpoint calls are TODO for P5.3 (commit `5eb1a1c`) |
+| P5.4.1 `admin/src/pages/OrgSettings.tsx` (General / Members / Invites / Audit tabs) | ✅ DONE | 2 days | All 4 tabs wired: General via /me, Members/Invites/Audit via P5.3 endpoints. commit `ea6434e` |
+| P5.4.2 Members tab: table + edit role + remove | ✅ DONE | 4h | Wired commit `ea6434e`: listOrgMembers + updateOrgMember + removeOrgMember (admin/owner only, excludes self) |
+| P5.4.3 Invites tab: pending invites table + resend/revoke + create-invite modal | ✅ DONE | 4h | Wired commit `ea6434e`: listOrgInvites + createOrgInvite (modal w/ email/role/message, copies invite_url to clipboard) + resendOrgInvite + revokeOrgInvite |
+| P5.4.4 AppDetail: new "Access" tab (app_members + invite-to-app) | ✅ DONE | 1 day | Wired commit `2b02881`: listAppMembers + addAppMember (admin only, picks from org_members not already on app) + updateAppMember + removeAppMember (admin only, excludes self) |
+| P5.4.5 `admin/src/pages/AcceptInvite.tsx` (public magic link landing) | ✅ DONE | 4h | Wired commit `2b02881`: GET /api/invites/:token (public) + POST /api/invites/:token/accept (auth required). Status badges (expired/accepted/revoked) + sign-in-or-accept buttons. |
 | P5.4.6 Top-bar org switcher dropdown | 🟡 IN_PROGRESS | 4h | Header 'Org' link now shows role chip (owner=purple, admin=blue) + title with role. Multi-org list endpoint pending #14. (commit `57ed0e6`) |
 | P5.4.7 Router: add `/orgs/:orgId` and `/invites/:token` routes | ✅ DONE | 2h | Both top-level (cross-cutting). commit `5eb1a1c` |
 | P5.4.8 Top-bar agent badge for principal_type='agent' | ✅ DONE | 10min | commit `5eb1a1c` |
@@ -343,11 +343,11 @@ Depends on: existing Login with Raft migration `0004_raft_auth.sql`.
 | Phase 2 (P2.1 + P2.2) | 13 | 0 | 24 | 37 | ~50 hours remaining |
 | Phase 3 | 0 | 0 | 14 | 14 | ~3 weeks |
 | Phase 4 | 0 | 0 | 7 | 7 | ~6 weeks (deferred) |
-| Phase 5 | 7 | 1 | 20 | 28 | ~13 days (~2.5 weeks) |
+| Phase 5 | 12 | 0 | 16 | 28 | ~13 days (~2.5 weeks) |
 | Cross-cutting | 2 | 1 | 3 | 6 | ongoing |
-| **Total** | **46** | **3** | **68** | **117** | |
+| **Total** | **51** | **1** | **65** | **117** | |
 
-Last sync: 2026-06-28 03:55 UTC
+Last sync: 2026-06-28 04:05 UTC
 
 **Phase 2.1 + P2.2 complete** (commits `c6322ab`): 5 new tables created on remote D1, product_types / release_types / default channels seeded for the 1 existing app, 1 legacy versions row backfilled into builds + build_assets + releases + release_scopes. Builds table now has parity with versions on `should_force_update` / `availability_at` / `provenance_json`.
 
