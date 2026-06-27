@@ -17,6 +17,7 @@ import { Builds } from "./pages/Builds";
 import { Releases } from "./pages/Releases";
 import { OrgSettings } from "./pages/OrgSettings";
 import { AcceptInvite } from "./pages/AcceptInvite";
+import { AppAccess } from "./pages/AppAccess";
 import { getAuthMe, loginUrl, logout, type AuthAccount } from "./lib/api";
 
 function RaftIcon({ className = "" }: { className?: string }) {
@@ -41,6 +42,7 @@ function Header({ account }: { account: AuthAccount }) {
     await logout();
     window.location.assign(loginUrl("/"));
   };
+  const orgHref = account.org_id ? `/orgs/${account.org_id}` : "/orgs/placeholder";
   return (
     <header className="bg-white border-b border-slate-200">
       <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-6">
@@ -61,13 +63,17 @@ function Header({ account }: { account: AuthAccount }) {
               Apps
             </NavLink>
             <NavLink
-              to="/orgs/placeholder"
+              to={orgHref}
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-md text-sm ${
                   isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
                 }`
               }
-              title="Org settings (real org_id will be wired after P5.1 ships)"
+              title={
+                account.org_id
+                  ? "Org settings"
+                  : "Org settings (no org yet — first login required)"
+              }
             >
               Org
             </NavLink>
@@ -173,6 +179,16 @@ function AppContextNav() {
           Releases
         </NavLink>
         <NavLink
+          to={`${base}/access`}
+          className={({ isActive }) =>
+            `px-3 py-1 rounded-md text-sm ${
+              isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
+            }`
+          }
+        >
+          Access
+        </NavLink>
+        <NavLink
           to={`${base}/audit`}
           className={({ isActive }) =>
             `px-3 py-1 rounded-md text-sm ${
@@ -196,8 +212,15 @@ function AppDetailRoute() {
       appId={appId}
       onShowAudit={() => navigate(`/apps/${appId}/audit`)}
       onShowPublish={() => navigate(`/apps/${appId}/publish`)}
+      onShowAccess={() => navigate(`/apps/${appId}/access`)}
     />
   );
+}
+
+function AppAccessRoute() {
+  const { appId } = useParams();
+  if (!appId) return null;
+  return <AppAccess appId={appId} />;
 }
 
 function AuditRoute() {
@@ -301,6 +324,7 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
           <Route path="publish" element={<PublishingRoute />} />
           <Route path="builds" element={<BuildsRoute />} />
           <Route path="releases" element={<ReleasesRoute />} />
+          <Route path="access" element={<AppAccessRoute />} />
           <Route path="audit" element={<AuditRoute />} />
         </Route>
         <Route

@@ -20,10 +20,12 @@ export function AppDetail({
   appId,
   onShowAudit,
   onShowPublish,
+  onShowAccess,
 }: {
   appId: string;
   onShowAudit: () => void;
   onShowPublish: () => void;
+  onShowAccess: () => void;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -59,9 +61,15 @@ export function AppDetail({
         </button>
         <button
           onClick={onShowPublish}
-          className="mt-2 text-sm text-blue-600 hover:underline inline-block"
+          className="mt-2 text-sm text-blue-600 hover:underline inline-block mr-3"
         >
           Manage publishing →
+        </button>
+        <button
+          onClick={onShowAccess}
+          className="mt-2 text-sm text-blue-600 hover:underline inline-block"
+        >
+          Manage access →
         </button>
       </div>
 
