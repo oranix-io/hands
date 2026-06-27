@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   parseApk,
   uploadApk,
-  createVersion,
+  createBuild,
+  createBuildAsset,
+  createRelease,
   listProductTypes,
   listReleaseTypes,
   type Channel,
@@ -165,51 +167,104 @@ export function UploadDialog({
     },
   });
 
-  // ===== Step 3→4: Create version (publish) =====
+  // ===== Step 3→4: Publish (new build/release flow) =====
+  //
+  // Three-step server-side flow (per expert's wire order, commit 2c77b97):
+  //   1. POST /api/apps/:appId/builds              → creates builds row
+  //   2. POST /api/apps/:appId/builds/:buildId/assets → registers the apk asset
+  //   3. POST /api/apps/:appId/releases             → promotes build to active
+  //
+  // The legacy POST /api/apps/:appId/versions endpoint also exists for
+  // backward compat — it does all three of the above in one shot. We use
+  // the new 3-step flow here for clarity + to exercise the new schema.
   const submit = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!metadata || !r2Key) throw new Error("upload first");
-      return createVersion(appId, {
-        channel: channelSlug,
+      const channel = channels.find((c) => c.slug === channelSlug);
+      if (!channel) throw new Error(`channel ${channelSlug} not found`);
+
+      // 1. Create build
+      const build = await createBuild(appId, {
+        channel_id: channel.id,
+        product_type: productTypeName,
+        release_type: releaseTypeName,
         version_name: versionName,
         version_code: versionCode,
-        package_name: metadata.package_name,
-        signature_sha256: metadata.signature_sha256,
-        min_sdk: metadata.min_sdk,
-        target_sdk: metadata.target_sdk,
-        size_bytes: metadata.size_bytes,
-        file_hash: metadata.file_hash_sha256,
+        changelog: changelog.trim() || undefined,
+        source: "web",
+        parsed_metadata_json: {
+          package_name: metadata.package_name,
+          signature_sha256: metadata.signature_sha256,
+          min_sdk: metadata.min_sdk,
+          target_sdk: metadata.target_sdk,
+          app_label: metadata.app_label,
+          size_bytes: metadata.size_bytes,
+          native_codes: [],
+        },
+        provenance_json: {
+          git_commit: provenance.git_commit.trim() || undefined,
+          git_branch: provenance.git_branch.trim() || undefined,
+          ci_url: provenance.ci_url.trim() || undefined,
+          source: provenance.source,
+        },
+        should_force_update: shouldForceUpdate,
+        availability_at: availabilityAt
+          ? new Date(availabilityAt).getTime()
+          : undefined,
+      });
+
+      // 2. Create build_asset (apk)
+      await createBuildAsset(appId, build.id, {
+        platform: "android",
+        arch: null,
+        variant: null,
+        filetype: "apk",
         r2_key: r2Key,
+        file_hash: metadata.file_hash_sha256,
+        size_bytes: metadata.size_bytes,
+        signature: metadata.signature_sha256,
+      });
+
+      // 3. Create release (no scopes → backend defaults to full/all)
+      const release = await createRelease(appId, {
+        build_id: build.id,
+        channel_id: channel.id,
+        product_type: productTypeName,
+        release_type: releaseTypeName,
         changelog: changelog.trim() || undefined,
         should_force_update: shouldForceUpdate,
         availability_at: availabilityAt
           ? new Date(availabilityAt).getTime()
           : undefined,
-        provenance: {
-          ...provenance,
+        provenance_json: {
           git_commit: provenance.git_commit.trim() || undefined,
           git_branch: provenance.git_branch.trim() || undefined,
           ci_url: provenance.ci_url.trim() || undefined,
+          source: provenance.source,
         },
       });
+
+      return release;
     },
     onMutate: () => {
       publishToastRef.current = toast.show({
         kind: "loading",
         title: "Publishing version...",
-        description: "Step 4/4 - Writing D1 row",
+        description: "Step 4/4 - Creating build + asset + release",
       });
     },
-    onSuccess: () => {
+    onSuccess: (release) => {
       if (publishToastRef.current != null) {
         toast.update(publishToastRef.current, {
           kind: "success",
           title: "Version published",
-          description: `v${versionName} (${channelSlug})`,
+          description: `v${versionName} (${channelSlug}) — release ${release.id.slice(0, 8)}`,
         });
       }
       qc.invalidateQueries({ queryKey: ["versions", appId] });
       qc.invalidateQueries({ queryKey: ["product-types", appId] });
+      qc.invalidateQueries({ queryKey: ["builds", appId] });
+      qc.invalidateQueries({ queryKey: ["releases", appId] });
       onCreated();
     },
     onError: (e) => {

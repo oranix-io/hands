@@ -79,6 +79,79 @@ export interface Version {
   provenance_json: string;
   created_at: number;
   download_url?: string;
+  // Phase 2 compat: legacy /versions response shape from
+  // worker/src/routes/builds.ts handleListVersionsCompat may also
+  // include build_id / release_id / release_status.
+  build_id?: string;
+  release_id?: string;
+  release_status?: string;
+}
+
+export interface Build {
+  id: string;
+  app_id: string;
+  channel_id: string | null;
+  product_type: string;
+  release_type: string;
+  version_name: string;
+  version_code: number;
+  changelog: string | null;
+  source: string;
+  status: string;            // 'pending' | 'building' | 'succeeded' | 'failed' | ...
+  build_metadata_json: string;
+  parsed_metadata_json: string;
+  should_force_update: number;
+  availability_at: number | null;
+  provenance_json: string;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
+}
+
+export interface BuildAsset {
+  id: string;
+  build_id: string;
+  platform: string;
+  arch: string | null;
+  variant: string | null;
+  filetype: string;            // 'apk' | 'dmg' | 'exe' | 'deb' | 'bundle' | ...
+  r2_key: string;
+  file_hash: string;
+  size_bytes: number;
+  signature: string | null;
+  signing_credential_id: string | null;
+  metadata_json: string;
+  download_count: number;
+  created_at: number;
+}
+
+export interface Release {
+  id: string;
+  app_id: string;
+  build_id: string;
+  channel_id: string;
+  product_type: string;
+  release_type: string;
+  status: string;            // 'active' | 'superseded' | 'rolled_back' | 'cancelled'
+  is_full: number;
+  superseded_by_release_id: string | null;
+  rollout_cohort_count: number | null;
+  rollout_target_cohorts_json: string;
+  availability_at: number | null;
+  should_force_update: number;
+  changelog: string | null;
+  provenance_json: string;
+  created_by: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ReleaseScope {
+  id: string;
+  release_id: string;
+  scope_type: string;         // 'full' | 'platform' | 'ip_range' | 'user_cohort'
+  scope_value: string;
+  created_at: number;
 }
 
 export interface Channel {
@@ -374,3 +447,161 @@ async function readErrorBody(res: Response): Promise<unknown> {
     return text;
   }
 }
+
+// ---------- Phase 2: builds + releases + build_assets ----------
+
+export const listBuilds = (appId: string) =>
+  request<{ builds: Build[] }>(`/api/apps/${appId}/builds`, { admin: true });
+
+export const getBuild = (appId: string, buildId: string) =>
+  request<{ build: Build }>(`/api/apps/${appId}/builds/${buildId}`, { admin: true });
+
+export const createBuild = (
+  appId: string,
+  input: {
+    channel_id?: string | undefined;
+    channel_slug?: string | undefined;
+    product_type: string;
+    release_type: string;
+    version_name: string;
+    version_code: number;
+    changelog?: string | undefined;
+    source?: string | undefined;
+    build_metadata_json?: unknown;
+    parsed_metadata_json?: unknown;
+    provenance_json?: unknown;
+    should_force_update?: boolean | undefined;
+    availability_at?: number | undefined;
+  },
+) =>
+  request<Build>(`/api/apps/${appId}/builds`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify(input),
+  });
+
+export const updateBuild = (
+  appId: string,
+  buildId: string,
+  patch: {
+    changelog?: string | undefined;
+    should_force_update?: boolean | undefined;
+    availability_at?: number | undefined;
+    provenance_json?: unknown;
+    status?: string | undefined;
+  },
+) =>
+  request<{ ok: boolean }>(`/api/apps/${appId}/builds/${buildId}`, {
+    method: "PATCH",
+    admin: true,
+    body: JSON.stringify(patch),
+  });
+
+export const deleteBuild = (appId: string, buildId: string) =>
+  request<{ ok: boolean }>(`/api/apps/${appId}/builds/${buildId}`, {
+    method: "DELETE",
+    admin: true,
+  });
+
+export const listBuildAssets = (appId: string, buildId: string) =>
+  request<{ assets: BuildAsset[] }>(
+    `/api/apps/${appId}/builds/${buildId}/assets`,
+    { admin: true },
+  );
+
+export const createBuildAsset = (
+  appId: string,
+  buildId: string,
+  input: {
+    platform: string;
+    arch?: string | null | undefined;
+    variant?: string | null | undefined;
+    filetype: string;
+    r2_key: string;
+    file_hash: string;
+    size_bytes: number;
+    signature?: string | null | undefined;
+    metadata_json?: unknown;
+  },
+) =>
+  request<BuildAsset>(`/api/apps/${appId}/builds/${buildId}/assets`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify(input),
+  });
+
+export const deleteBuildAsset = (
+  appId: string,
+  buildId: string,
+  assetId: string,
+) =>
+  request<{ ok: boolean }>(
+    `/api/apps/${appId}/builds/${buildId}/assets/${assetId}`,
+    { method: "DELETE", admin: true },
+  );
+
+export const listReleases = (appId: string) =>
+  request<{ releases: Release[] }>(`/api/apps/${appId}/releases`, { admin: true });
+
+export const getRelease = (appId: string, releaseId: string) =>
+  request<{ release: Release; build: Build; assets: BuildAsset[]; scopes: ReleaseScope[] }>(
+    `/api/apps/${appId}/releases/${releaseId}`,
+    { admin: true },
+  );
+
+export const createRelease = (
+  appId: string,
+  input: {
+    build_id: string;
+    channel_id?: string | undefined;
+    channel_slug?: string | undefined;
+    product_type?: string | undefined;
+    release_type?: string | undefined;
+    changelog?: string | undefined;
+    should_force_update?: boolean | undefined;
+    rollout_cohort_count?: number | undefined;
+    rollout_target_cohorts_json?: unknown;
+    availability_at?: number | undefined;
+    provenance_json?: unknown;
+    scopes?: { scope_type: string; scope_value: string }[];
+  },
+) =>
+  request<Release>(`/api/apps/${appId}/releases`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify(input),
+  });
+
+export const rollbackRelease = (
+  appId: string,
+  releaseId: string,
+  input?: {
+    build_id?: string | undefined;
+    scopes?: { scope_type: string; scope_value: string }[];
+  },
+) =>
+  request<Release>(`/api/apps/${appId}/releases/${releaseId}/rollback`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify(input ?? {}),
+  });
+
+export const bumpRollout = (
+  appId: string,
+  releaseId: string,
+  input: { to?: number; by?: number },
+) =>
+  request<{ ok: boolean; rollout_cohort_count: number | null }>(
+    `/api/apps/${appId}/releases/${releaseId}/bump-rollout`,
+    { method: "POST", admin: true, body: JSON.stringify(input) },
+  );
+
+export const forceUpdate = (
+  appId: string,
+  releaseId: string,
+  input?: { enabled?: boolean },
+) =>
+  request<{ ok: boolean; should_force_update: number }>(
+    `/api/apps/${appId}/releases/${releaseId}/force-update`,
+    { method: "POST", admin: true, body: JSON.stringify(input ?? {}) },
+  );
