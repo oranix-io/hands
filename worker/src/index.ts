@@ -45,7 +45,7 @@ import {
   handleUpdateVersion,
   handleDeleteVersion,
 } from "./routes/versions";
-import { handleListChannels, handleCreateChannel } from "./routes/channels";
+import { handleListChannels, handleCreateChannel, handleUpdateChannel, handleDeleteChannel } from "./routes/channels";
 import { handleListAuditLogs } from "./routes/audit";
 import { handleHealth } from "./routes/health";
 
@@ -388,6 +388,8 @@ admin.post("/api/parse-apk", async (c) => {
 
 admin.get("/api/apps/:appId/channels", handleListChannels);
 admin.post("/api/apps/:appId/channels", handleCreateChannel);
+admin.patch("/api/apps/:appId/channels/:channelId", handleUpdateChannel);
+admin.delete("/api/apps/:appId/channels/:channelId", handleDeleteChannel);
 
 admin.get("/api/apps/:appId/audit-logs", handleListAuditLogs);
 

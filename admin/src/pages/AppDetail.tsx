@@ -4,6 +4,8 @@ import {
   listApps,
   listChannels,
   createChannel,
+  updateChannel,
+  deleteChannel,
   listPublicVersions,
   parseApk,
   uploadApk,
@@ -40,6 +42,7 @@ export function AppDetail({
 
   const [showUpload, setShowUpload] = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
 
   return (
     <div>
@@ -74,15 +77,18 @@ export function AppDetail({
             + New channel
           </button>
         </div>
-        {channels.isLoading && <p className="text-slate-500">Loading...</p>}
-        <div className="flex flex-wrap gap-2">
+        {channels.isLoading && <p className="text-slate-500">Loading…</p>}
+        <div className="space-y-2">
           {channels.data?.channels.length === 0 && (
             <p className="text-slate-500 text-sm">No channels yet.</p>
           )}
           {channels.data?.channels.map((c) => (
-            <span key={c.id} className="badge-gray">
-              {c.slug} · {c.name}
-            </span>
+            <ChannelRow
+              key={c.id}
+              channel={c}
+              onEdit={() => setEditingChannel(c)}
+              busy={false}
+            />
           ))}
         </div>
         {showCreateChannel && (
@@ -91,6 +97,17 @@ export function AppDetail({
             onClose={() => setShowCreateChannel(false)}
             onCreated={() => {
               setShowCreateChannel(false);
+              qc.invalidateQueries({ queryKey: ["channels", appId] });
+            }}
+          />
+        )}
+        {editingChannel && (
+          <EditChannelDialog
+            appId={appId}
+            channel={editingChannel}
+            onClose={() => setEditingChannel(null)}
+            onSaved={() => {
+              setEditingChannel(null);
               qc.invalidateQueries({ queryKey: ["channels", appId] });
             }}
           />
@@ -167,7 +184,7 @@ function VersionRow({
     onMutate: (enabled) => {
       return toast.show({
         kind: "loading",
-        title: enabled ? "Enabling version…" : "Disabling version…",
+        title: enabled ? "Enabling version..." : "Disabling version...",
         ttlMs: 0,
       });
     },
@@ -203,7 +220,7 @@ function VersionRow({
           {version.package_name} · {(version.size_bytes / 1024 / 1024).toFixed(2)} MB
         </div>
         <div className="text-xs text-slate-400 font-mono mt-0.5">
-          sha256: {version.signature_sha256.slice(0, 16)}…
+          sha256: {version.signature_sha256.slice(0, 16)}...
         </div>
       </div>
       <button
@@ -228,10 +245,20 @@ function CreateChannelDialog({
 }) {
   const [slug, setSlug] = useState("production");
   const [name, setName] = useState("Production");
+  const [bundleId, setBundleId] = useState("");
+  const [password, setPassword] = useState("");
+  const [gitUrl, setGitUrl] = useState("");
   const toast = useToast();
 
   const create = useMutation({
-    mutationFn: () => createChannel(appId, { slug, name }),
+    mutationFn: () =>
+      createChannel(appId, {
+        slug,
+        name,
+        bundle_id: bundleId.trim() || undefined,
+        password: password.trim() || undefined,
+        git_url: gitUrl.trim() || undefined,
+      }),
     onSuccess: () => {
       toast.show({ kind: "success", title: `Channel '${slug}' created` });
       onCreated();
@@ -291,6 +318,34 @@ function CreateChannelDialog({
               required
             />
           </div>
+          <div>
+            <label className="label">Bundle ID override (optional)</label>
+            <input
+              className="input font-mono text-xs"
+              value={bundleId}
+              onChange={(e) => setBundleId(e.target.value)}
+              placeholder="com.example.myapp.beta"
+            />
+          </div>
+          <div>
+            <label className="label">Download password (optional)</label>
+            <input
+              type="password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="leave blank for no gate"
+            />
+          </div>
+          <div>
+            <label className="label">Git URL (optional)</label>
+            <input
+              className="input font-mono text-xs"
+              value={gitUrl}
+              onChange={(e) => setGitUrl(e.target.value)}
+              placeholder="https://github.com/foo/bar/tree/beta"
+            />
+          </div>
           <div className="flex gap-2 justify-end pt-2">
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
@@ -302,6 +357,245 @@ function CreateChannelDialog({
             >
               {create.isPending ? "Creating..." : "Create"}
             </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ChannelRow({
+  channel: c,
+  onEdit,
+  busy,
+}: {
+  channel: Channel;
+  onEdit: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="card !p-3 flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium">{c.name}</span>
+          <span className="text-xs font-mono text-slate-500">{c.slug}</span>
+          {c.bundle_id && (
+            <span
+              className="badge-blue text-xs font-mono"
+              title="Bundle ID override"
+            >
+              {c.bundle_id}
+            </span>
+          )}
+          {c.password && (
+            <span
+              className="badge-orange text-xs"
+              title="Downloads require password"
+            >
+              🔒 gated
+            </span>
+          )}
+          {c.git_url && (
+            <a
+              className="text-xs text-blue-600 hover:underline font-mono truncate max-w-xs"
+              href={c.git_url}
+              target="_blank"
+              rel="noreferrer"
+              title={c.git_url}
+            >
+              {c.git_url}
+            </a>
+          )}
+        </div>
+      </div>
+      <button
+        className="btn-secondary text-sm"
+        onClick={onEdit}
+        disabled={busy}
+      >
+        Edit
+      </button>
+    </div>
+  );
+}
+
+function EditChannelDialog({
+  appId,
+  channel,
+  onClose,
+  onSaved,
+}: {
+  appId: string;
+  channel: Channel;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [name, setName] = useState(channel.name);
+  const [bundleId, setBundleId] = useState(channel.bundle_id ?? "");
+  const [password, setPassword] = useState(channel.password ?? "");
+  const [gitUrl, setGitUrl] = useState(channel.git_url ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const save = useMutation({
+    mutationFn: () =>
+      updateChannel(appId, channel.id, {
+        name,
+        bundle_id: bundleId.trim() || null,
+        password: password.trim() || null,
+        git_url: gitUrl.trim() || null,
+      }),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: `Channel '${channel.slug}' saved` });
+      onSaved();
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Save failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => deleteChannel(appId, channel.id),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: `Channel '${channel.slug}' deleted` });
+      onSaved();
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Delete failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
+      <div className="card max-w-md w-full relative">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-100"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+        <h2 className="text-lg font-bold mb-4 pr-8">Edit channel '{channel.slug}'</h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+          className="space-y-3"
+        >
+          <div>
+            <label className="label">Slug (immutable)</label>
+            <input
+              className="input font-mono text-xs bg-slate-50"
+              value={channel.slug}
+              readOnly
+            />
+          </div>
+          <div>
+            <label className="label">Name</label>
+            <input
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className="label">Bundle ID override</label>
+            <input
+              className="input font-mono text-xs"
+              value={bundleId}
+              onChange={(e) => setBundleId(e.target.value)}
+              placeholder="com.example.myapp.beta"
+            />
+          </div>
+          <div>
+            <label className="label">Download password</label>
+            <input
+              type="password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="leave blank for no gate"
+            />
+          </div>
+          <div>
+            <label className="label">Git URL</label>
+            <input
+              className="input font-mono text-xs"
+              value={gitUrl}
+              onChange={(e) => setGitUrl(e.target.value)}
+              placeholder="https://github.com/foo/bar/tree/beta"
+            />
+          </div>
+          <div className="flex gap-2 justify-between pt-2 border-t border-slate-100">
+            {confirmDelete ? (
+              <>
+                <button
+                  type="button"
+                  className="text-red-600 text-sm hover:underline"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={remove.isPending}
+                >
+                  Cancel delete
+                </button>
+                <button
+                  type="button"
+                  className="bg-red-600 text-white text-sm px-3 py-1 rounded-md hover:bg-red-700"
+                  onClick={() => remove.mutate()}
+                  disabled={remove.isPending}
+                >
+                  {remove.isPending
+                    ? "Deleting…"
+                    : "Confirm delete"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="text-red-600 text-sm hover:underline"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={save.isPending || remove.isPending}
+                >
+                  Delete channel
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={onClose}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={save.isPending}
+                  >
+                    {save.isPending ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </form>
       </div>
@@ -347,8 +641,8 @@ function UploadDialog({
     onMutate: (f) => {
       parseToastRef.current = toast.show({
         kind: "loading",
-        title: `Parsing ${f.name}…`,
-        description: "Step 1/3 — Container is reading APK metadata",
+        title: `Parsing ${f.name}...`,
+        description: "Step 1/3 - Container is reading APK metadata",
       });
     },
     onSuccess: (m) => {
@@ -387,9 +681,9 @@ function UploadDialog({
     onMutate: () => {
       uploadToastRef.current = toast.show({
         kind: "loading",
-        title: "Uploading to R2…",
+        title: "Uploading to R2...",
         description: file
-          ? `Step 2/3 — ${(file.size / 1024 / 1024).toFixed(2)} MB`
+          ? `Step 2/3 - ${(file.size / 1024 / 1024).toFixed(2)} MB`
           : "Step 2/3",
       });
     },
@@ -451,8 +745,8 @@ function UploadDialog({
     onMutate: () => {
       publishToastRef.current = toast.show({
         kind: "loading",
-        title: "Publishing version…",
-        description: "Step 3/3 — Writing D1 row",
+        title: "Publishing version...",
+        description: "Step 3/3 - Writing D1 row",
       });
     },
     onSuccess: () => {
@@ -483,11 +777,11 @@ function UploadDialog({
   });
 
   // Auto-trigger upload as soon as metadata is ready (step 1 → step 2
-  // is transparent — same operation, different backend call).
+  // is transparent - same operation, different backend call).
   if (metadata && !r2Key && !upload.isPending && !upload.isError) {
     setTimeout(() => upload.mutate(), 0);
   }
-  // Step 3 (publish) is NOT auto-triggered — user must explicitly click
+  // Step 3 (publish) is NOT auto-triggered - user must explicitly click
   // "Publish" after choosing a channel. Earlier versions auto-fired this
   // but users reported they couldn't figure out how publish worked
   // because there was no visible action to take.
@@ -531,7 +825,7 @@ function UploadDialog({
             />
             <p className="text-xs text-slate-500">
               {parse.isPending
-                ? "Parsing… see progress in bottom-right corner."
+                ? "Parsing... see progress in bottom-right corner."
                 : "Pick an .apk file. Step 1/3 → 2/3 → 3/3 run automatically; progress shows in the bottom-right corner even if you close this dialog."}
             </p>
           </div>
@@ -541,12 +835,12 @@ function UploadDialog({
               <Row k="Package" v={metadata.package_name} mono />
               <Row k="Version" v={`${metadata.version_name} (code ${metadata.version_code})`} mono />
               <Row k="minSdk / targetSdk" v={`${metadata.min_sdk ?? "?"} / ${metadata.target_sdk ?? "?"}`} />
-              <Row k="Signature" v={metadata.signature_sha256.slice(0, 32) + "…"} mono />
+              <Row k="Signature" v={metadata.signature_sha256.slice(0, 32) + "..."} mono />
               <Row k="Size" v={`${(metadata.size_bytes / 1024 / 1024).toFixed(2)} MB`} />
-              <Row k="SHA-256" v={metadata.file_hash_sha256.slice(0, 32) + "…"} mono />
+              <Row k="SHA-256" v={metadata.file_hash_sha256.slice(0, 32) + "..."} mono />
             </dl>
             <p className="text-xs text-slate-500">
-              Uploading to R2… see bottom-right corner.
+              Uploading to R2... see bottom-right corner.
             </p>
           </div>
         ) : (
@@ -565,7 +859,7 @@ function UploadDialog({
               >
                 {channels.map((c) => (
                   <option key={c.id} value={c.slug}>
-                    {c.slug} — {c.name}
+                    {c.slug} - {c.name}
                   </option>
                 ))}
               </select>
@@ -639,15 +933,15 @@ function UploadDialog({
               onClick={() => submit.mutate()}
             >
               {submit.isPending
-                ? "Publishing…"
+                ? "Publishing..."
                 : submit.isSuccess
                   ? "✓ Published"
                   : `Publish to ${channel || "channel"}`}
             </button>
             <p className="text-xs text-slate-500">
               {submit.isSuccess
-                ? "Done. You can close this dialog — version is live."
-                : "You can close this dialog — progress will continue in the bottom-right corner."}
+                ? "Done. You can close this dialog - version is live."
+                : "You can close this dialog - progress will continue in the bottom-right corner."}
             </p>
           </div>
         )}

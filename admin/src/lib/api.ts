@@ -59,6 +59,11 @@ export interface Channel {
   app_id: string;
   slug: string;
   name: string;
+  bundle_id: string | null;
+  password: string | null;
+  git_url: string | null;
+  enabled_product_types_json: string;
+  metadata_json: string;
   created_at: number;
 }
 
@@ -171,11 +176,44 @@ export const createApp = (input: { slug: string; name: string; platform: string 
     body: JSON.stringify(input),
   });
 
-export const createChannel = (appId: string, input: { slug: string; name: string }) =>
+export const createChannel = (
+  appId: string,
+  input: {
+    slug: string;
+    name: string;
+    bundle_id?: string | undefined;
+    password?: string | undefined;
+    git_url?: string | undefined;
+    enabled_product_types?: string[] | undefined;
+  },
+) =>
   request<Channel>(`/api/apps/${appId}/channels`, {
     method: "POST",
     admin: true,
     body: JSON.stringify(input),
+  });
+
+export const updateChannel = (
+  appId: string,
+  channelId: string,
+  patch: {
+    name?: string;
+    bundle_id?: string | null;
+    password?: string | null;
+    git_url?: string | null;
+    enabled_product_types?: string[];
+  },
+) =>
+  request<{ ok: boolean }>(`/api/apps/${appId}/channels/${channelId}`, {
+    method: "PATCH",
+    admin: true,
+    body: JSON.stringify(patch),
+  });
+
+export const deleteChannel = (appId: string, channelId: string) =>
+  request<{ ok: boolean }>(`/api/apps/${appId}/channels/${channelId}`, {
+    method: "DELETE",
+    admin: true,
   });
 
 export const listChannels = (appId: string) =>
