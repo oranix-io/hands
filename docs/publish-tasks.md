@@ -72,16 +72,16 @@ Goal: introduce new columns + scaffold tables without breaking the existing `ver
 
 | Task | Status | Estimate | Notes |
 |---|---|---|---|
-| P1.4.1 UploadDialog step 3: `should_force_update` checkbox | 🔵 TODO | 15min | per-version flag, stored in `versions.should_force_update` (additive column) |
-| P1.4.2 UploadDialog step 3: `availability_at` datetime picker | 🔵 TODO | 30min | nullable, scheduled publish |
-| P1.4.3 UploadDialog step 3: `provenance_json` auto-fill + editable | 🔵 TODO | 1h | git_commit / ci_url / branch / source — auto from build env if available |
-| P1.4.4 Migrations: `versions.should_force_update`, `versions.availability_at`, `versions.provenance_json` | 🔵 TODO | 30min | `0007_versions_publish_fields.sql` |
-| P1.4.5 Publishing dashboard: show changelog column | 🔵 TODO | 30min | `admin/src/pages/Publishing.tsx` |
-| P1.4.6 Publishing dashboard: `enabled` toggle button | 🔵 TODO | 30min | wire to `PATCH /api/apps/:appId/versions/:vid` |
-| P1.4.7 Publishing dashboard: `Force update` toggle | 🔵 TODO | 30min | wire to `should_force_update` field |
+| P1.4.1 UploadDialog step 3: `should_force_update` checkbox | ✅ DONE | 15min | commit `2c076fb` |
+| P1.4.2 UploadDialog step 3: `availability_at` datetime picker | ✅ DONE | 30min | commit `2c076fb` |
+| P1.4.3 UploadDialog step 3: `provenance_json` auto-fill + editable | ✅ DONE | 1h | git_commit / git_branch / ci_url / source, in collapsible `<details>` |
+| P1.4.4 Migrations: `versions.should_force_update`, `versions.availability_at`, `versions.provenance_json` | ✅ DONE | 30min | `0007_versions_publish_fields.sql` |
+| P1.4.5 Publishing dashboard: show changelog column | ✅ DONE | 30min | collapsible markdown viewer, commit `1bc6487` |
+| P1.4.6 Publishing dashboard: `enabled` toggle button | ✅ DONE | 30min | wired earlier in commit `b016ab5` |
+| P1.4.7 Publishing dashboard: `Force update` toggle | ✅ DONE | 30min | new "Force" / "Unforce" button + ⚠ force update badge |
 | P1.4.8 Channel CRUD UI: edit password / bundle_id / git_url | 🔵 TODO | 2h | new page or inline edit in AppDetail channels tab |
 
-### Phase 1 total: ~6-7 hours work remaining
+### Phase 1 total: ~2 hours work remaining (only P1.4.8 Channel CRUD UI left)
 
 ---
 
@@ -258,11 +258,11 @@ Goal: introduce `product_types`, `release_types`, `build_assets`, `releases`, `r
 
 | Phase | DONE | IN_PROGRESS | TODO | Total | ETA |
 |---|---|---|---|---|---|
-| Phase 1 | 16 | 1 (this doc) | 8 | 25 | ~7 hours remaining |
+| Phase 1 | 23 | 1 (this doc) | 1 | 25 | ~2 hours remaining (only P1.4.8 Channel CRUD UI) |
 | Phase 2 | 0 | 0 | 25 | 25 | ~50 hours |
 | Phase 3 | 0 | 0 | 14 | 14 | ~3 weeks |
 | Phase 4 | 0 | 0 | 7 | 7 | ~6 weeks |
 | Cross-cutting | 1 | 1 | 4 | 6 | ongoing |
-| **Total** | **17** | **2** | **58** | **77** | |
+| **Total** | **24** | **2** | **51** | **77** | |
 
-Last sync: 2026-06-28 01:50 UTC
+Last sync: 2026-06-28 01:55 UTC
