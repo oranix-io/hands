@@ -462,14 +462,15 @@ function UploadDialog({
     },
   });
 
-  // Auto-trigger upload as soon as metadata is ready.
+  // Auto-trigger upload as soon as metadata is ready (step 1 → step 2
+  // is transparent — same operation, different backend call).
   if (metadata && !r2Key && !upload.isPending && !upload.isError) {
     setTimeout(() => upload.mutate(), 0);
   }
-  // Auto-trigger publish as soon as r2Key is ready.
-  if (r2Key && !submit.isPending && !submit.isError && !submit.isSuccess) {
-    setTimeout(() => submit.mutate(), 0);
-  }
+  // Step 3 (publish) is NOT auto-triggered — user must explicitly click
+  // "Publish" after choosing a channel. Earlier versions auto-fired this
+  // but users reported they couldn't figure out how publish worked
+  // because there was no visible action to take.
 
   return (
     <div
@@ -549,16 +550,25 @@ function UploadDialog({
                 ))}
               </select>
             </div>
+            <button
+              type="button"
+              className="btn-primary w-full"
+              disabled={submit.isPending || !channel}
+              onClick={() => submit.mutate()}
+            >
+              {submit.isPending
+                ? "Publishing…"
+                : submit.isSuccess
+                  ? "✓ Published"
+                  : `Publish to ${channel || "channel"}`}
+            </button>
             <p className="text-xs text-slate-500">
-              Publishing… see bottom-right corner.
+              {submit.isSuccess
+                ? "Done. You can close this dialog — version is live."
+                : "You can close this dialog — progress will continue in the bottom-right corner."}
             </p>
           </div>
         )}
-        <div className="flex justify-end pt-2 mt-2 border-t border-slate-100">
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Close (operations continue in background)
-          </button>
-        </div>
       </div>
     </div>
   );
