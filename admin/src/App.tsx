@@ -71,11 +71,26 @@ function Header({ account }: { account: AuthAccount }) {
               }
               title={
                 account.org_id
-                  ? "Org settings"
+                  ? `Org ${account.server_slug ?? account.server_id} — your role: ${account.org_role ?? "—"}`
                   : "Org settings (no org yet — first login required)"
               }
             >
               Org
+              {account.org_role && (
+                <span
+                  className="ml-1 text-xs px-1 rounded"
+                  style={{
+                    color:
+                      account.org_role === "owner"
+                        ? "#a855f7"
+                        : account.org_role === "admin"
+                          ? "#3b82f6"
+                          : "#6b7280",
+                  }}
+                >
+                  {account.org_role}
+                </span>
+              )}
             </NavLink>
             <NavLink
               to="/settings"
