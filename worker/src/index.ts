@@ -45,6 +45,24 @@ import {
   handleUpdateVersion,
   handleDeleteVersion,
 } from "./routes/versions";
+import {
+  handleCreateBuild,
+  handleCreateBuildAsset,
+  handleDeleteBuild,
+  handleDeleteBuildAsset,
+  handleGetBuild,
+  handleListBuildAssets,
+  handleListBuilds,
+  handleUpdateBuild,
+} from "./routes/builds";
+import {
+  handleBumpRollout,
+  handleCreateRelease,
+  handleForceUpdate,
+  handleGetRelease,
+  handleListReleases,
+  handleRollbackRelease,
+} from "./routes/releases";
 import { handleListChannels, handleCreateChannel, handleUpdateChannel, handleDeleteChannel } from "./routes/channels";
 import { handleListProductTypes, handleCreateProductType, handleUpdateProductType, handleDeleteProductType } from "./routes/product_types";
 import { handleListReleaseTypes, handleCreateReleaseType, handleUpdateReleaseType, handleDeleteReleaseType } from "./routes/release_types";
@@ -274,6 +292,25 @@ admin.post("/api/apps/:appId/archive", handleArchiveApp);
 admin.post("/api/apps/:appId/versions", handleCreateVersion);
 admin.patch("/api/apps/:appId/versions/:versionId", handleUpdateVersion);
 admin.delete("/api/apps/:appId/versions/:versionId", handleDeleteVersion);
+
+admin.get("/api/apps/:appId/builds", handleListBuilds);
+admin.post("/api/apps/:appId/builds", handleCreateBuild);
+admin.get("/api/apps/:appId/builds/:buildId", handleGetBuild);
+admin.patch("/api/apps/:appId/builds/:buildId", handleUpdateBuild);
+admin.delete("/api/apps/:appId/builds/:buildId", handleDeleteBuild);
+admin.get("/api/apps/:appId/builds/:buildId/assets", handleListBuildAssets);
+admin.post("/api/apps/:appId/builds/:buildId/assets", handleCreateBuildAsset);
+admin.delete(
+  "/api/apps/:appId/builds/:buildId/assets/:assetId",
+  handleDeleteBuildAsset,
+);
+
+admin.get("/api/apps/:appId/releases", handleListReleases);
+admin.post("/api/apps/:appId/releases", handleCreateRelease);
+admin.get("/api/apps/:appId/releases/:releaseId", handleGetRelease);
+admin.post("/api/apps/:appId/releases/:releaseId/rollback", handleRollbackRelease);
+admin.post("/api/apps/:appId/releases/:releaseId/bump-rollout", handleBumpRollout);
+admin.post("/api/apps/:appId/releases/:releaseId/force-update", handleForceUpdate);
 
 // Multipart APK upload → R2 (admin only, validates + audits)
 admin.post("/api/apps/:appId/upload", handleUploadApk);

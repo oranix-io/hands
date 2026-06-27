@@ -48,7 +48,10 @@ function makeMockDb() {
     );
     CREATE TABLE channels (
       id TEXT PRIMARY KEY, app_id TEXT NOT NULL, slug TEXT NOT NULL,
-      name TEXT NOT NULL, created_at INTEGER NOT NULL,
+      name TEXT NOT NULL, bundle_id TEXT, password TEXT, git_url TEXT,
+      enabled_product_types_json TEXT NOT NULL DEFAULT '[]',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
       UNIQUE (app_id, slug),
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
     );
@@ -68,6 +71,108 @@ function makeMockDb() {
     );
     CREATE UNIQUE INDEX idx_versions_app_code_channel
       ON versions(app_id, channel, version_code);
+    CREATE TABLE builds (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      channel_id TEXT,
+      product_type TEXT NOT NULL DEFAULT 'android-apk',
+      release_type TEXT NOT NULL DEFAULT 'stable',
+      version_name TEXT NOT NULL,
+      version_code INTEGER NOT NULL,
+      changelog TEXT,
+      source TEXT NOT NULL DEFAULT 'web',
+      status TEXT NOT NULL DEFAULT 'pending',
+      build_metadata_json TEXT NOT NULL DEFAULT '{}',
+      parsed_metadata_json TEXT NOT NULL DEFAULT '{}',
+      should_force_update INTEGER NOT NULL DEFAULT 0,
+      availability_at INTEGER,
+      provenance_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE SET NULL
+    );
+    CREATE TABLE signing_credentials (
+      id TEXT PRIMARY KEY,
+      owner_type TEXT NOT NULL DEFAULT 'account',
+      owner_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      encrypted_blob BLOB NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      expires_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE build_assets (
+      id TEXT PRIMARY KEY,
+      build_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      arch TEXT,
+      variant TEXT,
+      filetype TEXT NOT NULL,
+      r2_key TEXT NOT NULL,
+      file_hash TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      signature TEXT,
+      signing_credential_id TEXT REFERENCES signing_credentials(id) ON DELETE SET NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      download_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      UNIQUE (build_id, platform, arch, variant, filetype),
+      FOREIGN KEY (build_id) REFERENCES builds(id) ON DELETE CASCADE
+    );
+    CREATE TABLE releases (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      build_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      product_type TEXT NOT NULL,
+      release_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      is_full INTEGER NOT NULL DEFAULT 1,
+      superseded_by_release_id TEXT REFERENCES releases(id) ON DELETE SET NULL,
+      rollout_cohort_count INTEGER,
+      rollout_target_cohorts_json TEXT NOT NULL DEFAULT '[]',
+      availability_at INTEGER,
+      should_force_update INTEGER NOT NULL DEFAULT 0,
+      changelog TEXT,
+      provenance_json TEXT NOT NULL DEFAULT '{}',
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      FOREIGN KEY (build_id) REFERENCES builds(id) ON DELETE CASCADE,
+      FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
+    );
+    CREATE TABLE release_scopes (
+      id TEXT PRIMARY KEY,
+      release_id TEXT NOT NULL,
+      scope_type TEXT NOT NULL,
+      scope_value TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE
+    );
+    CREATE TABLE operation_logs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT,
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      parent_op_id TEXT,
+      step_number INTEGER,
+      actor TEXT NOT NULL,
+      input TEXT NOT NULL,
+      output TEXT NOT NULL,
+      error TEXT,
+      progress REAL NOT NULL DEFAULT 0,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    );
     CREATE TABLE audit_logs (
       id TEXT PRIMARY KEY, app_id TEXT NOT NULL, action TEXT NOT NULL,
       actor TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL,
@@ -107,6 +212,13 @@ function makeMockDb() {
   const normalize = (sql: string) => sql.replace(/\?\d+/g, "?");
 
   return {
+    batch: async (statements: Array<{ run: () => Promise<unknown> }>) => {
+      const results = [];
+      for (const statement of statements) {
+        results.push(await statement.run());
+      }
+      return results;
+    },
     prepare(sql: string) {
       const normSql = normalize(sql);
       const stmt = sqlite.prepare(normSql);
@@ -346,7 +458,7 @@ describe("quiver publish + retry — version row + r2_key required", () => {
       .run();
   });
 
-  it("insertVersion stores the r2_key passed in the publish payload", async () => {
+  it("insertVersion maps the legacy publish payload into build + asset + release rows", async () => {
     const { insertVersion } = await import("../src/routes/versions");
     const id = await insertVersion(env.DB as any, "a1", {
       channel: "production",
@@ -362,21 +474,37 @@ describe("quiver publish + retry — version row + r2_key required", () => {
     });
 
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
-    const row = await env.DB
-      .prepare("SELECT r2_key, version_name, file_hash FROM versions WHERE id = ?")
+    const release = await env.DB
+      .prepare("SELECT id, build_id, status, is_full FROM releases WHERE id = ?")
       .bind(id)
       .first();
-    expect(row).toMatchObject({
-      r2_key: "apps/a1/pending/deadbeef.apk",
+    expect(release).toMatchObject({ id, status: "active", is_full: 1 });
+
+    const build = await env.DB
+      .prepare("SELECT id, version_name, version_code, status FROM builds WHERE id = ?")
+      .bind((release as any).build_id)
+      .first();
+    expect(build).toMatchObject({
       version_name: "1.0.0",
+      version_code: 1,
+      status: "succeeded",
+    });
+
+    const asset = await env.DB
+      .prepare("SELECT r2_key, file_hash, signature FROM build_assets WHERE build_id = ?")
+      .bind((release as any).build_id)
+      .first();
+    expect(asset).toMatchObject({
+      r2_key: "apps/a1/pending/deadbeef.apk",
       file_hash: "deadbeef",
+      signature: "abc123",
     });
   });
 
-  it("insertVersion re-uses an explicit id (retry-friendly)", async () => {
+  it("insertVersion re-uses an explicit build id (retry-friendly)", async () => {
     const { insertVersion } = await import("../src/routes/versions");
     const fixedId = "11111111-1111-1111-1111-111111111111";
-    const returnedId = await insertVersion(
+    const releaseId = await insertVersion(
       env.DB as any,
       "a1",
       {
@@ -391,7 +519,11 @@ describe("quiver publish + retry — version row + r2_key required", () => {
       },
       fixedId,
     );
-    expect(returnedId).toBe(fixedId);
+    const release = await env.DB
+      .prepare("SELECT id, build_id FROM releases WHERE id = ?")
+      .bind(releaseId)
+      .first();
+    expect(release).toMatchObject({ build_id: fixedId });
   });
 
   it("versions.r2_key is NOT NULL in schema (matches production D1)", async () => {
