@@ -227,9 +227,10 @@ Goal: introduce `product_types`, `release_types`, `build_assets`, `releases`, `r
 |---|---|---|
 | X.1.1 `publish-architecture.md` v3 | ✅ DONE | `a7dc7a0` |
 | X.1.2 `publish-tasks.md` (this file) | 🟡 IN_PROGRESS | tracks all work |
-| X.1.3 Admin user guide | 🔵 TODO | |
-| X.1.4 Public API reference | 🔵 TODO | |
-| X.1.5 CLI reference | 🔵 TODO | Phase 3 |
+| X.1.3 `account-org-invite.md` | ✅ DONE | companion doc for Phase 5 (account/team/invite/RBAC) |
+| X.1.4 Admin user guide | 🔵 TODO | |
+| X.1.5 Public API reference | 🔵 TODO | |
+| X.1.6 CLI reference | 🔵 TODO | Phase 3 |
 
 ### X.2 — Testing
 
@@ -238,6 +239,80 @@ Goal: introduce `product_types`, `release_types`, `build_assets`, `releases`, `r
 | X.2.1 Unit tests for handlers (currently 11 passing) | 🟡 IN_PROGRESS | need to grow as schema grows |
 | X.2.2 E2E test: full build → release → public API flow | 🔵 TODO | |
 | X.2.3 CLI integration tests | 🔵 TODO | Phase 3 |
+| X.2.4 RBAC tests (Phase 5) | 🔵 TODO | invite flow, role enforcement, cross-org leakage |
+
+---
+
+## Phase 5 — account / organization / team / invite / RBAC
+
+Goal: extend the single-user model to multi-tenant with orgs, teams, memberships, invites, and per-app role-based access control. Documented in `account-org-invite.md`.
+
+Depends on: existing Login with Raft migration `0004_raft_auth.sql`.
+
+### P5.1 — schema + bootstrap (1 day)
+
+| Task | Status | Estimate | Migration |
+|---|---|---|---|
+| P5.1.1 `organizations` table + bootstrap `default` org | 🔵 TODO | 30min | `0008_account_org_team.sql` |
+| P5.1.2 `org_members` table + indexes | 🔵 TODO | 30min | same |
+| P5.1.3 `app_members` table + indexes | 🔵 TODO | 30min | same |
+| P5.1.4 `invites` table + indexes + UNIQUE on pending | 🔵 TODO | 1h | same |
+| P5.1.5 `apps.org_id` column + backfill | 🔵 TODO | 30min | same |
+| P5.1.6 `audit_logs.actor_id` + `actor_type` + backfill | 🔵 TODO | 1h | same |
+
+### P5.2 — auth helpers + role middleware (2 days)
+
+| Task | Status | Estimate | Notes |
+|---|---|---|---|
+| P5.2.1 `worker/src/lib/permissions.ts`: `getOrgMemberRole` / `getAppMemberRole` / `getEffectiveRole` | 🔵 TODO | 1 day | single SQL JOIN for efficiency |
+| P5.2.2 `requireRole(c, minRole)` middleware | 🔵 TODO | 4h | |
+| P5.2.3 Update existing routes to use role-based middleware | 🔵 TODO | 1 day | route-by-route, role matrix in `account-org-invite.md` §5.2 |
+| P5.2.4 `currentActor(c)` returns `{id, type, display_name}` object | 🔵 TODO | 2h | replace plain string |
+
+### P5.3 — invites + magic link (3 days)
+
+| Task | Status | Estimate | Notes |
+|---|---|---|---|
+| P5.3.1 `worker/src/routes/invites.ts`: POST / orgId/invites | 🔵 TODO | 4h | create + send email |
+| P5.3.2 GET /api/invites list | 🔵 TODO | 2h | org admin view |
+| P5.3.3 DELETE /api/invites/:id revoke | 🔵 TODO | 1h | |
+| P5.3.4 POST /api/invites/:id/resend | 🔵 TODO | 1h | reset expires_at |
+| P5.3.5 GET /api/invites/:token public view | 🔵 TODO | 2h | no auth |
+| P5.3.6 POST /api/invites/:token/accept (auth required) | 🔵 TODO | 4h | link account + create membership |
+| P5.3.7 Email sender (Cloudflare Email Service binding) | 🔵 TODO | 1 day | transactional template |
+| P5.3.8 Magic link HMAC signing | 🔵 TODO | 2h | `${invite.id}.${hmac_sha256(secret, invite.id)}` |
+| P5.3.9 Auto-expire pending invites past expires_at (Worker Cron) | 🔵 TODO | 2h | daily cron |
+
+### P5.4 — org settings UI + access tab + accept page (3 days)
+
+| Task | Status | Estimate | Notes |
+|---|---|---|---|
+| P5.4.1 `admin/src/pages/OrgSettings.tsx` (General / Members / Invites / Audit tabs) | 🔵 TODO | 2 days | |
+| P5.4.2 Members tab: table + edit role + remove | 🔵 TODO | 4h | |
+| P5.4.3 Invites tab: pending invites table + resend/revoke + create-invite modal | 🔵 TODO | 4h | |
+| P5.4.4 AppDetail: new "Access" tab (app_members + invite-to-app) | 🔵 TODO | 1 day | |
+| P5.4.5 `admin/src/pages/AcceptInvite.tsx` (public magic link landing) | 🔵 TODO | 4h | |
+| P5.4.6 Top-bar org switcher dropdown | 🔵 TODO | 4h | multi-org users only |
+| P5.4.7 Router: add `/orgs/:orgId` and `/invites/:token` routes | 🔵 TODO | 2h | |
+
+### P5.5 — agent permissions + audit (2 days)
+
+| Task | Status | Estimate | Notes |
+|---|---|---|---|
+| P5.5.1 Raft agents default to org_role='member', app_role='viewer' | 🔵 TODO | 4h | |
+| P5.5.2 Audit all role changes + invite lifecycle events | 🔵 TODO | 1 day | invite.created / invite.accepted / member.role_changed / member.removed |
+
+### P5.6 — tests + docs (2 days)
+
+| Task | Status | Estimate | Notes |
+|---|---|---|---|
+| P5.6.1 Tests: invite flow (create, accept, revoke, expire) | 🔵 TODO | 1 day | |
+| P5.6.2 Tests: role enforcement (org admin vs app publisher vs viewer) | 🔵 TODO | 4h | |
+| P5.6.3 Tests: cross-org leakage (org A admin trying to read org B) | 🔵 TODO | 4h | |
+| P5.6.4 User guide: how to invite team members | 🔵 TODO | 4h | |
+| P5.6.5 Role matrix reference doc | 🔵 TODO | 2h | |
+
+### Phase 5 total: ~13 days (~2.5 weeks)
 
 ---
 
@@ -258,11 +333,15 @@ Goal: introduce `product_types`, `release_types`, `build_assets`, `releases`, `r
 
 | Phase | DONE | IN_PROGRESS | TODO | Total | ETA |
 |---|---|---|---|---|---|
-| Phase 1 | 23 | 1 (this doc) | 1 | 25 | ~2 hours remaining (only P1.4.8 Channel CRUD UI) |
+| Phase 1 | 24 | 1 (this doc) | 0 | 25 | ✅ COMPLETE |
 | Phase 2 | 0 | 0 | 25 | 25 | ~50 hours |
 | Phase 3 | 0 | 0 | 14 | 14 | ~3 weeks |
-| Phase 4 | 0 | 0 | 7 | 7 | ~6 weeks |
-| Cross-cutting | 1 | 1 | 4 | 6 | ongoing |
-| **Total** | **24** | **2** | **51** | **77** | |
+| Phase 4 | 0 | 0 | 7 | 7 | ~6 weeks (deferred) |
+| Phase 5 | 0 | 0 | 28 | 28 | ~13 days (~2.5 weeks) |
+| Cross-cutting | 2 | 1 | 3 | 6 | ongoing |
+| **Total** | **26** | **2** | **77** | **105** | |
 
-Last sync: 2026-06-28 01:55 UTC
+Last sync: 2026-06-28 02:10 UTC
+
+**Phase 1 complete**: All 24 admin UI + schema tasks done. Channel CRUD UI shipped in `ac54c1a`.
+**Phase 5 added**: 28 tasks across 6 sub-phases for account/org/team/invite/RBAC. Documented in `account-org-invite.md`.
