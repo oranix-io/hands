@@ -1,561 +1,753 @@
 # Quiver Publish Architecture — Android (now) + Electron / OTA (later)
 
-Status: **draft v2, rewritten after @artin's feedback** (task #5, @Pi-Worker2)
+Status: **draft v3, after @artin's decisions on 4 design questions** (task #5, @Pi-Worker2)
 Author: @Pi-Worker2, 2026-06-28
-Scope: long-lived schema and admin UX for `versions`, `version_assets`, `product_types`. Implementation not started.
+Scope: long-lived schema + admin UX + CLI for builds / releases / channels / product_types.
 
 ---
 
-## 1. Goals
+## 1. Decisions in v3
 
-Quiver is an open-source APK distribution platform. The user wants to expand it to handle:
+@artin reviewed v2 and answered 4 design questions. Decisions:
 
-| What we're shipping | Today | Sample format |
+| Question | Answer |
+|---|---|
+| Build / Release 拆不拆？ | **拆** |
+| Scope release (full / platform / IP) 要不要做？ | **要做** |
+| Sub-app inheritance vs channels？ | **同一个东西** —— channels 承载继承语义 |
+| CLI 要不要做？ | **要** |
+
+v3 builds on these decisions. Re-read all of ToDesktop's docs (building / signing / releasing / cli / runtime / development-staging / migrate-electron-builder / debian-apt / webhooks / mac-app-store / api) to inform this.
+
+## 2. Goals
+
+Quiver ships and updates software for multiple product types:
+
+| Product type | Update mechanism | Sample format |
 |---|---|---|
-| Android APK | ✅ shipped (current `versions` table) | `app-release.apk` |
-| Android AAB | ❌ planned | `app-release.aab` |
-| iOS IPA | ❌ planned (Zealot parity) | `MyApp.ipa` |
-| Electron desktop app | ❌ planned (ToDesktop reference) | `MyApp-1.2.3-x64.dmg`, `.exe`, `.AppImage` |
-| RN / Expo OTA JS bundle | ❌ planned (hot-updater reference) | `bundle.zip` |
-| Future: CLI tool, browser extension, anything else | ❌ | user-defined |
+| `android-apk` | Full APK download | `app-release.apk` |
+| `android-aab` | Play Store dynamic delivery | `app-release.aab` |
+| `ios-ipa` | TestFlight / direct install | `MyApp.ipa` |
+| `electron-installer` | Squirrel auto-update via platform binary | `MyApp-1.2.3-arm64.dmg` |
+| `rn-bundle` | JS bundle hot-reload (hot-updater) | `bundle.zip` |
+| `cli-binary` | Self-update binary | `mycli-1.2.3-linux-x64.tar.gz` |
 
-**Core UX ask** (verbatim from @artin): "创建产品，然后选支持的平台，就像 sentry 那样" — model the admin flow after Sentry's project creation wizard: pick a product type, pick the platforms it supports, publish versions against it.
+User-defined per app: each app picks which product_types it supports at creation time (Sentry-style wizard).
 
-This doc designs one unified model that fits all the above. Two semantic layers separate cleanly:
+## 3. Core model — 7 tables
 
-- **`product_type`** = "what we're shipping" — per-app, user-defined (e.g., `android-apk`, `electron-installer`, `rn-bundle`). Analogous to Sentry's platform picker on project create.
-- **`platform` + `arch`** = "OS × CPU matrix this binary runs on" — per-asset (e.g., `darwin-arm64`, `linux-x64`, `win32-x64`). For Android, `arch` is captured as `native_codes` (a list inside the APK).
-
-## 2. Reference survey
-
-### 2.1 Sentry (project + platform picker, the UX inspiration)
-
-URL: https://docs.sentry.io/product/sentry-basics/integrate-frontend/create-new-project/
-
-**UX pattern**: When you create a project, Sentry asks "What kind of project is this?" (a long list: React, Vue, Next.js, Python, iOS, Android, Electron, React Native, ...). Each project gets exactly one platform. You then wire the SDK to it. Errors come in tagged with that platform.
-
-This is "**one product = one platform**" — simple but doesn't fit our multi-platform case (a single Electron app ships for darwin + linux + win simultaneously).
-
-**What we steal**: the **platform picker at product creation** UX pattern. What we don't: the 1:1 product:platform constraint.
-
-### 2.2 Zealot (full binary distribution: apk / ipa / exe / dmg)
-
-URL: https://zealot.ews.im — open-source, Rails + PostgreSQL.
-
-**Data model** (from `db/schema.rb`):
+### 3.1 Entity-relationship overview
 
 ```
-apps           id, name, description, archived           ← soft-delete via "archived" flag
-schemes        id, app_id, name                          ← logical "track" within an app
-channels       id, scheme_id, name, slug, device_type, bundle_id='*', password, git_url, key
-                enum device_type: ios | android | harmonyos | macos | windows | linux
-releases       id, channel_id, name, file, icon,
-                release_type, release_version (e.g. "1.2.3"),
-                build_version (e.g. "1024"), branch, git_commit, ci_url,
-                changelog (jsonb), custom_fields (jsonb),
-                version (monotonic int, scoped to channel)
-                UNIQUE (channel_id, version)
-metadata       id, release_id, bundle_id, release_version, build_version,
-                release_type, platform, device, size, permissions (jsonb),
-                capabilities, deep_links, url_schemes, services,
-                entitlements, native_codes, mobileprovision,
-                activities, checksum, min_sdk_version, target_sdk_version
-debug_files    id, app_id, file, device_type, build_version, release_version, checksum
+accounts                    -- (or orgs/quivers — multi-tenancy; see §6)
+└── signing_credentials     -- Mac/Windows certs (account-level, inherited)
+
+apps
+├── product_types           -- user-defined: what we ship
+├── release_types           -- user-defined: stable/rc/beta/nightly/...
+└── channels                -- deployment lane (production, beta, dev) — carries inheritance semantics
+    └── builds              -- immutable compile/upload artifact
+        └── build_assets    -- per-(platform, arch, variant, filetype) binaries
+        └── releases        -- promote build to "live" with scope (full/platform/IP)
+            └── release_scopes -- individual scope records (each platform / IP range)
 ```
 
-**Key UX patterns**:
+A **Channel** in quiver = ToDesktop's "main app + sub-apps + channels" combined. Each channel is a deployment environment that carries:
+- App identity (inherited from app)
+- Bundle ID override (per channel, e.g. `com.example.myapp.dev` for dev channel)
+- Code signing credentials (inherited from account)
+- Build artifacts configuration (which product_types × platforms are enabled)
+- Optional password gate
 
-- **App = grouping** (e.g. "MyApp"). Apps can be **archived** (soft delete; archived apps block upload but allow view).
-- **Channel = deployment lane**. One app → N channels (production, beta, internal-test). Each channel has `device_type` (one of the platform enum), `bundle_id` (defaults to `*` = wildcard), optional `password`.
-- **Release = one uploaded binary**, always tied to a channel. `release_version` (semver string) + `build_version` (monotonic int, scoped per channel via UNIQUE(channel_id, version)). **No `enabled` flag on releases** — the **latest release** on a channel is implicitly the active one.
-- **Enable/disable**: not a per-release flag. Two mechanisms:
-  - **Archive app** (soft-delete the whole app)
-  - **Delete release** (irreversible, but only deletes that one release row)
+Channels inherit from the app's signing credentials (account-level), so you don't re-upload certificates per channel.
 
-**What we steal**: app+channel+release structure, archive app pattern. What we change: per-release `enabled` (so we can disable a specific version), `platform` becomes per-asset (not per-channel), `device_type` removed (superseded by version_assets.platform).
-
-### 2.3 bytemain/hot-updater (RN / Expo / Electron OTA JS bundle distribution)
-
-URL: https://github.com/bytemain/hot-updater
-
-**Data model**:
+### 3.2 `apps` — top-level product
 
 ```
-bundles                id, platform, channel, file_hash, storage_uri,
-                       target_app_version, fingerprint_hash,
-                       should_force_update, enabled, message, metadata (json),
-                       git_commit_hash, rollout_cohort_count, target_cohorts (json)
-private_hot_updater_settings  key, value
+apps
+  id              TEXT PRIMARY KEY
+  slug            TEXT NOT NULL UNIQUE
+  name            TEXT NOT NULL
+  description     TEXT
+  archived        INTEGER NOT NULL DEFAULT 0
+  archived_at     INTEGER
+  created_at      INTEGER NOT NULL
+  updated_at      INTEGER NOT NULL
 ```
 
-**Key UX patterns**:
+### 3.3 `product_types` — what we ship
 
-- **Bundle = one uploaded JS / asset bundle**, NOT a full binary. The native app shell stays installed; only the JS layer is replaced.
-- **`enabled` boolean** per bundle — toggle to disable without deleting.
-- **`should_force_update`** — if true, client must install (no "skip" option). For critical security fixes.
-- **`target_app_version`** — semver range ("1.2.x", ">=1.2.0 <2.0.0") the bundle applies to. Crucial because OTA bundles are coupled to specific native versions (Hermes bytecode compatibility, native module bindings).
-- **`rollout_cohort_count` + `target_cohorts`** — staged rollouts. Cohort is a deterministic hash of device-id; count is the % enabled.
-- **Channel model identical to Zealot**: e.g. `production`, `staging`, `internal`.
-
-**What we steal**: `enabled`, `should_force_update`, `rollout_cohort_count`, `target_app_version` (for OTA only). What we change: `bundle` → our `version` (rename for consistency across product types).
-
-### 2.4 ArekSredzki/electron-release-server (Squirrel-compatible Electron update server)
-
-URL: https://github.com/ArekSredzki/electron-release-server — Sails.js + Postgres. **This is the closest match to our model.**
-
-**Data model** (excerpted):
-
-```
-flavor      PRIMARY KEY name    -- e.g. 'default', 'lite', 'pro' (USER-DEFINED, not enum)
-channel     PRIMARY KEY name    -- e.g. 'stable', 'dev', 'nightly' (USER-DEFINED, not enum)
-version     id (name + '_' + flavor), name, channel_id, flavor_id,
-            notes, availability (timestamp)
-asset       id, name, platform, filetype, hash, size, download_count
-            platform ENUM: linux_32, linux_64, osx_64, osx_arm64,
-                         windows_32, windows_64
-            filetype: 'exe' | 'dmg' | 'deb' | ...
-            version_id FK
-```
-
-**Key UX patterns**:
-
-- **`flavor`** and **`channel`** are both **user-defined lookup tables** with just a `name PRIMARY KEY`. Apps (or orgs) define their own flavors and channels — no enum.
-- **Version = (name × flavor)** — same `version_name` can ship as multiple flavors (e.g. "1.2.3 default" and "1.2.3 lite"). PK is composite.
-- **Asset belongs to Version** — one Version has N Assets, one per `platform`. Platform is a fixed enum (OS × arch).
-- **Availability timestamp** — version can be released in the future, server gates download.
-
-**What we steal (the most)**: the **Flavor / Channel / Version / Asset four-way split** with user-defined flavors & channels, plus Asset-level platform matrix. We rename: `flavor` → `release_type` (per @artin's vocabulary).
-
-### 2.5 ToDesktop (managed Electron build + release service)
-
-URL: https://www.todesktop.com/electron/docs/
-
-**Release model**:
-
-- **App** (product) → configured once (icon, appPath, signing certs).
-- **Build** = one compilation of the Electron app (CI build, all platforms). Builds are **immutable**.
-- **Release** = promote a build to be the "live" version that users auto-update to. Three release scopes (the modern staged-rollout shape):
-  - **IP address release** — release to specific IP addresses only (rollout by IP range).
-  - **Platform release** — release to a specific platform (e.g. only macOS users get this version; Windows stays on previous).
-  - **Full release** — release to everyone, overriding any partial releases currently in effect.
-- **Smoke testing** before release: ToDesktop actually launches the build on Win/Mac/Linux, captures screenshots + perf metrics + auto-update-from-previous-version tests.
-
-**API model** (excerpted from `/v1/releaseBuild`):
-
-```
-POST /v1/releaseBuild
-{ email, appId, buildId, shouldSkipEmail }
-→ 200 { message: "success" }
-→ 412 if build is not in a releasable state
-```
-
-Releases are **promotions of builds**, not direct uploads. The release lifecycle is: `upload build → validate → smoke test → release (scoped) → live`.
-
-**What we steal**: the **scoped release** semantics (full / platform-scoped / IP-scoped). What we change: we don't separate Build and Release tables — Quiver combines them (a release IS a version row, with optional `rollout_*` fields).
-
-### 2.6 Cursor (download URL matrix for IDE distribution)
-
-URL: https://cursor.com/download + https://cursor.com/install
-
-Cursor's public download URL matrix (from the install script):
-
-```
-darwin-arm64, darwin-universal, darwin-x64
-linux, linux-arm64, linux-arm64-deb, linux-arm64-rpm,
-linux-x64, linux-x64-deb, linux-x64-rpm
-win32-arm64, win32-arm64-user, win32-x64, win32-x64-user
-windows
-```
-
-**Pattern**: `platform-arch[-variant]` naming. The `-user` suffix is for "user-mode installer" (no admin required). The `-deb`/`-rpm` are package-format variants.
-
-**What we steal**: the platform-arch-variant naming convention for our `version_assets.platform` enum / list.
-
-## 3. Quiver today (Android only)
-
-```
-apps            id, slug, name, platform  (no archived yet)
-channels        id, app_id, slug, name    (no device_type, no password)
-versions        id, app_id, channel, version_name, version_code,
-                package_name, signature_sha256, min_sdk, target_sdk,
-                size_bytes, file_hash, r2_key, enabled, created_at
-                UNIQUE (app_id, channel, version_code)
-audit_logs      id, app_id, action, actor, payload, created_at
-operation_logs  id, app_id (nullable), kind, status, parent_op_id, step_number,
-                input, output, error, progress, retry_count,
-                created_at, updated_at, completed_at
-```
-
-**Gaps vs unified model**:
-- No `product_types` table; `apps.platform` is a single hardcoded value (`'android'`)
-- No `release_types` table; release "type" is implicit (stable / beta inferred from channel slug)
-- No per-asset rows; APK is one monolithic `versions` row with a single `r2_key`
-- No changelog, provenance, should_force_update, rollout_cohort_count
-- No per-version enabled semantic (default 1 but no toggle UI)
-- No apps.archived
-
-## 4. Proposed unified model
-
-### 4.1 product_types — what we ship
+User-defined per app. Created during app creation wizard or added later.
 
 ```
 product_types
-  id              TEXT PRIMARY KEY            -- uuid
-  app_id          TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
-  name            TEXT NOT NULL               -- e.g. 'android-apk', 'electron-installer', 'rn-bundle'
-  display_name    TEXT NOT NULL               -- 'Android APK', 'Electron Installer', ...
-  description     TEXT
-  icon            TEXT                        -- r2_key to product icon (used in admin + client SDK)
-  -- platform matrix this product supports (shown in wizard, e.g. Electron = darwin+linux+win)
-  supported_platforms_json TEXT NOT NULL DEFAULT '[]'
-    -- e.g. ["darwin-arm64","darwin-x64","linux-x64","linux-arm64","win32-x64","win32-arm64"]
-  -- parsing / packaging metadata
-  parser_kind     TEXT NOT NULL DEFAULT 'unknown'
-    -- 'apk-aapt' | 'electron-asar' | 'rn-bundle' | 'ipa-info' | 'unknown'
-  -- which schema validation this product requires
-  schema_json     TEXT NOT NULL DEFAULT '{}'
-    -- e.g. { "requires_native_codes": true, "requires_electron_version": true, ... }
-  created_at      INTEGER NOT NULL
-  updated_at      INTEGER NOT NULL
+  id                          TEXT PRIMARY KEY
+  app_id                      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
+  name                        TEXT NOT NULL         -- 'android-apk' | 'electron-installer' | 'rn-bundle' | ...
+  display_name                TEXT NOT NULL
+  description                 TEXT
+  parser_kind                 TEXT NOT NULL         -- 'apk-aapt' | 'electron-asar' | 'rn-bundle' | 'ipa-info' | 'unknown'
+  supported_platforms_json    TEXT NOT NULL DEFAULT '[]'  -- empty for apks; e.g. ["darwin-arm64","darwin-x64",...] for electron
+  default_assets_json         TEXT NOT NULL DEFAULT '[]'  -- e.g. [{"platform":"darwin-arm64","filetype":"dmg"},...]
+  schema_json                 TEXT NOT NULL DEFAULT '{}'  -- parser hints: requires_native_codes, requires_electron_version, etc.
+  parent_product_type_id     TEXT REFERENCES product_types(id) ON DELETE SET NULL  -- for hierarchical types (apt-repository ⊂ electron-installer)
+  created_at                  INTEGER NOT NULL
   UNIQUE (app_id, name)
 ```
 
-Each app **creates its own product types** at first save (UI: "Create App → wizard asks 'what do you want to ship?'"). Common defaults:
+**Defaults seeded at app creation**:
+- `android-apk` (parser: apk-aapt)
+- `android-aab` (parser: aapt)
+- `ios-ipa` (parser: ipa-info)
+- `electron-installer` (parser: electron-asar)
+- `rn-bundle` (parser: rn-bundle)
+- `cli-binary` (parser: unknown)
 
-| `name` | `display_name` | `parser_kind` | `supported_platforms` |
-|---|---|---|---|
-| `android-apk` | Android APK | `apk-aapt` | (N/A — APK is platform-agnostic; arch is native codes inside) |
-| `android-aab` | Android AAB | `aapt` | (N/A) |
-| `ios-ipa` | iOS IPA | `ipa-info` | (N/A) |
-| `electron-installer` | Electron desktop app | `electron-asar` | `["darwin-arm64","darwin-x64","linux-x64","linux-arm64","win32-x64","win32-arm64"]` |
-| `rn-bundle` | RN/Expo OTA bundle | `rn-bundle` | (N/A) |
-| `cli-binary` | CLI tool | (varies) | `["darwin-arm64","darwin-x64","linux-x64","win32-x64"]` |
+User can add custom product_types (e.g. `firmware-esp32`, `vscode-extension`, `docker-image`, ...) or hide the defaults they don't need.
 
-### 4.2 release_types — user-defined release treatment
+### 3.4 `release_types` — release treatment labels
+
+User-defined per app. Seeded with sensible defaults.
 
 ```
 release_types
   id              TEXT PRIMARY KEY
   app_id          TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
-  name            TEXT NOT NULL               -- e.g. 'stable', 'beta', 'internal', 'nightly'
+  name            TEXT NOT NULL         -- 'stable' | 'beta' | 'rc' | 'internal' | 'nightly' | ...
   display_name    TEXT NOT NULL
-  color           TEXT                        -- hex color for UI badges, e.g. '#10b981'
+  color           TEXT                  -- hex color for UI badges
   description     TEXT
   created_at      INTEGER NOT NULL
   UNIQUE (app_id, name)
 ```
 
-When creating an app, the wizard seeds sensible defaults:
+**Default release_types** (seeded at app creation, user can edit/remove):
+- `stable` (#10b981 green) — Production-ready
+- `rc` (#3b82f6 blue) — Release candidate
+- `beta` (#f59e0b orange) — Public beta
+- `internal` (#6b7280 gray) — Internal team only
 
-```
-DEFAULT_RELEASE_TYPES = [
-  { name: 'stable',   display_name: 'Stable',   color: '#10b981', description: 'Production-ready' },
-  { name: 'rc',       display_name: 'RC',       color: '#3b82f6', description: 'Release candidate' },
-  { name: 'beta',     display_name: 'Beta',     color: '#f59e0b', description: 'Public beta' },
-  { name: 'internal', display_name: 'Internal', color: '#6b7280', description: 'Internal team only' },
-]
-```
-
-User can add/remove after creation. Examples of non-default: `nightly` (always built from `main`), `experimental` (preview features), `lts` (long-term support), `canary`, etc.
-
-### 4.3 versions — the core release row
-
-```
-versions
-  id                          TEXT PRIMARY KEY
-  app_id                      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
-  channel                     TEXT NOT NULL          -- 'production' | 'beta' | ... (per-app channel list)
-  product_type                TEXT NOT NULL          -- FK to product_types.name (composite FK)
-  release_type                TEXT NOT NULL          -- FK to release_types.name (composite FK)
-  version_name                TEXT NOT NULL          -- semver-like "1.2.3"
-  version_code                INTEGER NOT NULL       -- monotonic int per (app, product_type, channel, release_type)
-  changelog                   TEXT                   -- markdown, user-facing release notes
-  enabled                     INTEGER NOT NULL DEFAULT 1
-  should_force_update         INTEGER NOT NULL DEFAULT 0   -- applies to electron + bundle; ignored for apk
-  rollout_cohort_count        INTEGER                  -- null=100%, else staged % (per hot-updater)
-  rollout_target_cohorts_json TEXT NOT NULL DEFAULT '[]' -- explicit cohort list (overrides % when non-empty)
-  availability_at             INTEGER                  -- null=now; future timestamp = scheduled publish
-  icon_r2_key                 TEXT                     -- per-version icon (Zealot parity)
-  provenance_json             TEXT NOT NULL DEFAULT '{}'  -- git_commit, ci_url, branch, source, ...
-  metadata_json               TEXT NOT NULL DEFAULT '{}'  -- product-type-specific (parsed manifest fields)
-  created_at                  INTEGER NOT NULL
-  updated_at                  INTEGER NOT NULL
-  UNIQUE (app_id, product_type, channel, release_type, version_code)
-  INDEX (app_id, product_type, channel, release_type, version_code DESC)
-  INDEX (enabled, app_id, channel, product_type)
-  INDEX (availability_at) WHERE availability_at IS NOT NULL
-```
-
-**Composite FKs**: `product_type` FK → `product_types(app_id, name)`; `release_type` FK → `release_types(app_id, name)`. Both scoped to the same `app_id` row.
-
-### 4.4 version_assets — per-platform binaries
-
-A single Version has **N Assets**, one per `(platform, arch)` matrix entry supported by the product.
-
-```
-version_assets
-  id                  TEXT PRIMARY KEY
-  version_id          TEXT NOT NULL REFERENCES versions(id) ON DELETE CASCADE
-  platform            TEXT NOT NULL    -- e.g. 'darwin-arm64', 'linux-x64', 'win32-x64'
-  arch                TEXT             -- e.g. 'arm64', 'x64', 'x86', 'universal' (or NULL for non-arch)
-  variant             TEXT             -- e.g. 'user' (no-admin installer), 'deb', 'rpm', 'appimage' (or NULL)
-  filetype            TEXT NOT NULL    -- 'apk' | 'exe' | 'dmg' | 'deb' | 'rpm' | 'appimage' | 'zip' | ...
-  r2_key              TEXT NOT NULL
-  file_hash           TEXT NOT NULL    -- sha256
-  size_bytes          INTEGER NOT NULL
-  signature           TEXT             -- for apk: apk-signer v1/v2/v3 hex; for electron: codesign hash; null for others
-  metadata_json       TEXT NOT NULL DEFAULT '{}'  -- product-type-specific (e.g. apk native_codes list)
-  download_count      INTEGER NOT NULL DEFAULT 0
-  created_at          INTEGER NOT NULL
-  UNIQUE (version_id, platform, arch, variant)
-  INDEX (version_id)
-```
-
-**Why per-asset instead of per-version**: matches Electron / ToDesktop reality where one Version (e.g. 1.2.3) ships for **multiple platforms simultaneously**. A single row couldn't represent all the binaries.
-
-### 4.5 channels — stays close to current, no device_type
+### 3.5 `channels` — deployment lane + inheritance
 
 ```
 channels
-  id              TEXT PRIMARY KEY
-  app_id          TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
-  slug            TEXT NOT NULL
-  name            TEXT NOT NULL
-  password        TEXT                          -- optional gate (Zealot parity)
-  git_url         TEXT                          -- link to repo/branch this channel tracks
-  created_at      INTEGER NOT NULL
+  id                  TEXT PRIMARY KEY
+  app_id              TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
+  slug                TEXT NOT NULL         -- 'production' | 'beta' | 'dev' | 'nightly' | ...
+  name                TEXT NOT NULL
+  bundle_id           TEXT                  -- e.g. 'com.example.myapp' (prod) vs 'com.example.myapp.beta'
+  password            TEXT                  -- optional gate on download
+  git_url             TEXT                  -- source URL this channel tracks
+  enabled_product_types_json TEXT NOT NULL DEFAULT '[]'  -- which product_types this channel serves (subset of app's)
+  inherits_signing_from_account INTEGER NOT NULL DEFAULT 1  -- 0 = use channel-specific override
+  metadata_json       TEXT NOT NULL DEFAULT '{}'
+  created_at          INTEGER NOT NULL
+  updated_at          INTEGER NOT NULL
   UNIQUE (app_id, slug)
 ```
 
-**Removed**: `device_type` (was a per-channel attribute). Channels now serve **all** product_types/platforms that the app supports. Client specifies `?product_type=electron-installer&platform=darwin-arm64` to disambiguate.
+**Default channels seeded** at app creation:
+- `production` (bundle_id = `<default>`, password = none)
+- `beta` (bundle_id = `<default>.beta`, password = optional)
+- `internal` (bundle_id = `<default>.internal`, password = required)
 
-### 4.6 apps — adds archived + scheme
+Channel = "deployment environment". A channel:
+- Can have its own bundle_id (for parallel install against production)
+- Can have its own password (gated downloads)
+- Inherits signing credentials from account (no per-channel cert upload)
+- Lists which product_types are enabled (e.g. beta channel might enable `android-apk` + `rn-bundle` but not `electron-installer`)
+
+### 3.6 `signing_credentials` — code signing certs (account-level)
 
 ```
-apps
-  id            TEXT PRIMARY KEY
-  slug          TEXT NOT NULL UNIQUE
-  name          TEXT NOT NULL
-  description   TEXT
-  scheme        TEXT                    -- optional sub-track (Zealot parity, future use)
-  archived      INTEGER NOT NULL DEFAULT 0
-  archived_at   INTEGER
-  created_at    INTEGER NOT NULL
-  updated_at    INTEGER NOT NULL
+signing_credentials
+  id              TEXT PRIMARY KEY
+  -- owner is the account (top-level), not per-app or per-channel
+  owner_type      TEXT NOT NULL DEFAULT 'account'   -- 'account' (future: 'org', 'team')
+  owner_id        TEXT                              -- account ID (or org ID)
+  platform        TEXT NOT NULL                     -- 'macos' | 'windows' | 'android' | ...
+  kind            TEXT NOT NULL                     -- 'developer-id-app' | 'developer-id-installer' | 'mas-dev' | 'mas-dist' | 'mas-installer' | 'hsm-ev' | 'azure-artifact-signing' | 'apk-v1-v2-v3' | ...
+  label           TEXT NOT NULL                     -- user-friendly name
+  encrypted_blob  BLOB NOT NULL                     -- encrypted .p12 file (AES-256-GCM with KMS-derived key)
+  metadata_json   TEXT NOT NULL DEFAULT '{}'        -- issuer_id, key_id, azure_tenant_id, azure_client_id, etc.
+  expires_at      INTEGER
+  created_at      INTEGER NOT NULL
+  INDEX (owner_type, owner_id, platform)
 ```
 
-**Archived apps** (Zealot parity):
-- Block new version uploads (`409 Conflict`)
-- Hide from AppsList by default (admin can toggle "show archived")
-- Allow view + delete + unarchive
+Inherited by all apps + channels. Used during build step for code signing.
 
-### 4.7 Public client API
+### 3.7 `builds` — immutable compile/upload artifact
 
-Three endpoints, all no-auth, return latest *enabled* version on the channel for the requested product_type.
+**Decoupled from release**. A build is uploaded first, validated, optionally smoke-tested, then promoted to a release.
+
+```
+builds
+  id                      TEXT PRIMARY KEY
+  app_id                  TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
+  channel_id              TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE
+  product_type            TEXT NOT NULL                     -- FK to product_types(app_id, name) composite
+  release_type            TEXT NOT NULL                     -- FK to release_types(app_id, name) composite
+  version_name            TEXT NOT NULL                     -- e.g. "1.2.3"
+  version_code            INTEGER NOT NULL                 -- monotonic per (app, product_type, channel, release_type)
+  changelog               TEXT                              -- markdown
+  source                  TEXT NOT NULL                     -- 'cli' | 'web' | 'ci'
+  status                  TEXT NOT NULL                     -- 'pending' | 'building' | 'succeeded' | 'failed' | 'smoke_testing' | 'smoke_test_passed' | 'smoke_test_failed'
+  build_metadata_json     TEXT NOT NULL DEFAULT '{}'        -- build-time: ci_url, git_commit, build_duration_ms, builder_host, ...
+  parsed_metadata_json    TEXT NOT NULL DEFAULT '{}'        -- from parser: package_name, signature_sha256, min_sdk, native_codes, ...
+  created_at              INTEGER NOT NULL
+  updated_at              INTEGER NOT NULL
+  completed_at            INTEGER
+  UNIQUE (app_id, product_type, channel_id, release_type, version_code)
+  INDEX (app_id, channel_id, product_type, status, created_at DESC)
+  INDEX (status, created_at DESC)
+```
+
+**Why split from releases**: same build can be re-released multiple times with different scopes (full / platform-only / IP-only). Build stays immutable forever; release is mutable.
+
+### 3.8 `build_assets` — per-(platform, arch, variant, filetype) binaries
+
+A build has N assets, one per supported (platform, arch, variant, filetype) combination.
+
+```
+build_assets
+  id                  TEXT PRIMARY KEY
+  build_id            TEXT NOT NULL REFERENCES builds(id) ON DELETE CASCADE
+  platform            TEXT NOT NULL    -- 'android' | 'darwin' | 'win32' | 'linux' | 'ios' | ...
+  arch                TEXT             -- 'arm64' | 'x64' | 'x86' | 'universal' | NULL (for android)
+  variant             TEXT             -- 'user' (no-admin installer) | 'mas' (Mac App Store) | 'pkg' | NULL
+  filetype            TEXT NOT NULL    -- 'apk' | 'aab' | 'exe' | 'msi' | 'dmg' | 'pkg' | 'deb' | 'rpm' | 'appimage' | 'zip' | 'tar.gz' | 'bundle' (rn) | ...
+  r2_key              TEXT NOT NULL
+  file_hash           TEXT NOT NULL    -- sha256
+  size_bytes          INTEGER NOT NULL
+  signature           TEXT             -- platform-specific: apk-signer hex, codesign hash, etc.
+  signing_credential_id TEXT REFERENCES signing_credentials(id)  -- which cert was used (nullable if unsigned)
+  metadata_json       TEXT NOT NULL DEFAULT '{}'  -- product-type-specific
+  download_count      INTEGER NOT NULL DEFAULT 0
+  created_at          INTEGER NOT NULL
+  UNIQUE (build_id, platform, arch, variant, filetype)
+  INDEX (build_id)
+```
+
+**4-dimensional asset matrix** (per ToDesktop):
+- `platform` ∈ {android, darwin, win32, linux, ios}
+- `arch` ∈ {arm64, x64, x86, universal, NULL}
+- `variant` ∈ {user, mas, pkg, NULL}
+- `filetype` ∈ {apk, aab, ipa, exe, msi, dmg, pkg, deb, rpm, appimage, zip, tar.gz, bundle, ...}
+
+Example Electron 1.2.3 build assets:
+```
+darwin-arm64-NULL-dmg
+darwin-x64-NULL-dmg
+darwin-arm64-mas-pkg
+darwin-universal-NULL-dmg
+linux-x64-NULL-deb
+linux-x64-NULL-rpm
+linux-x64-NULL-appimage
+linux-arm64-NULL-deb
+win32-x64-NULL-exe
+win32-x64-user-exe
+win32-arm64-NULL-msi
+```
+
+### 3.9 `releases` — promote build to "live" with scope
+
+A release is **a build that's been promoted**. It can have multiple scope records (full + partial overrides).
+
+```
+releases
+  id                      TEXT PRIMARY KEY
+  app_id                  TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE
+  build_id                TEXT NOT NULL REFERENCES builds(id) ON DELETE CASCADE
+  channel_id              TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE
+  product_type            TEXT NOT NULL         -- denormalized from build for query speed
+  release_type            TEXT NOT NULL         -- denormalized from build
+  status                  TEXT NOT NULL         -- 'active' | 'superseded' | 'rolled_back' | 'cancelled'
+  is_full                 INTEGER NOT NULL     -- 1 if this release covers all users; 0 if scoped
+  superseded_by_release_id TEXT REFERENCES releases(id)
+  rollout_cohort_count    INTEGER              -- null = 100%, otherwise staged %
+  rollout_target_cohorts_json TEXT NOT NULL DEFAULT '[]'
+  availability_at         INTEGER              -- scheduled publish
+  should_force_update     INTEGER NOT NULL DEFAULT 0
+  changelog               TEXT                 -- denormalized from build
+  provenance_json         TEXT NOT NULL DEFAULT '{}'
+  created_by              TEXT NOT NULL         -- 'admin@...'
+  created_at              INTEGER NOT NULL
+  INDEX (app_id, channel_id, product_type, release_type, status, created_at DESC)
+  INDEX (build_id)
+  INDEX (status, created_at DESC)
+```
+
+A release goes through status:
+- `active` — currently the live version for this (channel, product_type, release_type)
+- `superseded` — newer release came along
+- `rolled_back` — admin manually rolled back to a previous build
+- `cancelled` — release never actually went live (validation failed mid-flight)
+
+### 3.10 `release_scopes` — partial release overrides
+
+A release can be partial (only some users get it). Each scope record defines one slice.
+
+```
+release_scopes
+  id              TEXT PRIMARY KEY
+  release_id      TEXT NOT NULL REFERENCES releases(id) ON DELETE CASCADE
+  scope_type      TEXT NOT NULL         -- 'full' | 'platform' | 'ip_range' | 'user_cohort'
+  scope_value     TEXT NOT NULL         -- 'all' | 'darwin,linux' (CSV for platform) | '10.0.0.0/8' (CIDR) | 'cohort-uuid' (cohort ID)
+  created_at      INTEGER NOT NULL
+  INDEX (release_id)
+```
+
+**Examples**:
+- Full release: `scope_type='full', scope_value='all'`
+- Mac-only release: `scope_type='platform', scope_value='darwin-arm64,darwin-x64,darwin-universal'`
+- IP-scoped release: `scope_type='ip_range', scope_value='10.0.0.0/8'` (corp VPN)
+- Cohort release: `scope_type='user_cohort', scope_value='beta-testers'`
+
+A release can have **multiple scope records** (e.g. full + a single IP override for one power user). When user requests an update, server picks the most specific scope that matches them.
+
+**Resolution priority**: ip_range > user_cohort > platform > full. If no scope matches → user gets the most recent active release for their (channel, product_type, release_type).
+
+## 4. Operations lifecycle
+
+### 4.1 Build flow (CLI or Web)
+
+```
+1. User uploads build artifact(s) via CLI or Web
+   CLI: quiver build push ./release.zip --channel production --product-type electron-installer --release-type stable --version 1.2.3 --changelog ./CHANGELOG.md
+   Web: UploadDialog 5-step wizard
+
+2. Server:
+   a. Validate auth + permissions
+   b. Insert builds row (status='pending')
+   c. Insert build_assets rows (one per uploaded file)
+   d. Update status='building'
+   e. Container parses each asset (aapt for apk, asar extract for electron, etc.)
+   f. Validate version_code monotonicity
+   g. Code-sign each asset using inherited signing_credentials
+   h. Upload to R2
+   i. Update status='succeeded' (or 'failed' with error)
+   j. Emit SSE event to admin UI (toast notification)
+
+3. Admin sees build in dashboard with status badge:
+   [Pending] → [Building...] → [✓ Ready] / [✗ Failed]
+```
+
+### 4.2 Smoke test (optional, before release)
+
+ToDesktop runs builds on actual Win/Mac/Linux VMs, captures screenshots + auto-update tests. quiver v1 will skip this; v2 can integrate with container-based macOS VMs (complex) or just CI-based smoke tests.
+
+### 4.3 Release flow (promote build to live)
+
+```
+1. Admin opens build → "Prepare release" button
+2. Modal shows validation checks:
+   - Build status is 'succeeded' ✓
+   - Version is higher/lower than previous release ✓
+   - Signing credentials valid ✓
+   - No active release with same version_code ✓
+
+3. Admin picks release scope (radio buttons):
+   - [Full release] — all users on this (channel, product_type, release_type)
+   - [Platform release] — checkboxes: darwin-arm64, darwin-x64, ..., win32-x64
+   - [IP range release] — text input CIDR list
+
+4. Optional: rollout_cohort_count slider (0-100)
+   Optional: availability_at datetime (schedule for later)
+   Optional: should_force_update checkbox
+
+5. Click "Release"
+6. Server:
+   a. Insert releases row (status='active')
+   b. Insert release_scopes row(s)
+   c. Mark previous release(s) on same (channel, product_type, release_type) as 'superseded' (link via superseded_by_release_id)
+   d. Emit SSE event "release:new"
+   e. Fire webhook (if configured)
+```
+
+### 4.4 Rollback
+
+Admin picks any historical release on the same (channel, product_type, release_type) → "Roll back to this version" → inserts new release with `status='active'` pointing to the older build, marks current as `superseded`.
+
+## 5. Public client API
+
+### 5.1 Full binary latest (Android APK, iOS IPA, Electron installer)
 
 ```
 GET /public/apps/:slug/latest?channel=production&product_type=android-apk
-GET /public/apps/:slug/latest?channel=production&product_type=electron-installer&platform=darwin-arm64
-GET /public/apps/:slug/channels
-GET /public/apps/:slug/versions?channel=production&product_type=android-apk&limit=10
+→ 200 {
+    "build": {
+      "version": "1.2.3",
+      "version_code": 42,
+      "release_type": "stable",
+      "changelog": "...",
+      "released_at": 1782560000000
+    },
+    "assets": [
+      { "platform": "android", "arch": null, "variant": null, "filetype": "apk",
+        "download_url": "/api/r2/...", "size_bytes": 23217680, "signature": "..." }
+    ]
+  }
 ```
 
-For OTA bundles (`product_type=rn-bundle`), the response shape is different — return **all** enabled bundles matching the client's `target_app_version`, not just latest. The client picks.
+Server resolves:
+1. Find active release on (channel, product_type) for the user's release_type (or all if not specified)
+2. Pick the most specific scope that matches this request (ip_range > user_cohort > platform > full)
+3. Return matching release + assets
 
-```
-GET /public/apps/:slug/bundles?channel=production&product_type=rn-bundle&app_version=1.2.3
-→ 200 [{ version_name, file_hash, should_force_update, metadata, ... }]
-```
-
-For per-platform electron assets, the latest-version response includes all per-platform download URLs:
-
+For Electron with scope=full:
 ```json
 {
-  "version": "1.2.3",
-  "version_code": 42,
-  "release_type": "stable",
-  "changelog": "...",
+  "build": { "version": "1.2.3", ... },
   "assets": [
-    { "platform": "darwin-arm64", "download_url": "/api/r2/...", "size_bytes": 89123456, "signature": "..." },
-    { "platform": "linux-x64",   "download_url": "/api/r2/...", "size_bytes": 76543210 },
-    { "platform": "win32-x64",    "download_url": "/api/r2/...", "size_bytes": 82345678 }
+    { "platform": "darwin", "arch": "arm64", "filetype": "dmg", "download_url": "...", "size_bytes": 89123456 },
+    { "platform": "darwin", "arch": "x64",   "filetype": "dmg", "download_url": "...", "size_bytes": 90123456 },
+    { "platform": "linux",  "arch": "x64",   "filetype": "deb", "download_url": "...", "size_bytes": 76543210 },
+    { "platform": "win32",  "arch": "x64",   "filetype": "exe", "download_url": "...", "size_bytes": 82345678 }
   ]
 }
 ```
 
-## 5. Admin UX — publish flow redesign
-
-### 5.1 Sentry-style: App creation wizard (new step)
-
-Currently: `+ New App` → modal asks name + slug → save.
-
-**New**: `+ New App` → **3-step wizard**:
-
-```
-Step 1: Basics
-  - Name (text)
-  - Slug (text, kebab-case, auto-generated from name)
-  - Description (textarea)
-
-Step 2: Product types — "What do you want to ship?" (CHECKBOX LIST)
-  - [x] Android APK                (parser: apk-aapt)
-  - [ ] Android AAB                (parser: aapt)
-  - [ ] iOS IPA                    (parser: ipa-info)
-  - [x] Electron desktop app       (parser: electron-asar)
-        ↳ If checked, show sub-picker for supported platforms:
-            [x] macOS (darwin-arm64, darwin-x64)
-            [x] Linux (linux-x64, linux-arm64)
-            [x] Windows (win32-x64, win32-arm64)
-  - [ ] React Native OTA bundle    (parser: rn-bundle)
-  - [ ] CLI tool                   (parser: unknown)
-  - [ + Add custom product type ]
-  
-Step 3: Release types — "How do you label releases?" (review + customize seeded defaults)
-  - [x] stable   (green badge)
-  - [x] rc       (blue badge)
-  - [x] beta     (orange badge)
-  - [x] internal (gray badge)
-  - [ + Add custom release type ]
+For Electron with scope=platform(darwin-only):
+```json
+{
+  "build": { "version": "1.2.3", "scoped": "darwin-only", ... },
+  "assets": [
+    { "platform": "darwin", "arch": "arm64", "filetype": "dmg", "download_url": "...", "size_bytes": 89123456 },
+    { "platform": "darwin", "arch": "x64",   "filetype": "dmg", "download_url": "...", "size_bytes": 90123456 }
+  ],
+  "fallback_release": {  // optional: if darwin user came from win32, show this so they don't auto-update to an older version
+    "version": "1.2.2", "platform": "win32", ...
+  }
+}
 ```
 
-On Save, the wizard:
-1. Creates `apps` row
-2. For each checked product_type → `product_types` row (with `supported_platforms_json` if applicable)
-3. Seeds `release_types` with defaults (or user's customized list)
-
-### 5.2 UploadWizard — channel-first 5-step
+### 5.2 OTA bundles (rn-bundle)
 
 ```
-Step 0: Header "Publish a new version of <AppName>"
-
-Step 1: Target (channel-first)
-  - Channel dropdown (production / beta / ...) [required]
-  - Product type dropdown (filtered to what app supports) [required]
-  - Release type dropdown (from app's release_types) [required]
-  - Show context: latest version on (channel, product_type, release_type)
-
-Step 2: Files (per-platform matrix)
-  - If product_type == 'android-apk':
-      Single file picker (.apk), parsed via aapt → metadata shown
-  - If product_type == 'electron-installer':
-      Per-platform file picker:
-        [ macOS  ]  ⌘ + click to add multiple  ───  [ .dmg | .zip ]
-          ↳ darwin-arm64  ──── [drag .dmg here]
-          ↳ darwin-x64    ──── [drag .dmg here]
-        [ Linux  ]
-          ↳ linux-x64     ──── [drag .AppImage here]
-        [ Windows]
-          ↳ win32-x64     ──── [drag .exe here]
-  - If product_type == 'rn-bundle':
-      Single .zip picker, manifest parsed (target_app_version, fingerprint_hash)
-
-Step 3: Release details
-  - version_name (text, auto-filled from parsed metadata, editable)
-  - version_code (number, auto-incremented from latest on this lane, editable)
-  - changelog (markdown textarea)
-  - should_force_update (checkbox, default off)
-  - rollout_cohort_count (slider 0-100, default 100; only enabled for electron + bundle)
-  - rollout_target_cohorts_json (advanced — explicit cohort list)
-  - availability_at (datetime picker; default = now; can schedule future)
-  - provenance (auto-filled from CI if available; editable)
-
-Step 4: Review + publish
-  - Summary card of all choices + per-asset preview
-  - "Publish" button
-  - Backend: parse each asset → upload to R2 → insert version + version_assets rows → return 201
+GET /public/apps/:slug/bundles?channel=production&product_type=rn-bundle&app_version=1.2.3
+→ 200 [{
+    "version": "1.2.4-bundle.1",
+    "target_app_version": ">=1.2.0 <2.0.0",
+    "file_hash": "sha256:...",
+    "should_force_update": false,
+    "download_url": "..."
+  }, ...]
 ```
 
-### 5.3 Publishing dashboard — new columns visible
+Returns **all** enabled bundles matching the client's `app_version` semver range. Client picks the newest.
 
-Zealot-style "Publishing" page per app:
+### 5.3 Channels list
 
-| Version | Release Type | Changelog | Size | Status | Assets | Actions |
+```
+GET /public/apps/:slug/channels
+→ 200 { "channels": [
+    { "slug": "production", "name": "Production", "product_types": ["android-apk", "electron-installer"] },
+    { "slug": "beta", "name": "Beta", "product_types": ["android-apk", "rn-bundle"], "password_required": false }
+  ] }
+```
+
+## 6. CLI — `quiver-cli`
+
+NPM package, ~30 commands. Mirrors `todesktop` CLI shape (npm script-friendly).
+
+### 6.1 Install
+
+```
+npm install --save-dev @oranix/quiver-cli
+# or global
+npm install -g @oranix/quiver-cli
+```
+
+### 6.2 Auth
+
+```
+quiver login                          # prompts for email + access token (saved to ~/.quiver/auth.json)
+QUIVER_TOKEN=... QUIVER_EMAIL=...    # CI mode: env vars
+```
+
+### 6.3 Commands
+
+```
+# Build & push (upload-only mode — no code-sign or smoke test)
+quiver build push ./release.zip \
+  --app myapp-android \
+  --channel production \
+  --product-type electron-installer \
+  --release-type stable \
+  --version-name 1.2.3 \
+  --version-code 42 \
+  --changelog ./CHANGELOG.md
+
+# Build with full pipeline (parse → sign → upload to R2)
+quiver build push ./release.zip --sign --async --webhook https://ci.example.com/hook
+
+# List recent builds
+quiver builds --app myapp-android --limit 20
+
+# Release a build (promote to live)
+quiver release create --build <buildId>
+quiver release create --build <buildId> --scope platform --platforms darwin-arm64,darwin-x64
+quiver release create --build <buildId> --scope ip --cidrs 10.0.0.0/8,192.168.0.0/16
+quiver release create --build <buildId> --full --force   # skip interactive confirmation
+quiver release create --latest                              # release most recent build
+
+# List releases
+quiver releases --app myapp-android --channel production --limit 20
+
+# Rollback
+quiver release rollback --release <releaseId> --reason "Critical bug in 1.2.3"
+
+# Operations (parse / upload / publish ops logs)
+quiver ops list --app myapp-android
+quiver ops retry --op <opId>
+quiver ops delete --op <opId>
+
+# Channels
+quiver channels list --app myapp-android
+quiver channels create --app myapp-android --slug beta --name Beta --bundle-id com.example.myapp.beta
+
+# Product types
+quiver product-types list --app myapp-android
+
+# Webhooks
+quiver webhooks list
+quiver webhooks create --url https://ci.example.com/quiver-hook --events release:new,release:superseded
+```
+
+### 6.4 CI integration
+
+```
+# package.json
+{
+  "scripts": {
+    "release": "npm run compile && quiver build push ./release.zip --async --webhook https://ci/quiver && quiver release create --latest --force"
+  }
+}
+```
+
+## 7. Admin UX
+
+### 7.1 Sentry-style App creation wizard (3 steps)
+
+**Step 1: Basics**
+```
+App name: [My App        ]
+Slug:     [myapp         ] (auto-generated from name, editable)
+Description: [                          ]
+```
+
+**Step 2: Product types (checkbox list)**
+```
+What do you want to ship? (check all that apply)
+[ x ] Android APK                (parser: apk-aapt)
+[   ] Android AAB                (parser: aapt)
+[   ] iOS IPA                    (parser: ipa-info)
+[ x ] Electron desktop app       (parser: electron-asar)
+        ↳ Supported platforms (sub-checklist):
+            [ x ] macOS  (darwin-arm64, darwin-x64)
+            [ x ] Linux  (linux-x64, linux-arm64)
+            [ x ] Windows (win32-x64, win32-arm64)
+[   ] React Native OTA bundle    (parser: rn-bundle)
+[   ] CLI tool                   (parser: unknown)
+[ + Add custom product type ]
+```
+
+**Step 3: Release types (review defaults, customize)**
+```
+How do you label releases?
+[ x ] stable   (green)   "Production-ready"
+[ x ] rc       (blue)    "Release candidate"
+[ x ] beta     (orange)  "Public beta"
+[ x ] internal (gray)    "Internal team only"
+[ + Add custom release type ]
+```
+
+On Save:
+1. Insert apps row
+2. Insert product_types rows (each checked) with `supported_platforms_json` from sub-picker
+3. Insert release_types rows (each checked, with seed defaults)
+4. Insert channels rows (production + beta + internal by default)
+5. Show toast + redirect to AppDetail
+
+### 7.2 AppDetail — 5 tabs
+
+```
+URL: /apps/:appId
+Tabs: Overview | Builds | Releases | Channels | Settings
+```
+
+**Overview**:
+- Latest release per (channel, product_type, release_type) — at-a-glance grid
+- Active build count, download counts (chart)
+- Recent ops from operation_logs (with retry/delete)
+
+**Builds** (table):
+| Version | Channel | Product | Release Type | Status | Assets | Actions |
 |---|---|---|---|---|---|---|
-| 1.2.3 (1042) | stable | "Fixed login bug" | 23 MB | ✅ enabled | apk | Move · Disable · Bump rollout · Force update · Delete |
-| 1.2.2 (1041) | stable | ... | 23 MB | ⚪ disabled | apk | Move · Enable · Delete |
-| 1.3.0-beta (1050) | beta | ... | 24 MB | 🚦 30% rollout | apk | Bump rollout · Disable · Delete |
-| 1.4.0-rc (1060) | rc | "New Electron build" | 178 MB | ✅ enabled | 6 platforms | Promote to stable · Disable · Delete |
+| 1.2.3 (42) | production | electron-installer | stable | ✓ succeeded | 6 platforms | Prepare release · Delete |
+| 1.2.3 (42) | beta | android-apk | beta | ✓ succeeded | 1 (apk) | Prepare release · Delete |
+| 1.2.4 (43) | production | android-apk | stable | ⏳ building | 1/1 | Cancel |
+| 1.2.4-rc.1 (43) | beta | electron-installer | rc | ✗ smoke_test_failed | 6/6 | Logs · Retry · Delete |
 
-**Per-row actions**:
-- **Move to channel** — change `(channel, release_type)` of a version
-- **Disable / Enable** — toggle `versions.enabled`
-- **Bump rollout** — increment `rollout_cohort_count` for staged rollouts (10% → 25% → 50% → 100%)
-- **Force update** — flip `should_force_update` (one-click critical fix)
-- **Promote** — copy version with new `release_type` (e.g. rc → stable, promoting a tested build)
-- **Delete** — hard delete (irreversible; audit log captures the deletion event)
-- **Asset matrix view** — click row → shows per-platform download URLs, smoke test results (future)
+**Releases** (table):
+| Released | Version | Channel | Product | Type | Scope | Status | Actions |
+|---|---|---|---|---|---|---|---|
+| 2026-06-25 | 1.2.3 | production | electron | stable | full | active | Bump rollout · Force update · Roll back |
+| 2026-06-20 | 1.2.4-rc | production | electron | rc | platform: darwin | active | Promote to stable · Cancel |
+| 2026-06-15 | 1.2.2 | production | electron | stable | full | superseded | Roll back to this |
+| 2026-06-10 | 1.2.1 | production | electron | stable | ip: 10.0.0.0/8 | superseded | Delete |
 
-### 5.4 Channels page — per-app CRUD
+**Channels** (table):
+| Slug | Name | Bundle ID | Password | Product types | Actions |
+|---|---|---|---|---|---|
+| production | Production | com.example.myapp | — | apk, electron | Edit · Delete |
+| beta | Beta | com.example.myapp.beta | — | apk, rn-bundle | Edit · Delete |
+| internal | Internal | com.example.myapp.internal | required | apk | Edit · Delete |
 
-Currently `AppDetail` has a "Channels" tab. New:
-- Show channels with: name, slug, password (locked/unlocked icon), git_url
-- `+ New channel` modal: name + slug + optional password + git_url
-- Per channel: list of (product_type, latest version, latest version's status badge)
+**Settings**:
+- Code signing credentials (with "Add Mac cert" / "Add Windows cert" / "Add Android cert" buttons → upload wizard)
+- Webhooks (list + add)
+- Archive app (toggle archived flag)
 
-### 5.5 AppsList — show archived
+### 7.3 UploadWizard — 5 steps (per build, not release)
 
-- Toggle "Show archived" pill
-- Archived apps: grayed out, click to view + unarchive + delete
+**Step 1: Target**
+```
+Channel:       [production          ▾]  required
+Product type:  [electron-installer ▾]  required (filtered to app's enabled_product_types per channel)
+Release type:  [stable              ▾]  required (filtered to app's release_types)
+Show context: latest build on (channel, product_type, release_type)
+```
 
-## 6. Schema migration plan
+**Step 2: Version**
+```
+Version name:  [1.2.4    ]  required (semver-ish; auto-suggested from latest)
+Version code:  [44       ]  required (auto-incremented; editable)
+```
 
-**Phase 1 (Android only, additive)** — ship independently:
-- Migration 0004: add `apps.archived`, `apps.archived_at`, `apps.scheme`, `apps.description`. Add `channels.password`, `channels.git_url`. Add `versions.changelog`, `versions.provenance_json`, `versions.should_force_update`, `versions.rollout_cohort_count`, `versions.rollout_target_cohorts_json`, `versions.availability_at`, `versions.icon_r2_key`, `versions.metadata_json`, `versions.enabled` (already present but unused). **All new columns nullable or default 0.**
-- No admin UI changes yet — but everything starts populating.
-- ~1 hour.
+**Step 3: Files (per-platform matrix)**
+```
+If product_type == 'electron-installer':
+  [ macOS  ]
+    darwin-arm64:    [drag .dmg here]
+    darwin-x64:      [drag .dmg here]
+  [ Linux  ]
+    linux-x64:       [drag .AppImage or .deb or .rpm here]
+    linux-arm64:     [drag .deb here]
+  [ Windows]
+    win32-x64:       [drag .exe here]
+    win32-x64-user:  [drag .exe (no-admin) here]
+    win32-arm64:     [drag .msi here]
+If product_type == 'android-apk':
+  Single file: [drag .apk here]
+If product_type == 'rn-bundle':
+  Single file: [drag .zip bundle here]
+```
 
-**Phase 2 (multi-platform, new tables)** — ship independently:
-- Migration 0005: create `product_types` + `release_types` tables. Backfill `release_types` with `stable/rc/beta/internal` defaults for every existing app. Backfill `product_types` with one `'android-apk'` per existing app.
-- Migration 0006: create `version_assets` table. Backfill: for each existing `versions` row, create one `version_assets` row with `platform='android'`, `arch=NULL`, `variant=NULL`, `r2_key=versions.r2_key`, `file_hash=versions.file_hash`, etc.
-- Migration 0007: add `versions.product_type`, `versions.release_type` columns with composite FKs. Backfill with the only existing value (`android-apk` / `stable`). Change UNIQUE constraint to `(app_id, product_type, channel, release_type, version_code)`.
-- Admin UI: App wizard (Step 1.1) + UploadDialog 5-step (Steps 1-3-4) + Publishing dashboard with new actions. ~6 hours total.
+**Step 4: Release details**
+```
+Changelog:           [textarea, markdown]
+Should force update: [ ] (only for electron/bundle)
+Availability:        [now    ▾]  (datetime picker for scheduled)
+Provenance:          (auto-filled from CI/git if available; editable)
+```
 
-**Phase 3 (OTA bundles + per-platform Electron)** — ship independently:
-- Migration 0008: add `version_assets.target_app_version` (extract from metadata_json to top-level for queryability), `version_assets.fingerprint_hash`.
-- Container parser: add `electron-asar` and `rn-bundle` parsers alongside the existing `apk-aapt` parser.
-- Public API: add `/public/apps/:slug/bundles` endpoint.
-- Client SDK: add per-platform download URL parsing + bundle matching.
+**Step 5: Confirm + push**
+```
+Summary card of all choices + per-asset preview
+[Cancel]  [Push build →]
+```
+
+After push, build sits in `succeeded` state in the Builds tab. User then opens it → "Prepare release" → scope modal.
+
+### 7.4 Prepare Release modal (separate from UploadWizard)
+
+```
+[Build 1.2.4 (44) — electron-installer / production / stable]
+
+✓ Build status: succeeded
+✓ Version is higher than previous release (1.2.3 = 42)
+✓ Code signing credentials valid for: darwin-arm64, darwin-x64, linux-x64, win32-x64, win32-arm64
+✓ No active release with same version_code
+
+Release scope:
+( ) Full release           — all users on this (channel, product_type, release_type)
+(•) Platform release       — selected platforms only
+      [ x ] darwin-arm64   [ x ] darwin-x64   [   ] darwin-universal
+      [ x ] linux-x64      [ x ] linux-arm64
+      [ x ] win32-x64      [ x ] win32-arm64
+( ) IP range release       — corp VPN users only
+      CIDR list: [                          ]
+      [comma-separated, e.g. 10.0.0.0/8,192.168.0.0/16]
+
+Rollout:
+  Initial cohort: [ 10%  ▒▒▒░░░░░░░ ] 0–100 slider (default 100 = full)
+  [ ] Force update
+
+Availability:
+  [Now ▾]   (datetime picker for scheduled)
+
+[Cancel]  [Release]
+```
+
+## 8. Schema migration plan (revised for v3)
+
+**Phase 1 (Android only, additive, non-breaking)**:
+- Migration 0004: add `apps.archived`, `apps.archived_at`, `apps.description`. Add `channels.password`, `channels.git_url`, `channels.bundle_id`, `channels.enabled_product_types_json`, `channels.metadata_json`. Add `builds` table (just scaffold, no usage yet). Add `signing_credentials` table (scaffold).
+- No admin UI changes. ~1 hour.
+
+**Phase 2 (multi-platform + build/release split)**:
+- Migration 0005: create `product_types` + `release_types` tables. Backfill defaults per existing app. Backfill `release_types` with `stable/rc/beta/internal`.
+- Migration 0006: create `builds` + `build_assets` tables. Backfill: for each existing `versions` row, create one `builds` row + one `build_assets` row (platform='android', arch=NULL, variant=NULL, filetype='apk').
+- Migration 0007: create `releases` + `release_scopes` tables. Backfill: each existing version → `releases` row (status='active', is_full=1, scope='full') + `release_scopes` row.
+- Migration 0008: deprecate `versions` (rename to `_versions_legacy`, keep for read-only audit). Future: drop after admin UI migrated.
+- Admin UI: App wizard + UploadDialog 5-step + Builds/Releases/Channels tabs. ~10 hours total.
+
+**Phase 3 (OTA + Electron + CLI)**:
+- Migration 0009: add `build_assets.target_app_version`, `build_assets.fingerprint_hash`. Add `releases.metadata` (per-release custom fields).
+- Container: add `electron-asar` + `rn-bundle` parsers.
+- API: add `/public/apps/:slug/bundles` endpoint. Add `release_scopes` resolution logic.
+- CLI: ship `@oranix/quiver-cli` to npm.
 - ~1-2 weeks.
 
-Each phase is shippable independently. Admin UI ships per phase.
+Each phase is shippable independently.
 
-## 7. Open questions
+## 9. Open questions
 
-1. **`flavor` vs `release_type`** — `@artin` said "release_type" but electron-release-server uses "flavor". Sticking with `release_type` per user. OK?
+1. **Multi-tenancy** — `accounts` table? orgs? teams? v1: single-account model, defer multi-tenant. Affects `signing_credentials.owner_id` (currently `account`).
 
-2. **Hard-delete vs soft-delete versions** — recommendation: hard-delete only (audit log preserves forensic trail). Zealot does the same.
+2. **CLI distribution** — npm `@oranix/quiver-cli` is the obvious place, but @artin's users are mostly internal. Should it be public? Recommendation: ship as public npm package, document that server is the public quiver-worker.
 
-3. **Scheduled publish** (`availability_at`) — worth the complexity? hot-updater has it; Zealot doesn't. Recommendation: ship Phase 1 with the column, expose UI in Phase 3.
+3. **Webhook delivery reliability** — fire-and-forget or retry-with-backoff? hot-updater doesn't have webhooks. ToDesktop has them but doesn't document reliability. Recommendation: in-D1 queue + Worker Cron trigger (every 5 min) to retry failed webhook deliveries. v2 concern.
 
-4. **Staged rollouts for full APK** — does it make sense? APK updates aren't reversible mid-download, so 10% rollout means 10% of users can't update yet → confusing. Recommendation: rollout_cohort_count works for `rn-bundle` + `electron-installer` only; ignore for `android-apk` and `android-aab`. Document clearly.
+4. **Smoke test** — ToDesktop's biggest differentiator. v1 skip. v2 maybe integrate with cloud-hosted macOS/Windows VMs (MacStadium, AWS G5 instances). Container-based smoke test for Electron is hard (needs real GUI). For APK we can use existing container to install + start activity + take screenshot.
 
-5. **Per-platform channel filtering** — `channels` no longer has `device_type`. Client passes `product_type` + `platform` query params; server filters versions. Edge case: client passes `platform=darwin-arm64` but the app's `electron-installer` product_type doesn't include `darwin-arm64` in its `supported_platforms_json` → return 404 with clear message.
+5. **Scheduled release** (`availability_at`) — cron-based or just show "live at <datetime>" + auto-promote? Recommendation: admin manually clicks "release" at the time; `availability_at` is informational only for v1.
 
-6. **Per-version icon** — useful for visual ID in download pages. Zealot stores it. Recommendation: store as R2 key in `versions.icon_r2_key`, expose admin UI upload step in Phase 2 admin work.
+6. **Auto-rollback on crash spike** — ToDesktop doesn't have this. Sentry has "revert to last good release" via metrics. Out of scope for v1.
 
-7. **Smoke tests** (ToDesktop's biggest differentiator) — they actually launch builds on Win/Mac/Linux before release. Out of scope for v1, but worth noting as a future feature. Would need Cloudflare Container with desktop OS images (or integration with external CI).
+7. **`release_types` per app or global?** — Per-app matches the user's instinct ("创建产品，然后选支持的平台"). Defaults seeded per app, user customizes. Recommendation: per-app.
 
-8. **How does the admin UI pre-populate `product_types` for the App wizard?** Defaults per "app category" — should we let the user pick a category (mobile app / desktop app / web service) and seed relevant defaults? Or just always show the full checklist and let them check what they want? Recommend the latter for v1 (simpler), add category-based recommendations later.
+8. **How do we get the user's `appVersion` for bundle targeting on OTA clients?** — Client SDK reads from `BuildConfig.VERSION_NAME` for Android / `electron.app.getVersion()` for Electron / `app.json` for RN. Standard. SDK can compute this automatically.
 
-## 8. Implementation order (post-approval)
+## 10. References
 
-1. Phase 1 schema migration. Deploy. No admin UI changes. ~1 hour.
-2. Phase 1 admin UI (use existing fields, add archive toggle on AppsList, add changelog textarea to UploadDialog step 3). Deploy. ~3 hours.
-3. Phase 2 schema migrations (5-7). Deploy. ~2 hours.
+- **ToDesktop docs** (read in full for v3): https://www.todesktop.com/electron/docs/
+- **ArekSredzki/electron-release-server** (Flavor/Channel/Asset/Platform split): https://github.com/ArekSredzki/electron-release-server
+- **Zealot** (apk/ipa/exe/dmg full-binary distribution): https://zealot.ews.im/docs/
+- **bytemain/hot-updater** (OTA JS bundle distribution): https://github.com/bytemain/hot-updater
+- **Sentry** (project + platform picker wizard UX inspiration): https://docs.sentry.io/product/sentry-basics/integrate-frontend/create-new-project/
+- **Cursor** (download URL matrix: darwin-arm64, linux-x64, win32-x64-user, ...): https://cursor.com/download
+
+## 11. Implementation order (post-approval)
+
+1. Phase 1 schema migration (additive only). Deploy. ~1 hour.
+2. Phase 1 admin UI: archive toggle, changelog, provenance, rollout fields on existing UploadDialog + Publishing. Deploy. ~3 hours.
+3. Phase 2 schema migrations 5-8 (new tables, backfill). Deploy. ~2 hours.
 4. App creation wizard (3 steps). Deploy. ~3 hours.
-5. UploadDialog 5-step wizard. Deploy. ~4 hours.
-6. Publishing dashboard with new columns + actions. Deploy. ~4 hours.
-7. Phase 3 schema + container parsers + bundles endpoint + client SDK. ~1-2 weeks.
+5. Build/Release split in admin UI (Builds tab + Releases tab + Prepare release modal). Deploy. ~6 hours.
+6. Phase 3 schema + container parsers + bundles endpoint. ~1-2 weeks.
+7. CLI (`@oranix/quiver-cli`). ~1 week.
 
-Each step is independently shippable.
-
-## 9. References
-
-- Sentry: https://docs.sentry.io/product/sentry-basics/integrate-frontend/create-new-project/
-- Zealot: https://zealot.ews.im/docs/ + https://github.com/tryzealot/zealot
-- bytemain/hot-updater: https://github.com/bytemain/hot-updater (fork at oranix-io/quiver Insurance note in MEMORY)
-- ArekSredzki/electron-release-server: https://github.com/ArekSredzki/electron-release-server
-- ToDesktop: https://www.todesktop.com/electron/docs/
-- Cursor: https://cursor.com/download + https://cursor.com/install
-- Quiver current schema: `migrations/sql/0001_init.sql`, `0002_operation_logs.sql`, `0003_operation_logs_nullable_app.sql`
-- Admin UI: `admin/src/pages/AppDetail.tsx` (UploadDialog + Publishing dashboard)
+Each step independently shippable.
