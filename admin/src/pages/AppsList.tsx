@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
+  getAuthMe,
   listApps,
   listProductTypes,
   listReleaseTypes,
@@ -93,6 +94,8 @@ function AppRow({ app, onSelect }: { app: App; onSelect: () => void }) {
     queryKey: ["channels", app.id],
     queryFn: () => listChannels(app.id),
   });
+  const me = useQuery({ queryKey: ["auth-me"], queryFn: () => getAuthMe() });
+  const sameOrg = !app.org_id || app.org_id === me.data?.account.org_id;
 
   const ptCount = productTypes.data?.product_types.length ?? 0;
   const rtCount = releaseTypes.data?.release_types.length ?? 0;
@@ -113,6 +116,14 @@ function AppRow({ app, onSelect }: { app: App; onSelect: () => void }) {
             <div className="text-lg font-medium">{app.name}</div>
             {isArchived && (
               <span className="badge-gray text-xs">📦 Archived</span>
+            )}
+            {!sameOrg && app.org_id && (
+              <span
+                className="badge-orange text-xs"
+                title={`This app belongs to a different org (${app.org_id})`}
+              >
+                ⚠ other org
+              </span>
             )}
           </div>
           <div className="text-sm text-slate-500 font-mono">{app.slug}</div>
