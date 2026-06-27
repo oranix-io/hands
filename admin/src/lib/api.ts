@@ -133,8 +133,14 @@ export const logout = () =>
     method: "POST",
   });
 
+export const normalizeLoginReturnPath = (returnTo = window.location.pathname) => {
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return "/";
+  if (returnTo.startsWith("/api/") || returnTo.startsWith("/login/")) return "/";
+  return returnTo;
+};
+
 export const loginUrl = (returnTo = window.location.pathname) =>
-  `${API_BASE}/api/auth/login?return=${encodeURIComponent(returnTo)}`;
+  `${API_BASE}/api/auth/login?return=${encodeURIComponent(normalizeLoginReturnPath(returnTo))}`;
 
 // ---------- Public API (no auth) ----------
 
