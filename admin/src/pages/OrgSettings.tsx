@@ -3,29 +3,41 @@
  *
  * Tabs: General | Members | Invites | Audit
  *
- * General tab pulls from /api/auth/me (org_id, org_role, principal_type
- * etc. are now in the session). Other tabs show "endpoint not yet wired"
- * placeholders — will be replaced when expert lands org/members/invites
- * endpoints (Phase 5.3 invites, Phase 5.4 org API).
+ * Wires the new P5.3 endpoints:
+ *   GET/POST /api/orgs/:orgId/invites  (list + create)
+ *   POST/DELETE .../invites/:id/resend, /revoke
+ *   GET/PATCH/DELETE /api/orgs/:orgId/members/:accountId
+ *   GET /api/orgs/:orgId/audit-logs
+ *
+ * Owner / admin only. Members tab has change role + remove actions.
+ * General tab still shows /me context (display name, principal_type, org).
  */
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getAuthMe } from "../lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createOrgInvite,
+  getAuthMe,
+  listOrgAuditLogs,
+  listOrgInvites,
+  listOrgMembers,
+  removeOrgMember,
+  resendOrgInvite,
+  revokeOrgInvite,
+  updateOrgMember,
+  type OrgMember,
+} from "../lib/api";
+import { useToast } from "../components/Toast";
 
 type Tab = "general" | "members" | "invites" | "audit";
 
 export function OrgSettings({ orgId }: { orgId: string }) {
   const [tab, setTab] = useState<Tab>("general");
   const me = useQuery({ queryKey: ["auth-me"], queryFn: () => getAuthMe() });
-
   const account = me.data?.account;
   const currentOrgId = account?.org_id ?? null;
   const currentRole = account?.org_role ?? null;
   const isOwnerOrAdmin = currentRole === "owner" || currentRole === "admin";
-
-  // Only render the page if the URL's orgId matches the current account's
-  // org (a principal can't access other orgs).
   const isCurrentOrg = currentOrgId === orgId;
 
   return (
@@ -41,9 +53,6 @@ export function OrgSettings({ orgId }: { orgId: string }) {
       </div>
 
       {me.isLoading && <p className="text-slate-500">Loading…</p>}
-      {me.error && (
-        <p className="text-red-600">Failed: {(me.error as Error).message}</p>
-      )}
 
       {!isCurrentOrg && currentOrgId && (
         <div className="card !p-4 bg-yellow-50 border-yellow-200 text-yellow-800 text-sm mb-4">
@@ -113,61 +122,522 @@ export function OrgSettings({ orgId }: { orgId: string }) {
       )}
 
       {tab === "members" && (
-        <div className="card !p-4 text-sm text-slate-600">
-          <p className="mb-2">
-            <strong>Members tab scaffold.</strong> Will show table:
-          </p>
-          <ul className="text-xs text-slate-500 list-disc list-inside space-y-1">
-            <li>Avatar + display name (humans + agents distinguished by badge)</li>
-            <li>Email (humans) or agent manifest URL (agents)</li>
-            <li>Role: owner / admin / member / viewer (dropdown to change)</li>
-            <li>Joined at, invited by</li>
-            <li>Last login at (from raft_accounts.last_login_at)</li>
-            <li>Actions: change role, remove member</li>
-          </ul>
-          <EndpointNote endpoint="GET /api/orgs/:orgId/members" />
-          {!isOwnerOrAdmin && (
-            <p className="text-xs text-yellow-700 mt-2">
-              ⚠ Your current role is "{currentRole ?? "—"}" — members
-              management requires owner / admin.
-            </p>
-          )}
-        </div>
+        <MembersTab
+          orgId={orgId}
+          currentAccountId={account?.id ?? null}
+          currentRole={currentRole}
+        />
       )}
 
       {tab === "invites" && (
-        <div className="card !p-4 text-sm text-slate-600">
-          <p className="mb-2">
-            <strong>Invites tab scaffold.</strong> Will show:
-          </p>
-          <ul className="text-xs text-slate-500 list-disc list-inside space-y-1">
-            <li>Pending invites table (email + role + expires + invited_by)</li>
-            <li>Resend / Revoke actions</li>
-            <li>"+ Invite member" button → modal: email + role + optional message</li>
-            <li>For self-hosted: server-only mode (no invites, all same-server logins auto-join)</li>
-          </ul>
-          <EndpointNote endpoint="GET /api/orgs/:orgId/invites" />
-          <p className="mt-3 text-xs text-slate-500">
-            Per @artin's design: same-Raft-server logins auto-join the org,
-            so invites are mostly for cross-org (rare). Most of the time the
-            members tab is what matters.
-          </p>
-        </div>
+        <InvitesTab orgId={orgId} canManage={isOwnerOrAdmin} />
       )}
 
       {tab === "audit" && (
-        <div className="card !p-4 text-sm text-slate-600">
-          <p className="mb-2">
-            <strong>Audit tab scaffold.</strong> Will show filtered audit_logs
-            scoped to this org (cross-app aggregation). Each row: actor +
-            actor_type (human/agent/system) + action + target + timestamp.
-          </p>
-          <EndpointNote endpoint="GET /api/orgs/:orgId/audit-logs" />
-          <p className="text-xs text-slate-500">
-            Per docs/account-org-invite.md §6.2 — audit is org-level view of
-            all app_member + channel + version + release events.
-          </p>
-        </div>
+        <AuditTab orgId={orgId} canView={isOwnerOrAdmin || currentRole === "member"} />
+      )}
+    </div>
+  );
+}
+
+function MembersTab({
+  orgId,
+  currentAccountId,
+  currentRole,
+}: {
+  orgId: string;
+  currentAccountId: string | null;
+  currentRole: string | null;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const isAdmin = currentRole === "admin" || currentRole === "owner";
+  const members = useQuery({
+    queryKey: ["org-members", orgId],
+    queryFn: () => listOrgMembers(orgId),
+  });
+
+  const update = useMutation({
+    mutationFn: ({ accountId, role }: { accountId: string; role: OrgMember["org_role"] }) =>
+      updateOrgMember(orgId, accountId, role),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: "Member role updated" });
+      qc.invalidateQueries({ queryKey: ["org-members", orgId] });
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Update failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (accountId: string) => removeOrgMember(orgId, accountId),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: "Member removed" });
+      qc.invalidateQueries({ queryKey: ["org-members", orgId] });
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Remove failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  return (
+    <div className="card !p-4 text-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-semibold">Members</h3>
+        <span className="text-xs text-slate-500">
+          {members.data?.members.length ?? "—"} member
+          {members.data?.members.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {!isAdmin && (
+        <p className="text-xs text-yellow-700 mb-2">
+          ⚠ Your current role is "{currentRole ?? "—"}" — you can view
+          members but not edit them.
+        </p>
+      )}
+      {members.isLoading && <p className="text-slate-500">Loading…</p>}
+      {members.error && (
+        <p className="text-red-600">Failed: {(members.error as Error).message}</p>
+      )}
+      {members.data && members.data.members.length === 0 && (
+        <p className="text-slate-500">No members yet.</p>
+      )}
+      {members.data && members.data.members.length > 0 && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-slate-500 text-left border-b border-slate-100">
+              <th className="font-normal py-1 pr-2">Principal</th>
+              <th className="font-normal py-1 pr-2">Type</th>
+              <th className="font-normal py-1 pr-2">Role</th>
+              <th className="font-normal py-1 pr-2">Joined</th>
+              {isAdmin && <th className="font-normal py-1">Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {members.data.members.map((m) => (
+              <tr
+                key={m.account_id}
+                className="border-b border-slate-50 hover:bg-slate-50"
+              >
+                <td className="py-2 pr-2">
+                  <div className="font-medium">
+                    {m.display_name}
+                    {m.account_id === currentAccountId && (
+                      <span className="ml-1 text-xs text-slate-500">(you)</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 font-mono">
+                    {m.account_id.slice(0, 8)}…
+                  </div>
+                </td>
+                <td className="py-2 pr-2">
+                  {m.principal_type === "agent" ? (
+                    <span className="badge-purple text-xs">agent</span>
+                  ) : (
+                    <span className="text-xs">human</span>
+                  )}
+                </td>
+                <td className="py-2 pr-2">
+                  {isAdmin && m.account_id !== currentAccountId ? (
+                    <select
+                      className="input text-xs py-0.5"
+                      value={m.org_role}
+                      onChange={(e) =>
+                        update.mutate({
+                          accountId: m.account_id,
+                          role: e.target.value as OrgMember["org_role"],
+                        })
+                      }
+                      disabled={update.isPending}
+                    >
+                      {(["owner", "admin", "member", "viewer"] as const).map(
+                        (r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  ) : (
+                    <span
+                      className="text-xs font-medium"
+                      style={{
+                        color:
+                          m.org_role === "owner"
+                            ? "#a855f7"
+                            : m.org_role === "admin"
+                              ? "#3b82f6"
+                              : "#374151",
+                      }}
+                    >
+                      {m.org_role}
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 pr-2 text-xs text-slate-500">
+                  {new Date(m.joined_at).toISOString().slice(0, 10)}
+                </td>
+                {isAdmin && (
+                  <td className="py-2 text-xs">
+                    {m.account_id !== currentAccountId && (
+                      <button
+                        className="text-red-600 hover:underline"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              `Remove ${m.display_name} from this org?`,
+                            )
+                          ) {
+                            remove.mutate(m.account_id);
+                          }
+                        }}
+                        disabled={remove.isPending}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function InvitesTab({
+  orgId,
+  canManage,
+}: {
+  orgId: string;
+  canManage: boolean;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [showCreate, setShowCreate] = useState(false);
+  const invites = useQuery({
+    queryKey: ["org-invites", orgId],
+    queryFn: () => listOrgInvites(orgId),
+  });
+
+  const revoke = useMutation({
+    mutationFn: (inviteId: string) => revokeOrgInvite(orgId, inviteId),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: "Invite revoked" });
+      qc.invalidateQueries({ queryKey: ["org-invites", orgId] });
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Revoke failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  const resend = useMutation({
+    mutationFn: (inviteId: string) => resendOrgInvite(orgId, inviteId),
+    onSuccess: (data) => {
+      toast.show({
+        kind: "success",
+        title: "Resent invite",
+        description: `New invite URL: ${data.invite_url.slice(0, 60)}…`,
+      });
+      qc.invalidateQueries({ queryKey: ["org-invites", orgId] });
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Resend failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  return (
+    <div className="card !p-4 text-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-semibold">Invites</h3>
+        {canManage && (
+          <button
+            className="btn-primary text-xs"
+            onClick={() => setShowCreate(true)}
+          >
+            + Invite member
+          </button>
+        )}
+      </div>
+      {!canManage && (
+        <p className="text-xs text-yellow-700 mb-2">
+          ⚠ Owner / admin required to manage invites.
+        </p>
+      )}
+      {invites.isLoading && <p className="text-slate-500">Loading…</p>}
+      {invites.error && (
+        <p className="text-red-600">Failed: {(invites.error as Error).message}</p>
+      )}
+      {invites.data && invites.data.invites.length === 0 && (
+        <p className="text-slate-500 text-sm">No pending invites.</p>
+      )}
+      {invites.data && invites.data.invites.length > 0 && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-slate-500 text-left border-b border-slate-100">
+              <th className="font-normal py-1 pr-2">Email</th>
+              <th className="font-normal py-1 pr-2">Role</th>
+              <th className="font-normal py-1 pr-2">Status</th>
+              <th className="font-normal py-1 pr-2">Expires</th>
+              {canManage && <th className="font-normal py-1">Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {invites.data.invites.map((inv) => (
+              <tr
+                key={inv.id}
+                className="border-b border-slate-50 hover:bg-slate-50"
+              >
+                <td className="py-2 pr-2 font-mono text-xs">{inv.email}</td>
+                <td className="py-2 pr-2 text-xs">{inv.role}</td>
+                <td className="py-2 pr-2 text-xs">
+                  <InviteStatusBadge status={inv.status} />
+                </td>
+                <td className="py-2 pr-2 text-xs text-slate-500">
+                  {new Date(inv.expires_at).toISOString().slice(0, 10)}
+                </td>
+                {canManage && inv.status === "pending" && (
+                  <td className="py-2 text-xs space-x-2">
+                    <button
+                      className="text-blue-600 hover:underline"
+                      onClick={() => resend.mutate(inv.id)}
+                      disabled={resend.isPending}
+                    >
+                      Resend
+                    </button>
+                    <button
+                      className="text-red-600 hover:underline"
+                      onClick={() => {
+                        if (confirm(`Revoke invite to ${inv.email}?`)) {
+                          revoke.mutate(inv.id);
+                        }
+                      }}
+                      disabled={revoke.isPending}
+                    >
+                      Revoke
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {showCreate && (
+        <CreateInviteDialog
+          orgId={orgId}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false);
+            qc.invalidateQueries({ queryKey: ["org-invites", orgId] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateInviteDialog({
+  orgId,
+  onClose,
+  onCreated,
+}: {
+  orgId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"member" | "viewer">("member");
+  const [message, setMessage] = useState("");
+  const toast = useToast();
+  const create = useMutation({
+    mutationFn: () =>
+      createOrgInvite(orgId, {
+        email: email.trim().toLowerCase(),
+        role,
+        message: message.trim() ? message.trim() : null,
+      }),
+    onSuccess: (data) => {
+      toast.show({
+        kind: "success",
+        title: `Invite created for ${email}`,
+        description: `Invite URL: ${data.invite_url.slice(0, 60)}…`,
+      });
+      // Copy invite URL to clipboard for the admin to share
+      navigator.clipboard?.writeText(data.invite_url).catch(() => {});
+      onCreated();
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Invite failed",
+        description: (e as Error).message,
+      }),
+  });
+  return (
+    <div
+      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="card max-w-md w-full relative">
+        <h2 className="text-lg font-bold mb-4">Invite member</h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+          className="space-y-3"
+        >
+          <div>
+            <label className="label">Email</label>
+            <input
+              type="email"
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="label">Role</label>
+            <select
+              className="input"
+              value={role}
+              onChange={(e) =>
+                setRole(e.target.value as "member" | "viewer")
+              }
+            >
+              <option value="member">member (humans default)</option>
+              <option value="viewer">viewer (agents / read-only)</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Message (optional)</label>
+            <textarea
+              className="input text-xs min-h-[60px]"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={create.isPending || !email.trim()}
+            >
+              {create.isPending ? "Creating…" : "Create invite"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function InviteStatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    pending: "badge-blue",
+    accepted: "badge-green",
+    revoked: "badge-gray",
+    expired: "badge-orange",
+  };
+  return <span className={map[status] ?? "badge-gray"}>{status}</span>;
+}
+
+function AuditTab({
+  orgId,
+  canView,
+}: {
+  orgId: string;
+  canView: boolean;
+}) {
+  const audit = useQuery({
+    queryKey: ["org-audit", orgId],
+    queryFn: () => listOrgAuditLogs(orgId, 100),
+    enabled: canView,
+  });
+  return (
+    <div className="card !p-4 text-sm">
+      <h3 className="text-base font-semibold mb-3">Audit log</h3>
+      {!canView && (
+        <p className="text-xs text-yellow-700 mb-2">
+          ⚠ Org member required to view audit log.
+        </p>
+      )}
+      {audit.isLoading && <p className="text-slate-500">Loading…</p>}
+      {audit.error && (
+        <p className="text-red-600">Failed: {(audit.error as Error).message}</p>
+      )}
+      {audit.data && audit.data.logs.length === 0 && (
+        <p className="text-slate-500 text-sm">No audit log entries yet.</p>
+      )}
+      {audit.data && audit.data.logs.length > 0 && (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-slate-500 text-left border-b border-slate-100">
+              <th className="font-normal py-1 pr-2">When</th>
+              <th className="font-normal py-1 pr-2">Actor</th>
+              <th className="font-normal py-1 pr-2">App</th>
+              <th className="font-normal py-1 pr-2">Action</th>
+              <th className="font-normal py-1 pr-2">Payload</th>
+            </tr>
+          </thead>
+          <tbody>
+            {audit.data.logs.map((log) => (
+              <tr
+                key={log.id}
+                className="border-b border-slate-50 hover:bg-slate-50"
+              >
+                <td className="py-1 pr-2 text-slate-500 font-mono">
+                  {new Date(log.created_at).toISOString().slice(0, 19)}Z
+                </td>
+                <td className="py-1 pr-2">
+                  <span
+                    className={
+                      log.actor_type === "agent"
+                        ? "badge-purple text-xs"
+                        : "text-xs"
+                    }
+                  >
+                    {log.actor || "—"}
+                  </span>
+                </td>
+                <td className="py-1 pr-2 font-mono text-slate-500">
+                  {log.app_id?.slice(0, 8) ?? "—"}
+                </td>
+                <td className="py-1 pr-2 font-mono">{log.action}</td>
+                <td className="py-1 pr-2 font-mono truncate max-w-md">
+                  {log.payload}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
@@ -194,15 +664,5 @@ function Row({
         {v}
       </div>
     </div>
-  );
-}
-
-function EndpointNote({ endpoint }: { endpoint: string }) {
-  return (
-    <p className="text-xs text-slate-500 pt-3 mt-3 border-t border-slate-100">
-      Will call <code className="text-xs">{endpoint}</code> when that
-      endpoint ships (currently being implemented by @Codex-Kuikly-KMP专家 on
-      task #12 + #13).
-    </p>
   );
 }
