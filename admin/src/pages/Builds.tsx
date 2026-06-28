@@ -19,6 +19,7 @@ import {
   type BuildAsset,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { UploadDialog } from "../components/UploadDialog";
 
 export function Builds({ appId }: { appId: string }) {
   const qc = useQueryClient();
@@ -45,16 +46,33 @@ export function Builds({ appId }: { appId: string }) {
   const thisApp = app.data?.apps.find((a) => a.id === appId);
   const [expandedBuildId, setExpandedBuildId] = useState<string | null>(null);
   const [prepareBuild, setPrepareBuild] = useState<Build | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
 
   return (
     <div className="p-4">
       <div className="mb-6">
-        <div className="text-sm text-slate-500">Builds</div>
-        <h1 className="text-2xl font-bold">
-          {thisApp?.name ?? "..."}
-          <span className="badge-blue align-middle ml-2">{thisApp?.platform}</span>
-        </h1>
-        <div className="text-sm text-slate-500 font-mono">{thisApp?.slug}</div>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-slate-500">Builds</div>
+            <h1 className="text-2xl font-bold">
+              {thisApp?.name ?? "..."}
+              <span className="badge-blue align-middle ml-2">{thisApp?.platform}</span>
+            </h1>
+            <div className="text-sm text-slate-500 font-mono">{thisApp?.slug}</div>
+          </div>
+          <button
+            className="btn-primary text-sm"
+            disabled={!channels.data?.channels.length}
+            onClick={() => setShowUpload(true)}
+            title={
+              !channels.data?.channels.length
+                ? "Create a channel first"
+                : "Upload a new build"
+            }
+          >
+            + Upload build
+          </button>
+        </div>
       </div>
 
       {builds.isLoading && <p className="text-slate-500">Loading...</p>}
@@ -144,6 +162,19 @@ export function Builds({ appId }: { appId: string }) {
             setPrepareBuild(null);
             qc.invalidateQueries({ queryKey: ["releases", appId] });
             qc.invalidateQueries({ queryKey: ["builds", appId] });
+          }}
+        />
+      )}
+      {showUpload && (
+        <UploadDialog
+          appId={appId}
+          channels={channels.data?.channels ?? []}
+          onClose={() => setShowUpload(false)}
+          onCreated={() => {
+            setShowUpload(false);
+            qc.invalidateQueries({ queryKey: ["versions", appId] });
+            qc.invalidateQueries({ queryKey: ["builds", appId] });
+            qc.invalidateQueries({ queryKey: ["releases", appId] });
           }}
         />
       )}
