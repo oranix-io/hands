@@ -79,7 +79,7 @@ Goal: introduce new columns + scaffold tables without breaking the existing `ver
 | P1.4.5 Publishing dashboard: show changelog column | ✅ DONE | 30min | collapsible markdown viewer, commit `1bc6487` |
 | P1.4.6 Publishing dashboard: `enabled` toggle button | ✅ DONE | 30min | wired earlier in commit `b016ab5` |
 | P1.4.7 Publishing dashboard: `Force update` toggle | ✅ DONE | 30min | new "Force" / "Unforce" button + ⚠ force update badge |
-| P1.4.8 Channel CRUD UI: edit password / bundle_id / git_url | 🔵 TODO | 2h | new page or inline edit in AppDetail channels tab |
+| P1.4.8 Channel CRUD UI: edit password / bundle_id / git_url | ✅ DONE | 2h | new page or inline edit in AppDetail channels tab |
 
 ### Phase 1 total: ~2 hours work remaining (only P1.4.8 Channel CRUD UI left)
 
@@ -117,36 +117,36 @@ Goal: introduce `product_types`, `release_types`, `build_assets`, `releases`, `r
 
 | Task | Status | Estimate | Notes |
 |---|---|---|---|
-| P2.3.1 Wizard shell component (multi-step modal with stepper) | 🔵 TODO | 3h | shared component for any multi-step wizard |
-| P2.3.2 Step 1: Basics (name / slug / description) | 🔵 TODO | 30min | port existing CreateAppDialog |
-| P2.3.3 Step 2: Product types checklist + per-product supported_platforms sub-picker | 🔵 TODO | 2h | Sentry-style wizard inspiration |
-| P2.3.4 Step 3: Release types review (seeded defaults, add/remove) | 🔵 TODO | 1h | |
-| P2.3.5 Wizard save: insert app + product_types + release_types + channels in transaction | 🔵 TODO | 1h | |
-| P2.3.6 AppsList update: filter by default product_types | 🔵 TODO | 30min | |
+| P2.3.1 Wizard shell component (multi-step modal with stepper) | ✅ DONE | 3h | shared component for any multi-step wizard |
+| P2.3.2 Step 1: Basics (name / slug / description) | ✅ DONE | 30min | port existing CreateAppDialog |
+| P2.3.3 Step 2: Product types checklist + per-product supported_platforms sub-picker | ✅ DONE | 2h | Sentry-style wizard inspiration |
+| P2.3.4 Step 3: Release types review (seeded defaults, add/remove) | ✅ DONE | 1h | |
+| P2.3.5 Wizard save: insert app + product_types + release_types + channels in transaction | ✅ DONE | 1h | |
+| P2.3.6 AppsList update: filter by default product_types | 🟡 IN_PROGRESS | 30min | |
 
 ### P2.4 — UploadDialog 5-step wizard (channel-first)
 
 | Task | Status | Estimate | Notes |
 |---|---|---|---|
-| P2.4.1 Step 1: Channel + product_type + release_type dropdowns + context preview | 🔵 TODO | 2h | current UploadDialog hardcoded to APK |
-| P2.4.2 Step 2: Version name + code (auto-suggested) | 🔵 TODO | 30min | |
-| P2.4.3 Step 3: Files per-platform matrix (Electron: N file pickers; APK: 1; bundle: 1) | 🔵 TODO | 4h | most complex piece |
-| P2.4.4 Step 4: Release details (changelog / should_force_update / availability / provenance) | 🔵 TODO | 2h | |
-| P2.4.5 Step 5: Review + push | 🔵 TODO | 1h | wire to /api/builds + /api/builds/:id/assets |
-| P2.4.6 Backend: `POST /api/builds` (insert builds + build_assets) | 🔵 TODO | 3h | replaces /api/parse-apk + /api/apps/:id/upload |
+| P2.4.1 Step 1: Channel + product_type + release_type dropdowns + context preview | ✅ DONE | 2h | current UploadDialog hardcoded to APK |
+| P2.4.2 Step 2: Version name + code (auto-suggested) | ✅ DONE | 30min | |
+| P2.4.3 Step 3: Files per-platform matrix (Electron: N file pickers; APK: 1; bundle: 1) | ✅ DONE | 4h | most complex piece |
+| P2.4.4 Step 4: Release details (changelog / should_force_update / availability / provenance) | ✅ DONE | 2h | |
+| P2.4.5 Step 5: Review + push | ✅ DONE | 1h | wire to /api/builds + /api/builds/:id/assets |
+| P2.4.6 Backend: `POST /api/builds` (insert builds + build_assets) | ✅ DONE | 3h | replaces /api/parse-apk + /api/apps/:id/upload |
 | P2.4.7 Backend: parse container with parser_kind dispatch (apk-aapt / electron-asar / rn-bundle) | 🔵 TODO | 4h | container currently only knows apk-aapt |
 
 ### P2.5 — Builds tab + Releases tab + Prepare release modal
 
 | Task | Status | Estimate | Notes |
 |---|---|---|---|
-| P2.5.1 Builds tab (table view, status badge, Prepare release button) | 🔵 TODO | 3h | |
-| P2.5.2 Releases tab (table view, scope column, status, actions) | 🔵 TODO | 3h | |
-| P2.5.3 Prepare release modal (validation checks + scope radio + cohort slider) | 🔵 TODO | 3h | ToDesktop's validation checks inspiration |
-| P2.5.4 Backend: `POST /api/releases` (promote build → release with scope) | 🔵 TODO | 3h | with scope resolution logic |
-| P2.5.5 Backend: `POST /api/releases/:id/rollback` | 🔵 TODO | 2h | creates new release pointing to older build |
-| P2.5.6 Backend: `POST /api/releases/:id/bump-rollout` | 🔵 TODO | 1h | increments `rollout_cohort_count` |
-| P2.5.7 Backend: `POST /api/releases/:id/force-update` toggle | 🔵 TODO | 1h | flips `should_force_update` |
+| P2.5.1 Builds tab (table view, status badge, Prepare release button) | ✅ DONE | 3h | |
+| P2.5.2 Releases tab (table view, scope column, status, actions) | ✅ DONE | 3h | |
+| P2.5.3 Prepare release modal (validation checks + scope radio + cohort slider) | ✅ DONE | 3h | ToDesktop's validation checks inspiration |
+| P2.5.4 Backend: `POST /api/releases` (promote build → release with scope) | ✅ DONE | 3h | with scope resolution logic |
+| P2.5.5 Backend: `POST /api/releases/:id/rollback` | ✅ DONE | 2h | creates new release pointing to older build |
+| P2.5.6 Backend: `POST /api/releases/:id/bump-rollout` | ✅ DONE | 1h | increments `rollout_cohort_count` |
+| P2.5.7 Backend: `POST /api/releases/:id/force-update` toggle | ✅ DONE | 1h | flips `should_force_update` |
 | P2.5.8 Backend: webhook dispatch on release lifecycle events | 🔵 TODO | 3h | webhooks table + delivery worker |
 
 ### Phase 2 total: ~50 hours work
@@ -295,7 +295,7 @@ Depends on: existing Login with Raft migration `0004_raft_auth.sql`.
 | P5.4.3 Invites tab: pending invites table + resend/revoke + create-invite modal | ✅ DONE | 4h | Wired commit `ea6434e`: listOrgInvites + createOrgInvite (modal w/ email/role/message, copies invite_url to clipboard) + resendOrgInvite + revokeOrgInvite |
 | P5.4.4 AppDetail: new "Access" tab (app_members + invite-to-app) | ✅ DONE | 1 day | Wired commit `2b02881`: listAppMembers + addAppMember (admin only, picks from org_members not already on app) + updateAppMember + removeAppMember (admin only, excludes self) |
 | P5.4.5 `admin/src/pages/AcceptInvite.tsx` (public magic link landing) | ✅ DONE | 4h | Wired commit `2b02881`: GET /api/invites/:token (public) + POST /api/invites/:token/accept (auth required). Status badges (expired/accepted/revoked) + sign-in-or-accept buttons. |
-| P5.4.6 Top-bar org switcher dropdown | 🟡 IN_PROGRESS | 4h | Header 'Org' link now shows role chip (owner=purple, admin=blue) + title with role. Multi-org list endpoint pending #14. (commit `57ed0e6`) |
+| P5.4.6 Top-bar org switcher dropdown | ✅ DONE | 4h | OrgSwitcher dropdown (commit `a19da43`): opens when user is in 2+ orgs, lists orgs from listOrgs(), highlights current org, click-outside closes, v1 single-org still navigates directly |
 | P5.4.7 Router: add `/orgs/:orgId` and `/invites/:token` routes | ✅ DONE | 2h | Both top-level (cross-cutting). commit `5eb1a1c` |
 | P5.4.8 Top-bar agent badge for principal_type='agent' | ✅ DONE | 10min | commit `5eb1a1c` |
 | P5.4.9 "Manage access →" link in AppDetail header | ✅ DONE | 5min | commit `62d6c9b` |
@@ -339,22 +339,38 @@ Depends on: existing Login with Raft migration `0004_raft_auth.sql`.
 
 | Phase | DONE | IN_PROGRESS | TODO | Total | ETA |
 |---|---|---|---|---|---|
-| Phase 1 | 24 | 1 (this doc) | 0 | 25 | ✅ COMPLETE |
-| Phase 2 (P2.1 + P2.2) | 13 | 0 | 24 | 37 | ~50 hours remaining |
-| Phase 3 | 0 | 0 | 14 | 14 | ~3 weeks |
-| Phase 4 | 0 | 0 | 7 | 7 | ~6 weeks (deferred) |
-| Phase 5 | 12 | 0 | 16 | 28 | ~13 days (~2.5 weeks) |
-| Cross-cutting | 5 | 1 | 0 | 6 | ongoing |
-| **Total** | **54** | **1** | **62** | **117** | |
+| Phase 1 | 26 | 0 | 0 | 26 | ✅ COMPLETE |
+| Phase 2 (P2.1 + P2.2) | 13 | 0 | 1 | 14 | mostly done |
+| Phase 2 (P2.3) | 5 | 1 | 0 | 6 | mostly done (AppsList product_types filter IN_PROGRESS) |
+| Phase 2 (P2.4) | 6 | 0 | 1 | 7 | mostly done (P2.4.7 parser_kind dispatch TODO) |
+| Phase 2 (P2.5) | 7 | 0 | 1 | 8 | mostly done (P2.5.8 webhook dispatch TODO) |
+| Phase 3 (P3.1) | 0 | 0 | 3 | 3 | schema additions for OTA/Electron |
+| Phase 3 (P3.2) | 0 | 0 | 4 | 4 | container parser dispatch |
+| Phase 3 (P3.3) | 0 | 0 | 4 | 4 | public API scope resolution + bundles endpoint |
+| Phase 3 (P3.4) | 0 | 0 | 8 | 8 | CLI npm package |
+| Phase 4 (P4.1) | 0 | 0 | 3 | 3 | smoke test infrastructure (deferred) |
+| Phase 4 (P4.2) | 0 | 0 | 5 | 5 | signing infrastructure (deferred) |
+| Phase 5 (P5.2) | 0 | 0 | 4 | 4 | per-route RBAC middleware (mostly done by expert) |
+| Phase 5 (P5.3) | 0 | 0 | 9 | 9 | org mgmt APIs (mostly done by expert) |
+| Phase 5 (P5.4) | 9 | 1 | 0 | 10 | ✅ mostly done (IN_PROGRESS: top-bar org switcher) |
+| Phase 5 (P5.5) | 0 | 0 | 2 | 2 | agent perms + audit |
+| Phase 5 (P5.6) | 0 | 0 | 5 | 5 | tests + docs |
+| Cross-cutting | 5 | 1 | 0 | 6 | ongoing (X.2.4 in_progress) |
+| **Total** | **71** | **3** | **47** | **121** | |
 
-Last sync: 2026-06-28 04:35 UTC
+Last sync: 2026-06-28 12:35 UTC
 
-**Phase 2.1 + P2.2 complete** (commits `c6322ab`): 5 new tables created on remote D1, product_types / release_types / default channels seeded for the 1 existing app, 1 legacy versions row backfilled into builds + build_assets + releases + release_scopes. Builds table now has parity with versions on `should_force_update` / `availability_at` / `provenance_json`.
+**Key shipped** (cumulative across all agents):
+- Phase 1 ✅ (P1.1–P1.4 all DONE): schema + admin scaffold + channels + versions + channel CRUD.
+- Phase 2 ✅ (P2.1–P2.5 mostly DONE): new publish tables on remote D1, App wizard 3-step, UploadDialog 4-step, Builds/Releases tabs with prepare-release modal, full scope resolution (full/platform/ip_range), transactional supersede, audit log.
+- Phase 5 ✅ (P5.4 DONE): OrgSettings Members/Invites/Audit tabs all wired to real endpoints, AppAccess members + invite-to-app, AcceptInvite public flow, top-bar Org link + agent badge.
+- P5.0 + P5.2 + P5.3 (by expert, commits `b9cfc7a` `eba8f5d`): login org bootstrap, RBAC middleware, org mgmt APIs.
+- P2.4.6 + P2.5.4-7 (by expert, commit `2c77b97`): builds + build_assets CRUD + legacy /versions compat + releases endpoints.
 
-**Phase 5 frontend complete** (commits `b9cfc7a` expert + `5eb1a1c` + `62d6c9b` mine):
-- Expert delivered P5.1 schema + backfill + login org_member upsert (commit `b9cfc7a`).
-- /api/auth/me returns org_id + org_role; `GET/POST /api/apps` scoped to current org.
-- OrgSettings.tsx General tab wired to /me.
-- AppAccess.tsx page scaffold for per-app member management.
-- AcceptInvite.tsx public magic-link landing.
-- Top-bar "Org" nav + agent badge. /orgs/:orgId + /invites/:token + /apps/:appId/access routes wired.
+**Remaining** (47 TODO):
+- Phase 3: container parsers (electron-asar / rn-bundle) + public API bundles endpoint + scope resolution (when scope resolution logic lands, client reads need to pass platform/cohort) + CLI npm package.
+- Phase 4 (deferred): smoke test VMs + code signing.
+- Phase 5 (mostly done by expert): agent permissions + audit + tests+docs.
+- Misc: AppsList product_types filter, P2.4.7 parser dispatch, P2.5.8 webhook dispatch, P2.2.8 deprecate versions table, multi-org switcher dropdown UI.
+
+
