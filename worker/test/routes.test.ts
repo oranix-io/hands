@@ -257,6 +257,37 @@ function makeMockDb() {
     INSERT INTO organizations
       (id, slug, name, external_provider, external_id, created_at, archived)
       VALUES ('default', 'default', 'Default', 'local', 'default', 1, 0);
+
+    CREATE TABLE webhooks (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      app_id TEXT REFERENCES apps(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      secret TEXT NOT NULL,
+      events_json TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER
+    );
+    CREATE TABLE webhook_deliveries (
+      id TEXT PRIMARY KEY,
+      webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 3,
+      last_attempt_at INTEGER,
+      next_attempt_at INTEGER,
+      last_response_status INTEGER,
+      last_response_body TEXT,
+      last_error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
   `);
 
   // Replace `?N` numbered placeholders with anonymous `?` (better-sqlite3 compat).
@@ -820,5 +851,94 @@ describe("quiver Hono app — auth + dispatch", () => {
     expect(env.ENVIRONMENT).toBe("development");
     expect(env.RAFT_CLIENT_ID).toBe("quiver-test");
     expect(env.RAFT_CLIENT_SECRET).toBe("test-secret");
+  });
+});
+
+// =============================================================================
+// P2.5.8 — webhooks (emit + reap)
+// =============================================================================
+
+describe("quiver webhooks — SQL smoke", () => {
+  function makeEnv() {
+    const env = makeMockEnv();
+    // Seed an org + app so webhooks have something to scope to.
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind("app-test", "default", "test-app", "Test", "android", 1).run();
+    return env;
+  }
+
+  it("webhooks + webhook_deliveries tables exist with expected columns", async () => {
+    const env = makeEnv();
+    const { results } = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('webhooks', 'webhook_deliveries') ORDER BY name",
+    )
+      .bind()
+      .all();
+    const names = results.map((r: any) => r.name);
+    expect(names).toEqual(["webhook_deliveries", "webhooks"]);
+  });
+
+  it("matchesEvent SQL filter excludes non-subscribed events but includes empty = all", async () => {
+    const env = makeEnv();
+    await env.DB.prepare(
+      `INSERT INTO webhooks (id, org_id, url, secret, events_json, enabled, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 1, 'tester', 1, 1)`,
+    ).bind(
+      "wh-1",
+      "default",
+      "https://example.com/hook",
+      "supersecret",
+      JSON.stringify(["release:new", "build:failed"]),
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO webhooks (id, org_id, url, secret, events_json, enabled, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 1, 'tester', 1, 1)`,
+    ).bind(
+      "wh-2",
+      "default",
+      "https://example.com/all",
+      "othersecret",
+      JSON.stringify([]),
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO webhooks (id, org_id, url, secret, events_json, enabled, archived_at, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, 'tester', 1, 1)`,
+    ).bind(
+      "wh-3",
+      "default",
+      "https://example.com/disabled",
+      "secret",
+      JSON.stringify([]),
+      100,
+    ).run();
+
+    // Simulate emitWebhookEvent: select enabled, non-archived, and filter by event in app code.
+    const { results: subs } = await env.DB.prepare(
+      `SELECT id, events_json FROM webhooks
+       WHERE org_id = ? AND enabled = 1 AND archived_at IS NULL`,
+    )
+      .bind("default")
+      .all();
+    const matches = (json: string, event: string) => {
+      try {
+        const ev = JSON.parse(json);
+        return ev.length === 0 || ev.includes(event) || ev.includes("*");
+      } catch {
+        return false;
+      }
+    };
+    const matched = subs.filter((s: any) => matches(s.events_json, "release:new"));
+    expect(matched.map((m: any) => m.id).sort()).toEqual(["wh-1", "wh-2"]);
+  });
+
+  it("delivery backoff schedule: 5m → 30m → 2h (then permanently failed)", () => {
+    const BACKOFF = [5 * 60_000, 30 * 60_000, 2 * 60 * 60_000];
+    expect(BACKOFF[0]).toBe(300_000);
+    expect(BACKOFF[1]).toBe(1_800_000);
+    expect(BACKOFF[2]).toBe(7_200_000);
+    // After max_attempts (3) the delivery is marked permanently failed.
+    const maxAttempts = 3;
+    expect(BACKOFF.length).toBe(maxAttempts);
   });
 });

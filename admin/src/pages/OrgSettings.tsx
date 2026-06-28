@@ -25,11 +25,20 @@ import {
   resendOrgInvite,
   revokeOrgInvite,
   updateOrgMember,
+  createOrgWebhook,
+  deleteOrgWebhook,
+  listOrgWebhooks,
+  listWebhookDeliveries,
+  updateOrgWebhook,
+  WEBHOOK_EVENT_TYPES,
   type OrgMember,
+  type Webhook,
+  type WebhookDelivery,
+  type WebhookEventType,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 
-type Tab = "general" | "members" | "invites" | "audit";
+type Tab = "general" | "members" | "invites" | "audit" | "webhooks";
 
 export function OrgSettings({ orgId }: { orgId: string }) {
   const [tab, setTab] = useState<Tab>("general");
@@ -62,7 +71,7 @@ export function OrgSettings({ orgId }: { orgId: string }) {
       )}
 
       <div className="flex gap-2 mb-4 border-b border-slate-200">
-        {(["general", "members", "invites", "audit"] as Tab[]).map((t) => (
+        {(["general", "members", "invites", "audit", "webhooks"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -78,7 +87,9 @@ export function OrgSettings({ orgId }: { orgId: string }) {
                 ? "Members"
                 : t === "invites"
                   ? "Invites"
-                  : "Audit"}
+                  : t === "audit"
+                    ? "Audit"
+                    : "Webhooks"}
           </button>
         ))}
       </div>
@@ -135,6 +146,10 @@ export function OrgSettings({ orgId }: { orgId: string }) {
 
       {tab === "audit" && (
         <AuditTab orgId={orgId} canView={isOwnerOrAdmin || currentRole === "member"} />
+      )}
+
+      {tab === "webhooks" && (
+        <WebhooksTab orgId={orgId} canManage={isOwnerOrAdmin} />
       )}
     </div>
   );
@@ -721,6 +736,424 @@ function Row({
         style={{ color }}
       >
         {v}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Webhooks tab (P2.5.8)
+// ============================================================================
+
+function WebhooksTab({
+  orgId,
+  canManage,
+}: {
+  orgId: string;
+  canManage: boolean;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [showCreate, setShowCreate] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const webhooks = useQuery({
+    queryKey: ["org-webhooks", orgId],
+    queryFn: () => listOrgWebhooks(orgId),
+    enabled: canManage,
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteOrgWebhook(orgId, id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-webhooks", orgId] });
+      toast.show({ kind: "success", title: "Webhook archived" });
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Delete failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  const toggle = useMutation({
+    mutationFn: (input: { id: string; enabled: boolean }) =>
+      updateOrgWebhook(orgId, input.id, { enabled: input.enabled }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["org-webhooks", orgId] }),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="card !p-4 text-sm">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-base font-semibold">Webhooks</h3>
+            <p className="text-xs text-slate-500">
+              Subscribe external HTTP endpoints to release and build events.
+              Deliveries are signed with HMAC SHA-256
+              (<code className="font-mono">X-Quiver-Signature</code>).
+            </p>
+          </div>
+          {canManage && (
+            <button
+              className="btn-primary text-xs"
+              onClick={() => setShowCreate(true)}
+            >
+              + Add webhook
+            </button>
+          )}
+        </div>
+
+        {!canManage && (
+          <p className="text-xs text-yellow-700 mb-2">
+            ⚠ Org owner / admin required to manage webhooks.
+          </p>
+        )}
+
+        {webhooks.isLoading && <p className="text-slate-500">Loading…</p>}
+        {webhooks.error && (
+          <p className="text-red-600 text-xs">
+            Failed: {(webhooks.error as Error).message}
+          </p>
+        )}
+        {webhooks.data && webhooks.data.webhooks.length === 0 && (
+          <p className="text-slate-500 text-sm">No webhooks configured yet.</p>
+        )}
+
+        {webhooks.data && webhooks.data.webhooks.length > 0 && (
+          <div className="space-y-2">
+            {webhooks.data.webhooks.map((w) => (
+              <WebhookRow
+                key={w.id}
+                orgId={orgId}
+                webhook={w}
+                expanded={expandedId === w.id}
+                onToggleExpand={() =>
+                  setExpandedId((cur) => (cur === w.id ? null : w.id))
+                }
+                onToggleEnabled={(enabled) =>
+                  toggle.mutate({ id: w.id, enabled })
+                }
+                onDelete={() => {
+                  if (confirm(`Archive webhook ${w.url}?`)) remove.mutate(w.id);
+                }}
+                canManage={canManage}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card !p-4 text-xs text-slate-600">
+        <h4 className="font-semibold mb-1">Delivery semantics</h4>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            Worker Cron Trigger (<code className="font-mono">*/5 * * * *</code>)
+            reaps pending deliveries every 5 minutes.
+          </li>
+          <li>
+            Retries use exponential backoff: 5m → 30m → 2h (3 attempts max),
+            then marked permanently <code className="font-mono">failed</code>.
+          </li>
+          <li>
+            Receiver must verify
+            <code className="font-mono"> X-Quiver-Signature: sha256=&lt;hmac&gt;</code>
+            using the webhook&apos;s secret.
+          </li>
+        </ul>
+      </div>
+
+      {showCreate && (
+        <CreateWebhookDialog
+          orgId={orgId}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false);
+            qc.invalidateQueries({ queryKey: ["org-webhooks", orgId] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function WebhookRow({
+  orgId,
+  webhook,
+  expanded,
+  onToggleExpand,
+  onToggleEnabled,
+  onDelete,
+  canManage,
+}: {
+  orgId: string;
+  webhook: Webhook;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
+  onDelete: () => void;
+  canManage: boolean;
+}) {
+  let events: string[] = [];
+  try {
+    events = JSON.parse(webhook.events_json);
+  } catch {
+    events = [];
+  }
+  const deliveries = useQuery({
+    queryKey: ["webhook-deliveries", orgId, webhook.id],
+    queryFn: () => listWebhookDeliveries(orgId, webhook.id),
+    enabled: expanded,
+  });
+  return (
+    <div className="border border-slate-200 rounded p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={
+                webhook.enabled === 1
+                  ? "badge-green text-xs"
+                  : "badge-gray text-xs"
+              }
+            >
+              {webhook.enabled === 1 ? "enabled" : "disabled"}
+            </span>
+            <span className="font-mono text-xs truncate">{webhook.url}</span>
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            events:{" "}
+            {events.length === 0 ? (
+              <span className="italic">(all)</span>
+            ) : (
+              events.map((e) => (
+                <span key={e} className="badge-blue text-xs mr-1">
+                  {e}
+                </span>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {canManage && (
+            <button
+              className="btn-secondary text-xs"
+              onClick={() => onToggleEnabled(webhook.enabled !== 1)}
+              disabled={!onToggleEnabled}
+            >
+              {webhook.enabled === 1 ? "Disable" : "Enable"}
+            </button>
+          )}
+          <button
+            className="btn-secondary text-xs"
+            onClick={onToggleExpand}
+          >
+            {expanded ? "Hide" : "Deliveries"}
+          </button>
+          {canManage && (
+            <button className="btn-secondary text-xs" onClick={onDelete}>
+              Archive
+            </button>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          {deliveries.isLoading && (
+            <p className="text-xs text-slate-500">Loading deliveries…</p>
+          )}
+          {deliveries.error && (
+            <p className="text-red-600 text-xs">
+              Failed: {(deliveries.error as Error).message}
+            </p>
+          )}
+          {deliveries.data && deliveries.data.deliveries.length === 0 && (
+            <p className="text-xs text-slate-500">No deliveries yet.</p>
+          )}
+          {deliveries.data && deliveries.data.deliveries.length > 0 && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-slate-500 text-left border-b border-slate-100">
+                  <th className="font-normal py-1 pr-2">When</th>
+                  <th className="font-normal py-1 pr-2">Event</th>
+                  <th className="font-normal py-1 pr-2">Status</th>
+                  <th className="font-normal py-1 pr-2">Attempts</th>
+                  <th className="font-normal py-1 pr-2">HTTP</th>
+                  <th className="font-normal py-1 pr-2">Next / error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveries.data.deliveries.map((d: WebhookDelivery) => (
+                  <tr
+                    key={d.id}
+                    className="border-b border-slate-50 hover:bg-slate-50"
+                  >
+                    <td className="py-1 pr-2 font-mono text-slate-500">
+                      {new Date(d.created_at).toISOString().slice(0, 19)}Z
+                    </td>
+                    <td className="py-1 pr-2 font-mono">{d.event_type}</td>
+                    <td className="py-1 pr-2">
+                      <span
+                        className={
+                          d.status === "succeeded"
+                            ? "badge-green text-xs"
+                            : d.status === "failed"
+                              ? "badge-red text-xs"
+                              : "badge-blue text-xs"
+                        }
+                      >
+                        {d.status}
+                      </span>
+                    </td>
+                    <td className="py-1 pr-2 font-mono">
+                      {d.attempts}/{d.max_attempts}
+                    </td>
+                    <td className="py-1 pr-2 font-mono">
+                      {d.last_response_status ?? "—"}
+                    </td>
+                    <td className="py-1 pr-2 font-mono text-slate-500 truncate max-w-xs">
+                      {d.last_error
+                        ? d.last_error
+                        : d.next_attempt_at
+                          ? `next ${new Date(d.next_attempt_at).toISOString().slice(11, 19)}Z`
+                          : d.completed_at
+                            ? `done ${new Date(d.completed_at).toISOString().slice(11, 19)}Z`
+                            : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateWebhookDialog({
+  orgId,
+  onClose,
+  onCreated,
+}: {
+  orgId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const [url, setUrl] = useState("");
+  const [secret, setSecret] = useState("");
+  const [events, setEvents] = useState<WebhookEventType[]>([]);
+
+  const create = useMutation({
+    mutationFn: () =>
+      createOrgWebhook(orgId, {
+        url: url.trim(),
+        secret: secret.trim(),
+        events,
+      }),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: "Webhook created" });
+      onCreated();
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Create failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  const toggleEvent = (ev: WebhookEventType) => {
+    setEvents((cur) =>
+      cur.includes(ev) ? cur.filter((e) => e !== ev) : [...cur, ev],
+    );
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="card max-w-lg w-full relative">
+        <h2 className="text-lg font-bold mb-4">Add webhook</h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+          className="space-y-3"
+        >
+          <div>
+            <label className="label">URL</label>
+            <input
+              type="url"
+              className="input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/hooks/quiver"
+              required
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="label">Secret (HMAC)</label>
+            <input
+              type="text"
+              className="input font-mono text-xs"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="at-least-16-random-bytes"
+              required
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Used to sign deliveries via{" "}
+              <code className="font-mono">X-Quiver-Signature</code>. Choose a
+              strong secret; receivers must verify the signature.
+            </p>
+          </div>
+          <div>
+            <label className="label">Events (empty = all)</label>
+            <div className="grid grid-cols-2 gap-1">
+              {WEBHOOK_EVENT_TYPES.map((ev) => (
+                <label
+                  key={ev}
+                  className="flex items-center gap-2 text-xs cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={events.includes(ev)}
+                    onChange={() => toggleEvent(ev)}
+                  />
+                  <span className="font-mono">{ev}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={
+                create.isPending || !url.trim() || secret.trim().length < 8
+              }
+            >
+              {create.isPending ? "Creating…" : "Create webhook"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

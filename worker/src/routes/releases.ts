@@ -1,5 +1,8 @@
 import type { Context } from "hono";
-import { currentActor } from "../middleware/auth";
+import { currentActor, type AdminEnv } from "../middleware/auth";
+import { emitWebhookEvent } from "./webhooks";
+
+type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 import { getBuildForApp } from "./builds";
 
 type ReleaseScopeInput = {
@@ -252,18 +255,30 @@ export async function handleGetRelease(c: Context<{ Bindings: Env }>) {
   return c.json({ release, build, assets, scopes });
 }
 
-export async function handleCreateRelease(c: Context<{ Bindings: Env }>) {
+export async function handleCreateRelease(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const body = (await c.req.json()) as ReleaseInput;
   try {
     const id = await createRelease(c.env.DB, appId, body, currentActor(c));
+    // Emit webhook event (P2.5.8). Best-effort; failures must not block the API response.
+    const orgId = c.get("org_id");
+    if (orgId) {
+      c.executionCtx?.waitUntil(
+        emitWebhookEvent(c.env.DB, {
+          orgId,
+          appId,
+          event: "release:new",
+          body: { release_id: id, app_id: appId, build_id: body.build_id, channel_id: body.channel_id },
+        }),
+      );
+    }
     return c.json({ id, app_id: appId, status: "active", ...body }, 201);
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);
   }
 }
 
-export async function handleRollbackRelease(c: Context<{ Bindings: Env }>) {
+export async function handleRollbackRelease(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const releaseId = c.req.param("releaseId") ?? "";
   const body = (await c.req.json().catch(() => ({}))) as Partial<ReleaseInput>;
@@ -299,13 +314,24 @@ export async function handleRollbackRelease(c: Context<{ Bindings: Env }>) {
       new_release_id: id,
       build_id: buildId,
     });
+    const orgId = c.get("org_id");
+    if (orgId) {
+      c.executionCtx?.waitUntil(
+        emitWebhookEvent(c.env.DB, {
+          orgId,
+          appId,
+          event: "release:rolled_back",
+          body: { release_id: id, app_id: appId, rolled_back_from: releaseId, build_id: buildId },
+        }),
+      );
+    }
     return c.json({ id, app_id: appId, build_id: buildId, rolled_back_from: releaseId }, 201);
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);
   }
 }
 
-export async function handleBumpRollout(c: Context<{ Bindings: Env }>) {
+export async function handleBumpRollout(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const releaseId = c.req.param("releaseId") ?? "";
   const body = (await c.req.json().catch(() => ({}))) as {
@@ -336,7 +362,7 @@ export async function handleBumpRollout(c: Context<{ Bindings: Env }>) {
   return c.json({ ok: true, rollout_cohort_count: next });
 }
 
-export async function handleForceUpdate(c: Context<{ Bindings: Env }>) {
+export async function handleForceUpdate(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const releaseId = c.req.param("releaseId") ?? "";
   const body = (await c.req.json().catch(() => ({}))) as {

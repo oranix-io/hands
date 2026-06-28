@@ -1,5 +1,8 @@
 import type { Context } from "hono";
-import { currentActor } from "../middleware/auth";
+import { currentActor, type AdminEnv } from "../middleware/auth";
+import { emitWebhookEvent } from "./webhooks";
+
+type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -258,18 +261,30 @@ export async function handleGetBuild(c: Context<{ Bindings: Env }>) {
   return c.json(row);
 }
 
-export async function handleCreateBuild(c: Context<{ Bindings: Env }>) {
+export async function handleCreateBuild(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const body = (await c.req.json()) as BuildInput;
   try {
     const id = await createBuild(c.env.DB, appId, body, currentActor(c));
+    // Emit webhook event (P2.5.8). Best-effort.
+    const orgId = c.get("org_id");
+    if (orgId && (body.status === "succeeded" || body.status === "failed")) {
+      c.executionCtx?.waitUntil(
+        emitWebhookEvent(c.env.DB, {
+          orgId,
+          appId,
+          event: body.status === "succeeded" ? "build:succeeded" : "build:failed",
+          body: { build_id: id, app_id: appId, version_name: body.version_name, version_code: body.version_code },
+        }),
+      );
+    }
     return c.json({ id, app_id: appId, ...body }, 201);
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);
   }
 }
 
-export async function handleUpdateBuild(c: Context<{ Bindings: Env }>) {
+export async function handleUpdateBuild(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const buildId = c.req.param("buildId") ?? "";
   const body = (await c.req.json()) as {
@@ -317,6 +332,20 @@ export async function handleUpdateBuild(c: Context<{ Bindings: Env }>) {
     .bind(...binds)
     .run();
   await insertAuditLog(c.env.DB, appId, "build.update", currentActor(c), { buildId, ...body });
+  // Emit webhook event (P2.5.8) when status transitions to terminal.
+  if (body.status === "succeeded" || body.status === "failed") {
+    const orgId = c.get("org_id");
+    if (orgId) {
+      c.executionCtx?.waitUntil(
+        emitWebhookEvent(c.env.DB, {
+          orgId,
+          appId,
+          event: body.status === "succeeded" ? "build:succeeded" : "build:failed",
+          body: { build_id: buildId, app_id: appId, status: body.status },
+        }),
+      );
+    }
+  }
   return c.json({ ok: true });
 }
 

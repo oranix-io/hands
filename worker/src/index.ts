@@ -67,6 +67,14 @@ import { handleListChannels, handleCreateChannel, handleUpdateChannel, handleDel
 import { handleListProductTypes, handleCreateProductType, handleUpdateProductType, handleDeleteProductType } from "./routes/product_types";
 import { handleListReleaseTypes, handleCreateReleaseType, handleUpdateReleaseType, handleDeleteReleaseType } from "./routes/release_types";
 import { handleListAuditLogs } from "./routes/audit";
+import {
+  handleCreateWebhook,
+  handleDeleteWebhook,
+  handleListDeliveries,
+  handleListWebhooks,
+  handleReapDeliveries,
+  handleUpdateWebhook,
+} from "./routes/webhooks";
 import { handleHealth } from "./routes/health";
 import {
   handleAcceptInvite,
@@ -319,6 +327,16 @@ admin.post("/api/orgs/:orgId/invites/:inviteId/resend", requireOrgRole("orgId", 
 admin.delete("/api/orgs/:orgId/invites/:inviteId", requireOrgRole("orgId", "admin"), handleRevokeOrgInvite);
 admin.get("/api/orgs/:orgId/audit-logs", requireOrgRole("orgId", "member"), handleListOrgAuditLogs);
 
+// Webhooks (P2.5.8)
+admin.get("/api/orgs/:orgId/webhooks", requireOrgRole("orgId", "admin"), handleListWebhooks);
+admin.post("/api/orgs/:orgId/webhooks", requireOrgRole("orgId", "admin"), handleCreateWebhook);
+admin.patch("/api/orgs/:orgId/webhooks/:webhookId", requireOrgRole("orgId", "admin"), handleUpdateWebhook);
+admin.delete("/api/orgs/:orgId/webhooks/:webhookId", requireOrgRole("orgId", "admin"), handleDeleteWebhook);
+admin.get("/api/orgs/:orgId/webhooks/:webhookId/deliveries", requireOrgRole("orgId", "admin"), handleListDeliveries);
+
+// Scheduled reaper (no auth — Worker Cron Trigger schedules `scheduled()` in exports)
+// app.get("/api/webhook-reaper", handleReapDeliveries);  // removed; use scheduled() instead
+
 admin.post("/api/invites/:token/accept", handleAcceptInvite);
 
 admin.get("/api/apps", requireCurrentOrgRole("viewer"), handleListApps);
@@ -485,5 +503,32 @@ admin.patch("/api/apps/:appId/members/:accountId", requireAppRole("admin"), hand
 admin.delete("/api/apps/:appId/members/:accountId", requireAppRole("admin"), handleRemoveAppMember);
 
 app.route("/", admin);
+
+// ============================================================================
+// Scheduled handler — Worker Cron Trigger (every 5 min)
+// Reaps pending webhook deliveries and POSTs them to subscriber URLs.
+// ============================================================================
+
+export interface ScheduledController {
+  scheduledTime: number;
+  cron: string;
+}
+
+export async function scheduled(
+  _controller: ScheduledController,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<void> {
+  // Build a minimal Hono context for the reaper handler.
+  const fakeC = {
+    env,
+    req: { param: () => ({}) },
+    json: (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+      status,
+      headers: { "content-type": "application/json" },
+    }),
+  } as unknown as Parameters<typeof handleReapDeliveries>[0];
+  ctx.waitUntil(handleReapDeliveries(fakeC));
+}
 
 export default app;

@@ -790,3 +790,89 @@ export const forceUpdate = (
     `/api/apps/${appId}/releases/${releaseId}/force-update`,
     { method: "POST", admin: true, body: JSON.stringify(input ?? {}) },
   );
+
+// =============================================================================
+// Webhooks (P2.5.8)
+// =============================================================================
+
+export type WebhookEventType =
+  | "release:new"
+  | "release:superseded"
+  | "release:rolled_back"
+  | "release:cancelled"
+  | "build:succeeded"
+  | "build:failed";
+
+export const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
+  "release:new",
+  "release:superseded",
+  "release:rolled_back",
+  "release:cancelled",
+  "build:succeeded",
+  "build:failed",
+];
+
+export interface Webhook {
+  id: string;
+  org_id: string;
+  app_id: string | null;
+  url: string;
+  secret_set: boolean;
+  events_json: string;
+  enabled: number;
+  created_at: number;
+  updated_at: number;
+  archived_at: number | null;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event_type: string;
+  status: "pending" | "succeeded" | "failed";
+  attempts: number;
+  max_attempts: number;
+  last_attempt_at: number | null;
+  next_attempt_at: number | null;
+  last_response_status: number | null;
+  last_response_body: string | null;
+  last_error: string | null;
+  created_at: number;
+  completed_at: number | null;
+}
+
+export const listOrgWebhooks = (orgId: string) =>
+  request<{ webhooks: Webhook[] }>(`/api/orgs/${orgId}/webhooks`, { admin: true });
+
+export const createOrgWebhook = (
+  orgId: string,
+  input: { url: string; secret: string; events: WebhookEventType[]; app_id?: string | null },
+) =>
+  request<Webhook>(`/api/orgs/${orgId}/webhooks`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify(input),
+  });
+
+export const updateOrgWebhook = (
+  orgId: string,
+  webhookId: string,
+  input: { url?: string; events?: WebhookEventType[]; enabled?: boolean },
+) =>
+  request<{ ok: true }>(`/api/orgs/${orgId}/webhooks/${webhookId}`, {
+    method: "PATCH",
+    admin: true,
+    body: JSON.stringify(input),
+  });
+
+export const deleteOrgWebhook = (orgId: string, webhookId: string) =>
+  request<{ ok: true }>(`/api/orgs/${orgId}/webhooks/${webhookId}`, {
+    method: "DELETE",
+    admin: true,
+  });
+
+export const listWebhookDeliveries = (orgId: string, webhookId: string) =>
+  request<{ deliveries: WebhookDelivery[] }>(
+    `/api/orgs/${orgId}/webhooks/${webhookId}/deliveries`,
+    { admin: true },
+  );

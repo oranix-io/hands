@@ -6,7 +6,7 @@ export type AppRole = "admin" | "publisher" | "viewer";
 export type EffectiveRole = OrgRole | AppRole;
 
 type RoleContext = AdminEnv & { Bindings: Env };
-type AdminContext = Context<RoleContext>;
+export type AdminContext = Context<RoleContext>;
 
 const orgRank: Record<OrgRole, number> = {
   viewer: 1,
