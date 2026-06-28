@@ -5,7 +5,7 @@
  * endpoints. Shows: status badge, scope visualization, action buttons.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   bumpRollout,
@@ -24,6 +24,9 @@ import {
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { ReleaseAssetsPanel } from "../components/ReleaseAssetsPanel";
+import { ReleaseAssetUploader } from "../components/ReleaseAssetUploader";
+import { createBuildAsset, uploadApk } from "../lib/api";
+import type { PendingFile } from "../lib/releaseFileDetect";
 
 export function Releases({ appId }: { appId: string }) {
   const qc = useQueryClient();
@@ -453,6 +456,11 @@ function NewReleaseDialog({
       .sort((a, b) => a.slug.localeCompare(b.slug))[0]?.slug ??
     "";
 
+  // ---------------- 4-step wizard state ----------------
+  type Step = 1 | 2 | 3 | 4;
+  const STEP_LABELS = ["Target", "Version", "Assets", "Review"] as const;
+  const [step, setStep] = useState<Step>(1);
+
   const [channelSlug, setChannelSlug] = useState<string>("");
   const [productType, setProductType] = useState<string>("");
   const [releaseType, setReleaseType] = useState<string>("");
@@ -463,8 +471,13 @@ function NewReleaseDialog({
     "full",
   );
   const [scopeValue, setScopeValue] = useState<string>("all");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [shouldForceUpdate, setShouldForceUpdate] = useState(false);
+  const [rolloutPercent, setRolloutPercent] = useState(100);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const createdReleaseIdRef = useRef<string | null>(null);
 
-  // Pre-fill channel from app default once channels are loaded.
+  // Pre-fill channel + product_type from app defaults once data is loaded.
   const [channelInit, setChannelInit] = useState(false);
   useEffect(() => {
     if (channelInit) return;
@@ -474,31 +487,56 @@ function NewReleaseDialog({
     }
   }, [channels.data, defaultChannelSlug, channelInit]);
 
-  const create = useMutation({
+  const [ptInit, setPtInit] = useState(false);
+  useEffect(() => {
+    if (ptInit) return;
+    if (productTypes.data && productTypes.data.product_types.length > 0) {
+      setProductType(productTypes.data.product_types[0]!.name);
+      setPtInit(true);
+    }
+  }, [productTypes.data, ptInit]);
+
+  const [rtInit, setRtInit] = useState(false);
+  useEffect(() => {
+    if (rtInit) return;
+    if (releaseTypes.data && releaseTypes.data.release_types.length > 0) {
+      setReleaseType(releaseTypes.data.release_types[0]!.name);
+      setRtInit(true);
+    }
+  }, [releaseTypes.data, rtInit]);
+
+  // ---------------- validation ----------------
+  const step1Valid =
+    !!channelSlug && !!productType && !!releaseType;
+  const step2Valid =
+    versionName.trim().length > 0 &&
+    Number.isFinite(Number(versionCode)) &&
+    Number(versionCode) > 0 &&
+    (scopeType === "full" || scopeValue.trim().length > 0);
+
+  // ---------------- submit (step 4 → publish) ----------------
+  const publish = useMutation({
     mutationFn: async () => {
-      if (!channelSlug) throw new Error("channel required");
-      if (!productType) throw new Error("product_type required");
-      if (!releaseType) throw new Error("release_type required");
-      if (!versionName.trim()) throw new Error("version_name required");
-      const vCodeNum = Number(versionCode);
-      if (!Number.isFinite(vCodeNum) || vCodeNum <= 0) {
-        throw new Error("version_code must be a positive integer");
-      }
-      const channel = channels.data?.channels.find((c) => c.slug === channelSlug);
+      if (!step1Valid) throw new Error("Target incomplete");
+      if (!step2Valid) throw new Error("Version incomplete");
+      const channel = channels.data?.channels.find(
+        (c) => c.slug === channelSlug,
+      );
       if (!channel) throw new Error(`channel '${channelSlug}' not found`);
 
-      // Step 1: create the build (status=pending, no assets yet).
+      // 1. create build (status=pending)
       const build = await createBuild(appId, {
         channel_id: channel.id,
         product_type: productType,
         release_type: releaseType,
         version_name: versionName.trim(),
-        version_code: vCodeNum,
+        version_code: Number(versionCode),
         changelog: changelog.trim() || undefined,
         source: "web",
         status: "pending",
+        should_force_update: shouldForceUpdate || undefined,
       });
-      // Step 2: create the release pointing to that build.
+      // 2. create release
       const scopes =
         scopeType === "full"
           ? [{ scope_type: "full", scope_value: "all" }]
@@ -506,21 +544,51 @@ function NewReleaseDialog({
       const release = await createRelease(appId, {
         build_id: build.id,
         scopes,
+        should_force_update: shouldForceUpdate || undefined,
+        rollout_cohort_count: rolloutPercent < 100 ? rolloutPercent : undefined,
       });
-      return release;
+      createdReleaseIdRef.current = release.id;
+      // 3. upload + register each pending file. Failures do NOT abort — the
+      //    release is already live and the user can retry from the row.
+      const assetFailures: string[] = [];
+      for (const slot of pendingFiles) {
+        try {
+          const uploaded = await uploadApk(appId, slot.file);
+          await createBuildAsset(appId, build.id, {
+            platform: slot.platform,
+            arch: slot.arch,
+            variant: slot.variant,
+            filetype: slot.filetype,
+            r2_key: uploaded.r2_key,
+            file_hash: uploaded.file_hash,
+            size_bytes: uploaded.size_bytes,
+          });
+        } catch (e) {
+          assetFailures.push(`${slot.file.name}: ${(e as Error).message}`);
+        }
+      }
+      return { release, assetFailures };
     },
-    onSuccess: (release) => {
-      toast.show({
-        kind: "success",
-        title: `Release ${release.id.slice(0, 8)}… created`,
-        description: "Drop APK / dmg / deb / exe into the asset zone below to attach binaries.",
-      });
+    onSuccess: ({ release, assetFailures }) => {
+      if (assetFailures.length === 0) {
+        toast.show({
+          kind: "success",
+          title: `Release ${release.id.slice(0, 8)}… published`,
+          description: `${pendingFiles.length} asset${pendingFiles.length === 1 ? "" : "s"} attached.`,
+        });
+      } else {
+        toast.show({
+          kind: "error",
+          title: `Release ${release.id.slice(0, 8)}… published but ${assetFailures.length} asset(s) failed`,
+          description: `${assetFailures[0]?.slice(0, 80)}… — fix from the release row.`,
+        });
+      }
       onCreated();
     },
     onError: (e) =>
       toast.show({
         kind: "error",
-        title: "Release create failed",
+        title: "Release publish failed",
         description: (e as Error).message,
       }),
   });
@@ -533,154 +601,299 @@ function NewReleaseDialog({
       }}
     >
       <div className="card max-w-xl w-full relative max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-bold mb-1">New release</h2>
-        <p className="text-xs text-slate-500 mb-4">
-          Create a release row first, then attach one or more binaries (multi-arch
-          Android / multi-OS Electron) via the drop zone in the release card.
+        <h2 className="text-lg font-bold mb-1">Draft a new release</h2>
+        <p className="text-xs text-slate-500 mb-3">
+          Draft the release, attach binaries, then publish — all in one flow.
         </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate();
-          }}
-          className="space-y-3"
-        >
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="label">Channel</label>
-              <select
-                className="input"
-                value={channelSlug}
-                onChange={(e) => setChannelSlug(e.target.value)}
-                required
-                autoFocus
-              >
-                <option value="">— pick —</option>
-                {channels.data?.channels.map((c) => (
-                  <option key={c.id} value={c.slug}>
-                    {c.slug}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Product type</label>
-              <select
-                className="input"
-                value={productType}
-                onChange={(e) => setProductType(e.target.value)}
-                required
-              >
-                <option value="">— pick —</option>
-                {productTypes.data?.product_types.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Release type</label>
-              <select
-                className="input"
-                value={releaseType}
-                onChange={(e) => setReleaseType(e.target.value)}
-                required
-              >
-                <option value="">— pick —</option>
-                {releaseTypes.data?.release_types.map((rt) => (
-                  <option key={rt.name} value={rt.name}>
-                    {rt.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Version name (e.g. 1.2.3)</label>
-              <input
-                className="input"
-                value={versionName}
-                onChange={(e) => setVersionName(e.target.value)}
-                placeholder="1.2.3"
-                required
+        {/* Stepper header */}
+        <div className="flex items-center gap-1 mb-4 text-xs">
+          {STEP_LABELS.map((label, i) => {
+            const idx = (i + 1) as Step;
+            const active = step === idx;
+            const done = step > idx;
+            return (
+              <div key={label} className="flex items-center gap-1">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${
+                    active
+                      ? "bg-blue-600 text-white"
+                      : done
+                        ? "bg-green-200 text-green-800"
+                        : "bg-slate-200 text-slate-500"
+                  }`}
+                >
+                  {done ? "✓" : idx}
+                </div>
+                <span
+                  className={
+                    active
+                      ? "font-medium text-slate-900"
+                      : done
+                        ? "text-green-700"
+                        : "text-slate-500"
+                  }
+                >
+                  {label}
+                </span>
+                {i < STEP_LABELS.length - 1 && (
+                  <span className="text-slate-300 mx-1">›</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="space-y-3 min-h-[260px]">
+          {/* ---------------- Step 1: Target ---------------- */}
+          {step === 1 && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label">Channel</label>
+                  <select
+                    className="input"
+                    value={channelSlug}
+                    onChange={(e) => setChannelSlug(e.target.value)}
+                    autoFocus
+                  >
+                    <option value="">— pick —</option>
+                    {channels.data?.channels.map((c) => (
+                      <option key={c.id} value={c.slug}>
+                        {c.slug}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Product type</label>
+                  <select
+                    className="input"
+                    value={productType}
+                    onChange={(e) => setProductType(e.target.value)}
+                  >
+                    <option value="">— pick —</option>
+                    {productTypes.data?.product_types.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Release type</label>
+                  <select
+                    className="input"
+                    value={releaseType}
+                    onChange={(e) => setReleaseType(e.target.value)}
+                  >
+                    <option value="">— pick —</option>
+                    {releaseTypes.data?.release_types.map((rt) => (
+                      <option key={rt.name} value={rt.name}>
+                        {rt.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {(!channels.data || channels.data.channels.length === 0) && (
+                <p className="text-xs text-yellow-700">
+                  ⚠ This app has no channels yet. Create one in AppDetail → Channels first.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ---------------- Step 2: Version + notes ---------------- */}
+          {step === 2 && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Version name (e.g. 1.2.3)</label>
+                  <input
+                    className="input"
+                    value={versionName}
+                    onChange={(e) => setVersionName(e.target.value)}
+                    placeholder="1.2.3"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="label">Version code (integer)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={versionCode}
+                    onChange={(e) => setVersionCode(e.target.value)}
+                    placeholder="42"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="label">Release notes</label>
+                <textarea
+                  className="input text-xs min-h-[120px]"
+                  value={changelog}
+                  onChange={(e) => setChangelog(e.target.value)}
+                  placeholder={"## What's new\n- Fix X\n- Add Y"}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ---------------- Step 3: Assets ---------------- */}
+          {step === 3 && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500">
+                Drop one or more binaries. We auto-detect platform / arch /
+                filetype from the filename — you can override per file.
+                <br />
+                <em>Optional</em>: you can publish without binaries and attach
+                them later from the release row.
+              </p>
+              <ReleaseAssetUploader
+                variant="dialog"
+                deferUpload
+                appId={appId}
+                buildId="__pending__"
+                productTypeHint={productType || "android-apk"}
+                onFilesChanged={setPendingFiles}
               />
+              <p className="text-[10px] text-slate-400">
+                Asset upload happens after the release is published. The release
+                is preserved even if individual assets fail.
+              </p>
             </div>
-            <div>
-              <label className="label">Version code (integer)</label>
-              <input
-                className="input"
-                type="number"
-                value={versionCode}
-                onChange={(e) => setVersionCode(e.target.value)}
-                placeholder="42"
-                required
-              />
+          )}
+
+          {/* ---------------- Step 4: Review ---------------- */}
+          {step === 4 && (
+            <div className="space-y-3 text-sm">
+              <div className="border border-slate-200 rounded p-3 space-y-1">
+                <Row k="Channel" v={channelSlug || "—"} />
+                <Row k="Product type" v={productType || "—"} />
+                <Row k="Release type" v={releaseType || "—"} />
+                <Row k="Version" v={`${versionName || "—"} (${versionCode || "?"})`} />
+                <Row
+                  k="Scope"
+                  v={
+                    scopeType === "full"
+                      ? "full (all users)"
+                      : `${scopeType}: ${scopeValue || "?"}`
+                  }
+                />
+                <Row k="Assets" v={`${pendingFiles.length} file(s) queued`} />
+                {changelog && (
+                  <details className="pt-2 border-t border-slate-100">
+                    <summary className="cursor-pointer text-xs text-slate-500">
+                      Release notes
+                    </summary>
+                    <pre className="mt-1 p-2 bg-slate-50 rounded text-xs whitespace-pre-wrap">
+                      {changelog}
+                    </pre>
+                  </details>
+                )}
+              </div>
+
+              <details>
+                <summary
+                  className="cursor-pointer text-xs text-slate-600"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowAdvanced((v) => !v);
+                  }}
+                >
+                  {showAdvanced ? "▾" : "▸"} Advanced options (force update, rollout %)
+                </summary>
+                {showAdvanced && (
+                  <div className="mt-2 p-3 border border-slate-200 rounded space-y-2">
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={shouldForceUpdate}
+                        onChange={(e) => setShouldForceUpdate(e.target.checked)}
+                      />
+                      Force update — clients must upgrade on next launch
+                    </label>
+                    <div className="flex items-center gap-2 text-xs">
+                      <label className="flex-1">
+                        Rollout cohort % (default 100)
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={rolloutPercent}
+                        onChange={(e) => setRolloutPercent(Number(e.target.value))}
+                      />
+                      <span className="font-mono w-10 text-right">
+                        {rolloutPercent}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </details>
+
+              <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
+                Publishing creates the build, the release row, and uploads all
+                queued assets in order. Asset failures don't roll back the release.
+              </p>
             </div>
-          </div>
+          )}
+        </div>
 
-          <div>
-            <label className="label">Changelog (optional)</label>
-            <textarea
-              className="input text-xs min-h-[60px]"
-              value={changelog}
-              onChange={(e) => setChangelog(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Scope type</label>
-              <select
-                className="input"
-                value={scopeType}
-                onChange={(e) => {
-                  const v = e.target.value as typeof scopeType;
-                  setScopeType(v);
-                  if (v === "full") setScopeValue("all");
-                }}
+        {/* Wizard nav buttons */}
+        <div className="flex gap-2 justify-between items-center pt-4 mt-3 border-t border-slate-100">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <div className="flex gap-2">
+            {step > 1 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setStep((step - 1) as Step)}
+                disabled={publish.isPending}
               >
-                <option value="full">full (all users)</option>
-                <option value="platform">platform (CSV)</option>
-                <option value="user_cohort">user cohort (UUID)</option>
-                <option value="ip_range">IP range (CIDR)</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">
-                {scopeType === "full"
-                  ? "Scope value (auto: all)"
-                  : scopeType === "platform"
-                    ? "e.g. darwin-arm64,darwin-x64,android-arm64-v8a"
-                    : scopeType === "user_cohort"
-                      ? "Cohort UUID"
-                      : "CIDR, e.g. 10.0.0.0/8"}
-              </label>
-              <input
-                className="input"
-                value={scopeType === "full" ? "all" : scopeValue}
-                onChange={(e) => setScopeValue(e.target.value)}
-                disabled={scopeType === "full"}
-              />
-            </div>
+                Back
+              </button>
+            )}
+            {step < 4 && (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={
+                  (step === 1 && !step1Valid) ||
+                  (step === 2 && !step2Valid)
+                }
+                onClick={() => setStep((step + 1) as Step)}
+              >
+                Next
+              </button>
+            )}
+            {step === 4 && (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={publish.isPending || !step1Valid || !step2Valid}
+                onClick={() => publish.mutate()}
+              >
+                {publish.isPending ? "Publishing…" : "Publish release"}
+              </button>
+            )}
           </div>
-
-          <div className="flex gap-2 justify-end pt-2">
-            <button type="button" className="btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={create.isPending}
-            >
-              {create.isPending ? "Creating…" : "Create release"}
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-32 text-xs text-slate-500">{k}</div>
+      <div className="font-mono text-xs">{v}</div>
     </div>
   );
 }
