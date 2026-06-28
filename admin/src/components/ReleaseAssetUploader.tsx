@@ -26,6 +26,7 @@ import {
   type BuildAsset,
 } from "../lib/api";
 import { useToast } from "./Toast";
+import { ConfirmActionDialog } from "./ConfirmActionDialog";
 import {
   KNOWN_FILETYPES,
   KNOWN_PLATFORMS,
@@ -71,6 +72,7 @@ export function ReleaseAssetUploader(props: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [pending, setPending] = useState<PendingFile[]>([]);
+  const [removeTarget, setRemoveTarget] = useState<BuildAsset | null>(null);
 
   // Panel-only: query existing assets so the user sees what's already there.
   const assetsQuery = useQuery({
@@ -201,10 +203,7 @@ export function ReleaseAssetUploader(props: Props) {
                 <td className="pr-2 py-1">
                   <button
                     className="btn-secondary text-[10px]"
-                    onClick={() => {
-                      if (confirm("Remove this asset?"))
-                        remove.mutate(a.id);
-                    }}
+                    onClick={() => setRemoveTarget(a)}
                     disabled={remove.isPending}
                   >
                     Remove
@@ -264,6 +263,52 @@ export function ReleaseAssetUploader(props: Props) {
           ))}
         </div>
       )}
+
+      <ConfirmActionDialog
+        open={removeTarget !== null}
+        title="Remove asset from this release?"
+        objectLabel={`${removeTarget?.platform ?? ""}${
+          removeTarget?.arch ? `/${removeTarget.arch}` : ""
+        } ${removeTarget?.filetype ?? ""}`}
+        objectSummary={
+          removeTarget ? (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono">
+              <div className="text-slate-500">platform</div>
+              <div>{removeTarget.platform}</div>
+              <div className="text-slate-500">arch</div>
+              <div>{removeTarget.arch ?? "—"}</div>
+              <div className="text-slate-500">variant</div>
+              <div>{removeTarget.variant ?? "—"}</div>
+              <div className="text-slate-500">filetype</div>
+              <div>{removeTarget.filetype}</div>
+              <div className="text-slate-500">r2_key</div>
+              <div className="truncate">{removeTarget.r2_key}</div>
+            </div>
+          ) : undefined
+        }
+        body={
+          <>
+            Removing this asset detaches the registration from the release.{" "}
+            <strong>The release row and build metadata are kept.</strong> The
+            underlying R2 binary is also kept (we never auto-delete uploaded
+            blobs); if you want to reclaim the storage, delete it from R2
+            separately after removing this row.
+          </>
+        }
+        confirmLabel="Remove asset"
+        confirmKind="danger"
+        pending={remove.isPending}
+        {...(removeTarget?.size_bytes != null && removeTarget?.r2_key
+          ? {
+              objectHint: `${(removeTarget.size_bytes / 1024 / 1024).toFixed(2)} MB · ${removeTarget.r2_key.slice(0, 24)}${removeTarget.r2_key.length > 24 ? "…" : ""}`,
+            }
+          : {})}
+        onConfirm={() => {
+          if (removeTarget) remove.mutate(removeTarget.id);
+          setRemoveTarget(null);
+        }}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </div>
   );
 }
