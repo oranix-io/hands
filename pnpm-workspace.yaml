@@ -3,3 +3,4 @@ packages:
   - "container"
   - "admin"
   - "migrations"
+  - "packages/*"

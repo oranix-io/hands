@@ -1,0 +1,96 @@
+/**
+ * Smoke tests for the quiver CLI.
+ *
+ * Run: `pnpm --filter @oranix/quiver-cli test`
+ *
+ * v1 tests cover: config load/save (without leaking the real file),
+ * + apiRequest routing (against a tiny local http.createServer stub).
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createServer } from "node:http";
+
+describe("config round-trip", () => {
+  let dir: string;
+  let originalXdg: string | undefined;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "quiver-cli-"));
+    originalXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = dir;
+  });
+
+  afterEach(() => {
+    if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalXdg;
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns empty config when no file exists", async () => {
+    const { getConfig } = await import("../src/lib/config.js");
+    expect(getConfig()).toEqual({});
+  });
+
+  it("saveConfig persists to the XDG path", async () => {
+    const { saveConfig, getConfig } = await import("../src/lib/config.js");
+    saveConfig({ apiBase: "https://example.test", sessionCookie: "tok123" });
+    const path = join(dir, "quiver", "auth.json");
+    expect(existsSync(path)).toBe(true);
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    expect(raw.apiBase).toBe("https://example.test");
+    expect(raw.sessionCookie).toBe("tok123");
+    expect(getConfig().apiBase).toBe("https://example.test");
+  });
+});
+
+describe("apiRequest", () => {
+  let server: ReturnType<typeof createServer>;
+  let baseUrl: string;
+  let lastCookie: string | null = null;
+
+  beforeEach(async () => {
+    server = createServer((req, res) => {
+      lastCookie = req.headers.cookie ?? null;
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/api/auth/me") {
+        res.end(JSON.stringify({ account: { id: "u1", display_name: "Test" } }));
+        return;
+      }
+      if (req.url?.startsWith("/api/apps")) {
+        res.end(JSON.stringify({ apps: [] }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const addr = server.address();
+    if (!addr || typeof addr === "string") throw new Error("bad address");
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+
+  it("sends the QUIVER_SESSION_COOKIE env var as a cookie header", async () => {
+    process.env.QUIVER_SESSION_COOKIE = "abc123";
+    process.env.QUIVER_API = baseUrl;
+    const { apiRequest } = await import("../src/lib/api.js");
+    const me = await apiRequest<{ account: { id: string } }>("/api/auth/me");
+    expect(me.account.id).toBe("u1");
+    expect(lastCookie).toBe("abc123");
+    delete process.env.QUIVER_SESSION_COOKIE;
+    delete process.env.QUIVER_API;
+  });
+
+  it("throws QuiverApiError on non-2xx", async () => {
+    process.env.QUIVER_API = baseUrl;
+    const { apiRequest, QuiverApiError } = await import("../src/lib/api.js");
+    await expect(apiRequest("/api/missing")).rejects.toBeInstanceOf(QuiverApiError);
+    delete process.env.QUIVER_API;
+  });
+});
