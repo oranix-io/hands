@@ -192,6 +192,16 @@ function AppContextNav() {
       <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-2">
         <span className="text-xs text-slate-500 mr-2">App context:</span>
         <NavLink
+          to={`${base}/releases`}
+          className={({ isActive }) =>
+            `px-3 py-1 rounded-md text-sm font-medium ${
+              isActive ? "bg-slate-900 text-white" : "bg-slate-100 hover:bg-slate-200"
+            }`
+          }
+        >
+          Releases
+        </NavLink>
+        <NavLink
           to={base}
           end
           className={({ isActive }) =>
@@ -200,7 +210,7 @@ function AppContextNav() {
             }`
           }
         >
-          Versions
+          Overview
         </NavLink>
         <NavLink
           to={`${base}/publish`}
@@ -221,16 +231,6 @@ function AppContextNav() {
           }
         >
           Builds
-        </NavLink>
-        <NavLink
-          to={`${base}/releases`}
-          className={({ isActive }) =>
-            `px-3 py-1 rounded-md text-sm ${
-              isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-            }`
-          }
-        >
-          Releases
         </NavLink>
         <NavLink
           to={`${base}/access`}

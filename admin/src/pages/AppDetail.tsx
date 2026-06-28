@@ -124,23 +124,37 @@ export function AppDetail({
 
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Versions</h2>
-          <a
-            href={`/apps/${appId}/releases`}
-            className="btn-primary text-sm no-underline"
-            title={
-              !channels.data?.channels.length
-                ? "Create a channel first"
-                : "Create a release + attach APK assets"
-            }
-          >
-            + New release
-          </a>
+          <div>
+            <h2 className="text-lg font-semibold">App overview</h2>
+            <p className="text-xs text-slate-500">
+              Versions &amp; status overview. For new releases, use the{" "}
+              <a href={`/apps/${appId}/releases`} className="underline">
+                Releases
+              </a>{" "}
+              page.
+            </p>
+          </div>
+          {channels.data?.channels.length ? (
+            <a
+              href={`/apps/${appId}/releases`}
+              className="btn-primary text-sm no-underline"
+            >
+              Publish release →
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              onClick={() => setShowCreateChannel(true)}
+            >
+              Create channel first
+            </button>
+          )}
         </div>
         {versions.isLoading && <p className="text-slate-500">Loading...</p>}
         {versions.data?.versions.length === 0 && (
           <p className="text-slate-500 text-sm">
-            No versions yet. Upload an APK to publish one.
+            No versions yet. Use Releases → New release to publish one.
           </p>
         )}
         <div className="space-y-2">
