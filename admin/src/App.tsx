@@ -19,7 +19,7 @@ import { Releases } from "./pages/Releases";
 import { OrgSettings } from "./pages/OrgSettings";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { AppAccess } from "./pages/AppAccess";
-import { OrgSwitcher } from "./components/OrgSwitcher";
+import { OrgSwitcher, useClearOrgCache } from "./components/OrgSwitcher";
 import { getAuthMe, listOrgs, loginUrl, logout, type AuthAccount } from "./lib/api";
 
 function RaftIcon({ className = "" }: { className?: string }) {
@@ -50,6 +50,7 @@ function Header({ account }: { account: AuthAccount }) {
     queryFn: () => listOrgs(),
     enabled: !!account.id,
   });
+  const switchOrg = useClearOrgCache();
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   return (
     <header className="bg-white border-b border-slate-200">
@@ -126,6 +127,7 @@ function Header({ account }: { account: AuthAccount }) {
                       orgs.data.orgs.length
                     } members of)`}
                     onClose={() => setShowOrgSwitcher(false)}
+                    onSwitch={switchOrg}
                   />
                 )}
             </div>
