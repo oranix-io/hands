@@ -9,6 +9,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   bumpRollout,
+  createBuild,
+  createRelease,
   forceUpdate,
   getRelease,
   listApps,
@@ -21,12 +23,14 @@ import {
   type ReleaseScope,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { ReleaseAssetsPanel } from "../components/ReleaseAssetsPanel";
 
 export function Releases({ appId }: { appId: string }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [channelFilter, setChannelFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showNewRelease, setShowNewRelease] = useState(false);
 
   const app = useQuery({ queryKey: ["apps"], queryFn: () => listApps() });
   const releases = useQuery({
@@ -61,13 +65,21 @@ export function Releases({ appId }: { appId: string }) {
 
   return (
     <div>
-      <div className="mb-6">
-        <div className="text-sm text-slate-500">Releases</div>
-        <h1 className="text-2xl font-bold">
-          {thisApp?.name ?? "..."}
-          <span className="badge-blue align-middle ml-2">{thisApp?.platform}</span>
-        </h1>
-        <div className="text-sm text-slate-500 font-mono">{thisApp?.slug}</div>
+      <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="text-sm text-slate-500">Releases</div>
+          <h1 className="text-2xl font-bold">
+            {thisApp?.name ?? "..."}
+            <span className="badge-blue align-middle ml-2">{thisApp?.platform}</span>
+          </h1>
+          <div className="text-sm text-slate-500 font-mono">{thisApp?.slug}</div>
+        </div>
+        <button
+          className="btn-primary text-sm"
+          onClick={() => setShowNewRelease(true)}
+        >
+          + New release
+        </button>
       </div>
 
       {/* Stats summary */}
@@ -147,6 +159,17 @@ export function Releases({ appId }: { appId: string }) {
           );
         })}
       </div>
+
+      {showNewRelease && (
+        <NewReleaseDialog
+          appId={appId}
+          onClose={() => setShowNewRelease(false)}
+          onCreated={() => {
+            setShowNewRelease(false);
+            qc.invalidateQueries({ queryKey: ["releases", appId] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -363,6 +386,15 @@ function ReleaseRow({
           )}
         </div>
       )}
+
+      {/* Asset upload zone — always visible (not gated by showDetail) so
+          users can drop files onto a release row without expanding details. */}
+      <ReleaseAssetsPanel
+        appId={appId}
+        releaseId={r.id}
+        buildId={r.build_id}
+        productTypeHint={r.product_type}
+      />
     </div>
   );
 }
@@ -380,5 +412,254 @@ function ReleaseStatusBadge({ status }: { status: string }) {
     >
       {status}
     </span>
+  );
+}
+
+// =============================================================================
+// NewReleaseDialog — release-first flow (P2.5 release v2)
+// =============================================================================
+
+function NewReleaseDialog({
+  appId,
+  onClose,
+  onCreated,
+}: {
+  appId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const channels = useQuery({
+    queryKey: ["channels", appId],
+    queryFn: () => listChannels(appId),
+  });
+  const productTypes = useQuery({
+    queryKey: ["product-types", appId],
+    queryFn: () => listProductTypes(appId),
+  });
+  const releaseTypes = useQuery({
+    queryKey: ["release-types", appId],
+    queryFn: () => listReleaseTypes(appId),
+  });
+
+  const [channelSlug, setChannelSlug] = useState<string>("");
+  const [productType, setProductType] = useState<string>("");
+  const [releaseType, setReleaseType] = useState<string>("");
+  const [versionName, setVersionName] = useState<string>("");
+  const [versionCode, setVersionCode] = useState<string>("");
+  const [changelog, setChangelog] = useState<string>("");
+  const [scopeType, setScopeType] = useState<"full" | "platform" | "user_cohort" | "ip_range">(
+    "full",
+  );
+  const [scopeValue, setScopeValue] = useState<string>("all");
+
+  const create = useMutation({
+    mutationFn: async () => {
+      if (!channelSlug) throw new Error("channel required");
+      if (!productType) throw new Error("product_type required");
+      if (!releaseType) throw new Error("release_type required");
+      if (!versionName.trim()) throw new Error("version_name required");
+      const vCodeNum = Number(versionCode);
+      if (!Number.isFinite(vCodeNum) || vCodeNum <= 0) {
+        throw new Error("version_code must be a positive integer");
+      }
+      const channel = channels.data?.channels.find((c) => c.slug === channelSlug);
+      if (!channel) throw new Error(`channel '${channelSlug}' not found`);
+
+      // Step 1: create the build (status=pending, no assets yet).
+      const build = await createBuild(appId, {
+        channel_id: channel.id,
+        product_type: productType,
+        release_type: releaseType,
+        version_name: versionName.trim(),
+        version_code: vCodeNum,
+        changelog: changelog.trim() || null,
+        source: "web",
+        status: "pending",
+      });
+      // Step 2: create the release pointing to that build.
+      const scopes =
+        scopeType === "full"
+          ? [{ scope_type: "full", scope_value: "all" }]
+          : [{ scope_type: scopeType, scope_value: scopeValue.trim() }];
+      const release = await createRelease(appId, {
+        build_id: build.id,
+        scopes,
+      });
+      return release;
+    },
+    onSuccess: (release) => {
+      toast.show({
+        kind: "success",
+        title: `Release ${release.id.slice(0, 8)}… created`,
+        description: "Drop APK / dmg / deb / exe into the asset zone below to attach binaries.",
+      });
+      onCreated();
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Release create failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="card max-w-xl w-full relative max-h-[90vh] overflow-y-auto">
+        <h2 className="text-lg font-bold mb-1">New release</h2>
+        <p className="text-xs text-slate-500 mb-4">
+          Create a release row first, then attach one or more binaries (multi-arch
+          Android / multi-OS Electron) via the drop zone in the release card.
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+          className="space-y-3"
+        >
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="label">Channel</label>
+              <select
+                className="input"
+                value={channelSlug}
+                onChange={(e) => setChannelSlug(e.target.value)}
+                required
+                autoFocus
+              >
+                <option value="">— pick —</option>
+                {channels.data?.channels.map((c) => (
+                  <option key={c.id} value={c.slug}>
+                    {c.slug}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Product type</label>
+              <select
+                className="input"
+                value={productType}
+                onChange={(e) => setProductType(e.target.value)}
+                required
+              >
+                <option value="">— pick —</option>
+                {productTypes.data?.product_types.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Release type</label>
+              <select
+                className="input"
+                value={releaseType}
+                onChange={(e) => setReleaseType(e.target.value)}
+                required
+              >
+                <option value="">— pick —</option>
+                {releaseTypes.data?.release_types.map((rt) => (
+                  <option key={rt.name} value={rt.name}>
+                    {rt.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Version name (e.g. 1.2.3)</label>
+              <input
+                className="input"
+                value={versionName}
+                onChange={(e) => setVersionName(e.target.value)}
+                placeholder="1.2.3"
+                required
+              />
+            </div>
+            <div>
+              <label className="label">Version code (integer)</label>
+              <input
+                className="input"
+                type="number"
+                value={versionCode}
+                onChange={(e) => setVersionCode(e.target.value)}
+                placeholder="42"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Changelog (optional)</label>
+            <textarea
+              className="input text-xs min-h-[60px]"
+              value={changelog}
+              onChange={(e) => setChangelog(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Scope type</label>
+              <select
+                className="input"
+                value={scopeType}
+                onChange={(e) => {
+                  const v = e.target.value as typeof scopeType;
+                  setScopeType(v);
+                  if (v === "full") setScopeValue("all");
+                }}
+              >
+                <option value="full">full (all users)</option>
+                <option value="platform">platform (CSV)</option>
+                <option value="user_cohort">user cohort (UUID)</option>
+                <option value="ip_range">IP range (CIDR)</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">
+                {scopeType === "full"
+                  ? "Scope value (auto: all)"
+                  : scopeType === "platform"
+                    ? "e.g. darwin-arm64,darwin-x64,android-arm64-v8a"
+                    : scopeType === "user_cohort"
+                      ? "Cohort UUID"
+                      : "CIDR, e.g. 10.0.0.0/8"}
+              </label>
+              <input
+                className="input"
+                value={scopeType === "full" ? "all" : scopeValue}
+                onChange={(e) => setScopeValue(e.target.value)}
+                disabled={scopeType === "full"}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <button type="button" className="btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={create.isPending}
+            >
+              {create.isPending ? "Creating…" : "Create release"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
