@@ -56,9 +56,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const show = useCallback<ToastApi["show"]>(
     (t) => {
       const id = nextId.current++;
-      setToasts((cur) => [...cur, { id, ttlMs: 4500, ...t }]);
-      if (t.ttlMs && t.ttlMs > 0 && t.kind !== "loading") {
-        const handle = setTimeout(() => dismiss(id), t.ttlMs);
+      const effectiveTtl =
+        t.ttlMs !== undefined ? t.ttlMs : t.kind === "loading" ? 10000 : 4500;
+      setToasts((cur) => [...cur, { id, ttlMs: effectiveTtl, ...t }]);
+      // Loading toasts get a safety TTL so they don't live forever even if
+      // the caller never `update()`s them. Successful/error/info toasts
+      // dismiss on their own after ttlMs.
+      if (effectiveTtl > 0) {
+        const handle = setTimeout(() => dismiss(id), effectiveTtl);
         timers.current.set(id, handle);
       }
       return id;
@@ -68,13 +73,28 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const update = useCallback<ToastApi["update"]>(
     (id, patch) => {
-      setToasts((cur) =>
-        cur.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-      );
-      if (patch.ttlMs && patch.ttlMs > 0 && patch.kind !== "loading") {
-        const old = timers.current.get(id);
-        if (old) clearTimeout(old);
-        const handle = setTimeout(() => dismiss(id), patch.ttlMs);
+      setToasts((cur) => {
+        const existing = cur.find((t) => t.id === id);
+        if (!existing) return cur;
+        const merged = { ...existing, ...patch };
+        // When converting a loading toast to a terminal kind, schedule
+        // the terminal TTL fresh.
+        return cur.map((t) => (t.id === id ? merged : t));
+      });
+      const mergedKind = patch.kind;
+      const old = timers.current.get(id);
+      if (old) clearTimeout(old);
+      // Always reschedule on update so transitions get fresh timers.
+      const nextTtl =
+        patch.ttlMs !== undefined
+          ? patch.ttlMs
+          : mergedKind === "loading"
+            ? 10000
+            : mergedKind === "error"
+              ? 8000
+              : 4500;
+      if (nextTtl > 0) {
+        const handle = setTimeout(() => dismiss(id), nextTtl);
         timers.current.set(id, handle);
       }
     },

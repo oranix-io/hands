@@ -414,6 +414,9 @@ function AppShell() {
         <Routes>
           <Route index element={<AppDetailRoute />} />
           <Route path="publish" element={<PublishingRoute />} />
+          <Route path="builds" element={<BuildsRoute />} />
+          <Route path="releases" element={<ReleasesRoute />} />
+          <Route path="access" element={<AppAccessRoute />} />
           <Route path="audit" element={<AuditRoute />} />
         </Routes>
       </main>

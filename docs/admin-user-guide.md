@@ -137,21 +137,52 @@ Per-app member management. Shows current principal's `org_role` + a guard ("can 
 
 Per-app audit log (`audit_logs WHERE app_id = ?`). Columns: when / actor (with agent badge) / app id / action / payload (truncated JSON). 100 most recent entries.
 
-### 3.10 `/orgs/:orgId` Org settings (4 tabs)
+**Actor display:** when `actor_type === 'agent'`, the actor cell renders a purple "agent" badge next to the principal UUID. Humans render as plain text. This matches the same convention used in Org settings → Members / Invites / Audit tabs, so you always know whether you're looking at human or agent activity without checking external tools.
 
-**Access**: org owner / admin only (per-route RBAC). The org_id in the URL must match your current org; otherwise a warning banner shows.
+**Action taxonomy** (the values you'll see in the action column):
+
+| Action | When it appears |
+|--------|-----------------|
+| `app.create` / `app.update` / `app.archive` / `app.unarchive` | App CRUD via wizard or AppDetail Settings |
+| `build.create` / `build.update` | New build uploaded or patched (status changes append here) |
+| `build_asset.create` / `build_asset.delete` | Per-(platform, arch, variant, filetype) binary upload or removal |
+| `build.delete` | Whole build removal (only allowed when zero assets and zero releases) |
+| `release.create` / `release.rollback` / `release.bump_rollout` / `release.force_update` | Release promotion, rollback, staged rollout bump, force-update toggle |
+| `channel.create` / `channel.update` / `channel.delete` | Channel CRUD |
+| `product_type.create/update/delete` / `release_type.create/update/delete` | Schema-row CRUD |
+| `apk.upload` | Legacy APK upload (pre-P2.4 flow; still emitted when `/api/upload` is called) |
+| `operation.create` / `operation.update` | Long-running op log (parse-apk, SSE-streamed operations) |
+| `webhook.create` / `webhook.update` / `webhook.archive` | Webhook subscription CRUD (see §3.10 Webhooks tab) |
+| `webhook.delivery` | A webhook delivery attempt succeeded or failed terminally |
+
+**Payload column** shows the first ~400 chars of the JSON payload (truncated with ellipsis). Hover to see the full payload via `title=` attribute. Click the row to copy the full `payload_json` to clipboard (UX nicety; P5.5 v2 will add a side drawer).
+
+**Filtering (v2):** P5.5 will add `?actor_id=` / `?action_prefix=` / `?app_id=` query params; today there's a single "All entries" view per app.
+
+### 3.10 `/orgs/:orgId` Org settings (5 tabs)
+
+**Access**: org owner / admin only (per-route RBAC; the Webhooks tab is admin-only). The org_id in the URL must match your current org; otherwise a yellow warning banner shows.
 
 **Tabs**:
 - **General** — static info from `/api/auth/me`: external_provider, server_id, server_slug, principal_type, org_id, your org_role (colored), server_role
 - **Members** — `GET /api/orgs/:orgId/members`:
-  - Columns: principal / type (agent badge) / org_role dropdown (owner/admin/member/viewer, owner/admin only, excludes self) / joined date / Remove (owner/admin only, confirm)
+  - Columns: principal / type (agent badge) / @username (if present) / email (humans) or agent manifest URL (agents) / org_role dropdown (owner/admin/member/viewer, owner/admin only, excludes self) / joined date / last login / Remove (owner/admin only, confirm)
+  - Filter dropdown: All / Humans only / Agents only
 - **Invites** — `GET /api/orgs/:orgId/invites`:
   - Columns: email / role / status badge (pending/accepted/revoked/expired) / expires / Resend (admin) / Revoke (admin, confirm)
+  - Status filter dropdown: All / Pending / Accepted / Revoked / Expired
   - "+ Invite member" button → modal: email (required, lowercased) + role (member/viewer) + optional message
   - On create: `POST /api/orgs/:orgId/invites` returns `invite_url`; admin UI copies to clipboard + shows toast with URL
 - **Audit** — `GET /api/orgs/:orgId/audit-logs`:
   - 100 most recent entries; org-scoped (cross-app aggregation)
-  - Columns: when / actor (agent badge) / app id / action / payload
+  - Columns: when / actor (agent badge) / app id / action / payload (truncated JSON, same hover-to-show as §3.9)
+  - Org-level mutations (member role change, invite create/revoke) currently do **not** write to `audit_logs` because the table requires `app_id NOT NULL`; they are tracked only in Raft's own audit log. P5.5 v2 will widen the schema.
+- **Webhooks** (admin only) — `GET /api/orgs/:orgId/webhooks`:
+  - Each row: enabled badge (green / gray) + URL + subscribed events (badges, empty = "all") + Disable / Deliveries / Archive buttons
+  - "+ Add webhook" button → modal: URL (required) + Secret (HMAC, min 8 chars) + Events checkboxes (empty = all). On create: toast confirms, webhook appears in list.
+  - Click "Deliveries" to drill into that webhook's delivery history (`GET /api/orgs/:orgId/webhooks/:id/deliveries`): columns = when / event / status badge (pending=blue / succeeded=green / failed=red) / attempts of max / HTTP code / next attempt or error.
+  - **Delivery semantics (v1):** Worker Cron Trigger (`*/5 * * * *`) reaps pending deliveries every 5 minutes. Failures retry with exponential backoff (5m → 30m → 2h, 3 attempts max), then are permanently `failed`. Every delivery carries `X-Quiver-Signature: sha256=<hmac>` so receivers can verify it came from your org.
+  - **Secret rotation:** v1 has no rotation endpoint; archive the old webhook and create a new one. v2 will add a `POST /api/orgs/:orgId/webhooks/:id/rotate-secret` endpoint.
 
 ### 3.11 `/invites/:token` Accept invite (public)
 

@@ -78,60 +78,104 @@ export function Publishing({ appId }: { appId: string }) {
     ),
   };
 
-  const toggle = useMutation({
-    mutationFn: ({ v, enabled }: { v: Version; enabled: boolean }) =>
+  const toggle = useMutation<
+    void,
+    Error,
+    { v: Version; enabled: boolean },
+    number | undefined
+  >({
+    mutationFn: ({ v, enabled }) =>
       updateVersion(appId, v.id, { enabled }),
     onMutate: ({ enabled }) =>
       toast.show({
         kind: "loading",
         title: enabled ? "Enabling version…" : "Disabling version…",
       }),
-    onSuccess: (_, vars) =>
-      toast.show({
-        kind: "success",
+    onSuccess: (_data, vars, _id, mutation) => {
+      const id = mutation.context;
+      const patch = {
+        kind: "success" as const,
         title: vars.enabled ? "Version enabled" : "Version disabled",
-      }),
-    onError: (e) =>
-      toast.show({ kind: "error", title: "Toggle failed", description: (e as Error).message }),
+      };
+      if (id != null) toast.update(id, patch);
+      else toast.show(patch);
+    },
+    onError: (e, _vars, _id, mutation) => {
+      const id = mutation.context;
+      const patch = {
+        kind: "error" as const,
+        title: "Toggle failed",
+        description: e.message,
+      };
+      if (id != null) toast.update(id, patch);
+      else toast.show(patch);
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: ["versions", appId] }),
   });
 
-  const moveChannel = useMutation({
-    mutationFn: ({ v, channel }: { v: Version; channel: string }) =>
+  const moveChannel = useMutation<
+    unknown,
+    Error,
+    { v: Version; channel: string },
+    number | undefined
+  >({
+    mutationFn: ({ v, channel }) =>
       updateVersion(appId, v.id, { channel }),
     onMutate: () =>
-      toast.show({ kind: "loading", title: "Moving version…", ttlMs: 0 }),
-    onSuccess: (data, vars) => {
-      toast.show({
-        kind: "success",
+      toast.show({ kind: "loading", title: "Moving version…" }),
+    onSuccess: (_data, vars, _id, mutation) => {
+      const id = mutation.context;
+      const patch = {
+        kind: "success" as const,
         title: `Moved v${vars.v.version_name} → ${vars.channel}`,
-      });
+      };
+      if (id != null) toast.update(id, patch);
+      else toast.show(patch);
       qc.invalidateQueries({ queryKey: ["versions", appId] });
     },
-    onError: (e) =>
-      toast.show({ kind: "error", title: "Move failed", description: (e as Error).message }),
+    onError: (e, _vars, _id, mutation) => {
+      const id = mutation.context;
+      const patch = {
+        kind: "error" as const,
+        title: "Move failed",
+        description: e.message,
+      };
+      if (id != null) toast.update(id, patch);
+      else toast.show(patch);
+    },
   });
 
-  const toggleForceUpdate = useMutation({
-    mutationFn: ({ v, next }: { v: Version; next: boolean }) =>
+  const toggleForceUpdate = useMutation<
+    void,
+    Error,
+    { v: Version; next: boolean },
+    number | undefined
+  >({
+    mutationFn: ({ v, next }) =>
       updateVersion(appId, v.id, { should_force_update: next }),
-    onMutate: () =>
-      toast.show({ kind: "loading", title: "Updating force-update flag…", ttlMs: 0 }),
-    onSuccess: (_, vars) => {
-      toast.show({
-        kind: "success",
-        title: vars.next
-          ? `v${vars.v.version_name} now requires install`
-          : `v${vars.v.version_name} no longer forced`,
-      });
+    // Return the loading-toast id from onMutate so onSuccess/onError can
+    // `toast.update()` it in place — the spinner disappears and a single
+    // success/error toast replaces it (no stacking).
+    onMutate: () => toast.show({ kind: "loading", title: "Updating force-update flag…" }),
+    onSuccess: (_data, vars, _id, mutation) => {
+      const id = mutation.context;
+      const title = vars.next
+        ? `v${vars.v.version_name} now requires install`
+        : `v${vars.v.version_name} no longer forced`;
+      if (id != null) toast.update(id, { kind: "success", title });
+      else toast.show({ kind: "success", title });
       qc.invalidateQueries({ queryKey: ["versions", appId] });
     },
-    onError: (e) =>
-      toast.show({
-        kind: "error",
+    onError: (e, _vars, _id, mutation) => {
+      const id = mutation.context;
+      const patch = {
+        kind: "error" as const,
         title: "Force-update toggle failed",
-        description: (e as Error).message,
-      }),
+        description: e.message,
+      };
+      if (id != null) toast.update(id, patch);
+      else toast.show(patch);
+    },
   });
 
   return (

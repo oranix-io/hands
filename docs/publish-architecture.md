@@ -447,6 +447,137 @@ GET /public/apps/:slug/channels
   ] }
 ```
 
+### 5.4 Scope resolution — the v2 public API contract
+
+**Status (v1):** scope resolution is **not yet wired into the public API**. The current `GET /public/apps/:slug/latest` reads from the legacy `versions` table (no scope filtering). The `releases` + `release_scopes` tables exist and the admin CRUD is in place, but the public lookup still picks the highest `version_code` for the channel. This section documents the v2 contract that P3.3 will implement.
+
+**Why a separate spec:** scope resolution is the load-bearing piece that lets us ship staged rollouts, beta cohorts, IP-restricted releases, and platform-specific fallbacks without breaking clients. The schema is ready (`release_scopes.scope_type` / `scope_value`); the spec below locks down the SQL ordering, request-shape, and response shape so P3.3 can drop it in without an API redesign.
+
+**Scope types** (`release_scopes.scope_type`):
+
+| scope_type | scope_value format | Match rule |
+|------------|-------------------|------------|
+| `full`     | `all`             | always matches |
+| `platform` | CSV of platform-arch tuples, e.g. `darwin-arm64,darwin-x64,darwin-universal,win32-x64` | matches if client's `User-Agent` (Electron) or `Build.MANUFACTURER+MODEL` / `Build.SUPPORTED_ABIS` (Android) matches any value |
+| `ip_range` | CIDR, e.g. `10.0.0.0/8`, `203.0.113.0/24` | matches if client IP (Worker `request.cf?.clientIp`) is in the CIDR |
+| `user_cohort` | cohort UUID, e.g. `a1b2c3d4-...` | matches if client sends `X-Quiver-Cohort: <uuid>` header AND that cohort is in the release's scopes |
+
+**Resolution priority** (highest specificity first):
+
+```
+1. ip_range      -- explicit corporate / VPN / beta-tester networks
+2. user_cohort   -- opt-in power-user cohort (header-driven)
+3. platform      -- only-this-OS releases (Mac-only, Windows-only)
+4. full          -- catch-all for everyone
+```
+
+The server picks the **most specific matching scope**. If two releases match at the same priority level, the one with the highest `created_at` wins. If no scope matches → fall back to the most recent active `full` release on `(channel, product_type)`; if there is none → 404.
+
+**Request shape** (additive; v1 clients ignore new params, v2 server uses them):
+
+```
+GET /public/v2/apps/:slug/latest
+  ?channel=production
+  &product_type=android-apk
+  &client_platform=android-arm64-v8a
+  &client_version=1.2.3
+  &cohort=a1b2c3d4-...     # optional, sent only if app passed it explicitly
+
+Headers (v2 client):
+  X-Quiver-Client-Platform: android-arm64-v8a   # required for platform-scoped releases
+  X-Quiver-Cohort: a1b2c3d4-...                  # optional, for cohort-scoped releases
+
+Server-side (always available):
+  request.cf?.clientIp   # for ip_range scope matching
+```
+
+**Resolution algorithm** (SQL pseudocode):
+
+```sql
+-- Step 1: collect candidate releases on (channel, product_type) in the last 30 days
+WITH candidates AS (
+  SELECT r.id, r.build_id, r.channel_id, r.product_type, r.release_type,
+         r.should_force_update, r.created_at
+  FROM releases r
+  WHERE r.app_id  = $app_id
+    AND r.channel_id = $channel_id
+    AND r.product_type = $product_type
+    AND r.status = 'active'
+    AND r.created_at > $now - 30*24*3600*1000
+),
+scopes AS (
+  SELECT release_id, scope_type, scope_value
+  FROM release_scopes
+  WHERE release_id IN (SELECT id FROM candidates)
+),
+matches AS (
+  SELECT c.id, c.created_at,
+    -- priority: ip_range=4, user_cohort=3, platform=2, full=1
+    MAX(CASE s.scope_type
+          WHEN 'ip_range'    THEN 4
+          WHEN 'user_cohort' THEN 3
+          WHEN 'platform'    THEN 2
+          WHEN 'full'        THEN 1
+        END) AS priority
+  FROM candidates c
+  JOIN scopes s ON s.release_id = c.id
+  WHERE
+    (s.scope_type = 'full')
+    OR (s.scope_type = 'platform'    AND $client_platform = ANY(string_split(s.scope_value, ',')))
+    OR (s.scope_type = 'ip_range'    AND $client_ip << s.scope_value)            -- CIDR contains
+    OR (s.scope_type = 'user_cohort' AND $cohort = s.scope_value)
+  GROUP BY c.id
+)
+SELECT c.*
+FROM matches c
+ORDER BY c.priority DESC, c.created_at DESC
+LIMIT 1;
+```
+
+**Response shape** (v2):
+
+```json
+{
+  "build": {
+    "version": "1.2.3",
+    "version_code": 42,
+    "release_type": "stable",
+    "changelog": "...",
+    "released_at": 1782560000000
+  },
+  "assets": [
+    { "platform": "android", "arch": "arm64-v8a", "filetype": "apk",
+      "download_url": "/api/r2/...", "size_bytes": 23217680, "signature": "..." }
+  ],
+  "scoped": {                                  // NEW in v2
+    "scope_type": "platform",                   // which scope won
+    "scope_value": "android-arm64-v8a,android-armeabi-v7a",
+    "release_id": "..."
+  },
+  "fallback_release": {                        // NEW in v2; only present if a less-specific
+    "build": { "version": "1.2.2", ... },       //   release also matches this client and
+    "assets": [...]                             //   they came from the older one
+  }
+}
+```
+
+**`fallback_release`** lets the client warn the user ("You were on 1.2.2 from Windows; the Mac team is now on 1.2.3 — would you like to switch?") without forcing a downgrade. Skipped entirely when the matched release is already a `full` scope.
+
+**Edge cases the contract locks in:**
+
+1. **Empty `cohort` header + cohort-scoped release**: no match (server treats `cohort IS NULL` as mismatch, never as `''`).
+2. **Multiple matches at the same priority**: `created_at DESC` wins. Ties broken by `release_id` (UUID lex order) for determinism.
+3. **`full` is the only match**: `priority=1`; behaves like v1 (any active release on the channel).
+4. **No release matches**: 404 with body `{"error": "no active release for this client"}`. v1 clients that ignored scope will see this and should fall back to their bundled copy.
+5. **Release cancelled (`status='cancelled'`)** mid-request: never returned. Server filters by `status='active'` in Step 1.
+6. **Rollback creates a new release**: original release moves to `superseded`; new release inherits the original's scopes (unless `POST /api/apps/:appId/releases/:id/rollback` overrides). Server returns the new one.
+7. **`ip_range` matching** is server-trusted: we use `cf.clientIp` only, never the client `X-Forwarded-For`. v2 client must NOT send `X-Forwarded-For`; server strips it if present.
+8. **Cross-product-type scope**: scopes are per-release, but releases are per-`product_type`. A `platform` scope on an Android release cannot accidentally match an Electron client because the platform strings are disjoint.
+
+**Backward compatibility:** v2 endpoint is additive (`/public/v2/...`); v1 endpoint stays operational and returns its current shape. Clients migrate by changing base URL.
+
+**Implementation owner:** P3.3 (public API scope resolution). The SQL above is the contract; the Hono handler is mechanical (params → bind → query → respond). Tests in `worker/test/routes.test.ts` under a new `describe("scope resolution — v2 public API")` block.
+
 ## 6. CLI — `quiver-cli`
 
 NPM package, ~30 commands. Mirrors `todesktop` CLI shape (npm script-friendly).
