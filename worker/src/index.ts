@@ -66,7 +66,7 @@ import {
 import { handleListChannels, handleCreateChannel, handleUpdateChannel, handleDeleteChannel } from "./routes/channels";
 import { handleListProductTypes, handleCreateProductType, handleUpdateProductType, handleDeleteProductType } from "./routes/product_types";
 import { handleListReleaseTypes, handleCreateReleaseType, handleUpdateReleaseType, handleDeleteReleaseType } from "./routes/release_types";
-import { handleListAuditLogs } from "./routes/audit";
+import { handleListAuditLogs, handleListUserAudit } from "./routes/audit";
 import {
   handleCreateWebhook,
   handleDeleteWebhook,
@@ -497,6 +497,9 @@ admin.patch("/api/apps/:appId/release-types/:rtId", requireAppRole("admin"), han
 admin.delete("/api/apps/:appId/release-types/:rtId", requireAppRole("admin"), handleDeleteReleaseType);
 
 admin.get("/api/apps/:appId/audit-logs", requireAppRole("viewer"), handleListAuditLogs);
+
+// Per-user scoped audit (cross-app within orgs the caller is in).
+admin.get("/api/users/:accountId/audit", handleListUserAudit);
 admin.get("/api/apps/:appId/members", requireAppRole("viewer"), handleListAppMembers);
 admin.post("/api/apps/:appId/members", requireAppRole("admin"), handleAddAppMember);
 admin.patch("/api/apps/:appId/members/:accountId", requireAppRole("admin"), handleUpdateAppMember);

@@ -372,9 +372,14 @@ export async function handleListOrgAuditLogs(c: AdminContext) {
   const limit = Math.min(Number(c.req.query("limit") ?? "100"), 500);
   const { results } = await c.env.DB.prepare(
     `SELECT l.id, l.app_id, a.slug AS app_slug, a.name AS app_name,
-            l.action, l.actor, l.actor_id, l.actor_type, l.payload, l.created_at
+            l.action, l.actor, l.actor_id, l.actor_type,
+            acc.display_name AS actor_display_name,
+            acc.username AS actor_username,
+            acc.avatar_url AS actor_avatar_url,
+            l.payload, l.created_at
      FROM audit_logs l
      JOIN apps a ON a.id = l.app_id
+     LEFT JOIN raft_accounts acc ON acc.id = l.actor_id
      WHERE a.org_id = ?1
      ORDER BY l.created_at DESC
      LIMIT ?2`,

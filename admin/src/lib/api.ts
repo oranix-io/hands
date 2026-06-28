@@ -177,6 +177,9 @@ export interface AuditLogEntry {
   actor: string;
   actor_id?: string | null;
   actor_type?: "human" | "agent" | "system" | null;
+  actor_display_name?: string | null;
+  actor_username?: string | null;
+  actor_avatar_url?: string | null;
   payload: string;
   created_at: number;
 }
@@ -503,8 +506,23 @@ export const createVersion = (
     body: JSON.stringify(input),
   });
 
-export const listAuditLogs = (appId: string) =>
-  request<{ logs: AuditLogEntry[] }>(`/api/apps/${appId}/audit-logs`, { admin: true });
+export const listAuditLogs = (appId: string, filters?: { actorId?: string; actionPrefix?: string; since?: number }) => {
+  const q = new URLSearchParams();
+  if (filters?.actorId) q.set("actor_id", filters.actorId);
+  if (filters?.actionPrefix) q.set("action_prefix", filters.actionPrefix);
+  if (filters?.since != null) q.set("since", String(filters.since));
+  const qs = q.toString();
+  return request<{ logs: AuditLogEntry[] }>(
+    `/api/apps/${appId}/audit-logs${qs ? `?${qs}` : ""}`,
+    { admin: true },
+  );
+};
+
+export const listUserAudit = (accountId: string, limit = 100) =>
+  request<{ logs: AuditLogEntry[]; total: number }>(
+    `/api/users/${accountId}/audit?limit=${limit}`,
+    { admin: true },
+  );
 
 export const listAppMembers = (appId: string) =>
   request<{ members: AppMember[] }>(`/api/apps/${appId}/members`, { admin: true });

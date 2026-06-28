@@ -682,34 +682,60 @@ function AuditTab({
             </tr>
           </thead>
           <tbody>
-            {audit.data.logs.map((log) => (
-              <tr
-                key={log.id}
-                className="border-b border-slate-50 hover:bg-slate-50"
-              >
-                <td className="py-1 pr-2 text-slate-500 font-mono">
-                  {new Date(log.created_at).toISOString().slice(0, 19)}Z
-                </td>
-                <td className="py-1 pr-2">
-                  <span
-                    className={
-                      log.actor_type === "agent"
-                        ? "badge-purple text-xs"
-                        : "text-xs"
-                    }
-                  >
-                    {log.actor || "—"}
-                  </span>
-                </td>
-                <td className="py-1 pr-2 font-mono text-slate-500">
-                  {log.app_id?.slice(0, 8) ?? "—"}
-                </td>
-                <td className="py-1 pr-2 font-mono">{log.action}</td>
-                <td className="py-1 pr-2 font-mono truncate max-w-md">
-                  {log.payload}
-                </td>
-              </tr>
-            ))}
+            {audit.data.logs.map((log) => {
+              const actorName =
+                log.actor_display_name ||
+                (log.actor_username ? `@${log.actor_username}` : null) ||
+                log.actor ||
+                "—";
+              return (
+                <tr
+                  key={log.id}
+                  className="border-b border-slate-50 hover:bg-slate-50"
+                >
+                  <td className="py-1 pr-2 text-slate-500 font-mono whitespace-nowrap">
+                    {new Date(log.created_at).toISOString().slice(0, 19)}Z
+                  </td>
+                  <td className="py-1 pr-2">
+                    <span className="inline-flex items-center gap-1">
+                      {log.actor_avatar_url ? (
+                        <img
+                          src={log.actor_avatar_url}
+                          alt=""
+                          className="w-4 h-4 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span
+                          className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                            log.actor_type === "agent"
+                              ? "bg-purple-200 text-purple-800"
+                              : log.actor_type === "system"
+                                ? "bg-slate-200 text-slate-600"
+                                : "bg-blue-200 text-blue-800"
+                          }`}
+                        >
+                          {actorName.slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <span>{actorName}</span>
+                      {log.actor_type === "agent" && (
+                        <span className="badge-purple text-[10px]">agent</span>
+                      )}
+                      {log.actor_type === "system" && (
+                        <span className="badge-gray text-[10px]">system</span>
+                      )}
+                    </span>
+                  </td>
+                  <td className="py-1 pr-2 font-mono text-slate-500 whitespace-nowrap">
+                    {log.app_slug ?? log.app_id?.slice(0, 8) ?? "—"}
+                  </td>
+                  <td className="py-1 pr-2 font-mono whitespace-nowrap">{log.action}</td>
+                  <td className="py-1 pr-2 font-mono truncate max-w-md">
+                    {log.payload}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

@@ -942,3 +942,145 @@ describe("quiver webhooks — SQL smoke", () => {
     expect(BACKOFF.length).toBe(maxAttempts);
   });
 });
+
+// =============================================================================
+// P5.5 — audit log actor JOIN (display name, username, avatar, agent badge)
+// =============================================================================
+
+describe("quiver audit log — actor display JOIN", () => {
+  function makeEnv() {
+    const env = makeMockEnv();
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind("app-test", "default", "test-app", "Test", "android", 1).run();
+    // Seed a raft_account so the JOIN can resolve an actor.
+    env.DB.prepare(
+      `INSERT INTO raft_accounts
+       (id, provider, provider_subject, server_id, server_slug, principal_type, username, display_name, avatar_url, last_login_at, raw_profile, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      "acct-human",
+      "raft",
+      "human-sub",
+      "srv-1",
+      "myserver",
+      "human",
+      "alice",
+      "Alice Example",
+      "https://example.com/a.png",
+      1234,
+      "{}",
+      1000,
+      1000,
+    ).run();
+    env.DB.prepare(
+      `INSERT INTO raft_accounts
+       (id, provider, provider_subject, server_id, server_slug, principal_type, username, display_name, raw_profile, created_at, updated_at, last_login_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      "acct-agent",
+      "raft",
+      "agent-sub",
+      "srv-1",
+      "myserver",
+      "agent",
+      "Pi-Worker2",
+      "Pi-Worker2",
+      "{}",
+      1000,
+      1000,
+      0,
+    ).run();
+    return env;
+  }
+
+  it("handler SQL JOIN resolves actor display_name / username / avatar_url", async () => {
+    const env = makeEnv();
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, actor_id, actor_type, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      "audit-1",
+      "app-test",
+      "app.create",
+      "Alice Example",
+      "acct-human",
+      "human",
+      JSON.stringify({ slug: "x" }),
+      100,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, actor_id, actor_type, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      "audit-2",
+      "app-test",
+      "build.create",
+      "Pi-Worker2",
+      "acct-agent",
+      "agent",
+      JSON.stringify({}),
+      200,
+    ).run();
+    // This mirrors worker/src/routes/audit.ts handleListAuditLogs JOIN.
+    const { results } = await env.DB.prepare(
+      `SELECT l.id, l.action, l.actor, l.actor_type,
+              a.display_name AS actor_display_name,
+              a.username AS actor_username,
+              a.avatar_url AS actor_avatar_url
+       FROM audit_logs l
+       LEFT JOIN raft_accounts a ON a.id = l.actor_id
+       WHERE l.app_id = ?1
+       ORDER BY l.created_at DESC`,
+    )
+      .bind("app-test")
+      .all();
+    expect(results.length).toBe(2);
+    const agentRow = results.find((r: any) => r.actor_type === "agent");
+    expect(agentRow.actor_display_name).toBe("Pi-Worker2");
+    expect(agentRow.actor_username).toBe("Pi-Worker2");
+    expect(agentRow.actor_avatar_url).toBeNull();
+    const humanRow = results.find((r: any) => r.actor_type === "human");
+    expect(humanRow.actor_display_name).toBe("Alice Example");
+    expect(humanRow.actor_username).toBe("alice");
+    expect(humanRow.actor_avatar_url).toBe("https://example.com/a.png");
+  });
+
+  it("actor_id filter narrows the result set", async () => {
+    const env = makeEnv();
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, actor_id, actor_type, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind("audit-3", "app-test", "a", "Alice", "acct-human", "human", "{}", 1).run();
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, actor_id, actor_type, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind("audit-4", "app-test", "b", "Pi", "acct-agent", "agent", "{}", 2).run();
+    const { results } = await env.DB.prepare(
+      `SELECT id FROM audit_logs WHERE app_id = ?1 AND actor_id = ?2`,
+    )
+      .bind("app-test", "acct-agent")
+      .all();
+    expect(results.length).toBe(1);
+    expect(results[0].id).toBe("audit-4");
+  });
+
+  it("action_prefix filter narrows the result set", async () => {
+    const env = makeEnv();
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind("audit-5", "app-test", "release.create", "x", "{}", 1).run();
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind("audit-6", "app-test", "build.create", "x", "{}", 2).run();
+    const { results } = await env.DB.prepare(
+      `SELECT id FROM audit_logs WHERE app_id = ?1 AND action LIKE ?2`,
+    )
+      .bind("app-test", "release.%")
+      .all();
+    expect(results.length).toBe(1);
+    expect(results[0].id).toBe("audit-5");
+  });
+});
