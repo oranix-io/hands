@@ -12,7 +12,7 @@
  * or page reload.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listOrgs, type Org } from "../lib/api";

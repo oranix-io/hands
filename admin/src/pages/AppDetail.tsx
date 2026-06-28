@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
+  archiveApp,
+  getAuthMe,
   listApps,
   listChannels,
   createChannel,
@@ -170,6 +172,127 @@ export function AppDetail({
       <section className="mt-8">
         <Operations appId={appId} />
       </section>
+
+      <section className="mt-8">
+        <AppSettings appId={appId} app={app} />
+      </section>
+    </div>
+  );
+}
+
+function AppSettings({
+  appId,
+  app,
+}: {
+  appId: string;
+  app: ReturnType<typeof listApps> extends Promise<infer R>
+    ? R extends { apps: Array<infer A> }
+      ? A | undefined
+      : undefined
+    : undefined;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const me = useQuery({ queryKey: ["auth-me"], queryFn: () => getAuthMe() });
+  const orgRole = me.data?.account.org_role ?? null;
+  const isOrgAdmin = orgRole === "owner" || orgRole === "admin";
+
+  const [confirmArchive, setConfirmArchive] = useState(false);
+
+  const archive = useMutation({
+    mutationFn: (archived: boolean) =>
+      archiveApp(appId, { archived }),
+    onSuccess: (_, archived) => {
+      toast.show({
+        kind: "success",
+        title: archived ? "App archived" : "App unarchived",
+      });
+      qc.invalidateQueries({ queryKey: ["apps"] });
+      qc.invalidateQueries({ queryKey: ["versions", appId] });
+      qc.invalidateQueries({ queryKey: ["builds", appId] });
+      qc.invalidateQueries({ queryKey: ["releases", appId] });
+      setConfirmArchive(false);
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Archive failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  if (!app) return null;
+
+  return (
+    <div className="card !p-4 text-sm space-y-3">
+      <h2 className="text-base font-semibold">Settings</h2>
+
+      {/* Danger zone: archive / unarchive */}
+      <div className="border-t border-slate-100 pt-3">
+        <h3 className="text-sm font-medium text-slate-700 mb-2">
+          Danger zone
+        </h3>
+        {!isOrgAdmin && (
+          <p className="text-xs text-yellow-700 mb-2">
+            ⚠ Org owner / admin required to archive.
+          </p>
+        )}
+
+        <div className="flex items-center justify-between gap-2 p-3 border border-slate-200 rounded-md">
+          <div>
+            <div className="font-medium">
+              {app.archived ? "App is archived" : "App is active"}
+            </div>
+            <div className="text-xs text-slate-500">
+              {app.archived
+                ? "Archived apps reject new uploads but remain viewable. " +
+                  "Re-archive / unarchive to toggle."
+                : "Active apps accept uploads + releases normally."}
+            </div>
+            {app.archived_at && (
+              <div className="text-xs text-slate-400 mt-1">
+                archived_at: {new Date(app.archived_at).toISOString()}
+              </div>
+            )}
+          </div>
+          {isOrgAdmin &&
+            (confirmArchive ? (
+              <div className="flex items-center gap-2">
+                <button
+                  className={app.archived ? "btn-secondary" : "btn-secondary"}
+                  onClick={() => setConfirmArchive(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-primary text-xs"
+                  onClick={() => archive.mutate(!app.archived)}
+                  disabled={archive.isPending}
+                >
+                  {archive.isPending
+                    ? app.archived
+                      ? "Unarchiving…"
+                      : "Archiving…"
+                    : app.archived
+                      ? "Confirm unarchive"
+                      : "Confirm archive"}
+                </button>
+              </div>
+            ) : (
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => setConfirmArchive(true)}
+                disabled={archive.isPending}
+              >
+                {app.archived ? "Unarchive" : "Archive"}
+              </button>
+            ))}
+        </div>
+        <p className="text-xs text-slate-500 mt-2">
+          Future: default channel config, signing credential binding,
+          custom domains, app ownership transfer.
+        </p>
+      </div>
     </div>
   );
 }

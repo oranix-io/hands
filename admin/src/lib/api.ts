@@ -421,6 +421,12 @@ export const createApp = (input: {
     body: JSON.stringify(input),
   });
 
+export const archiveApp = (appId: string, patch: { archived: boolean }) =>
+  request<{ ok: boolean; archived: boolean }>(
+    `/api/apps/${appId}/archive`,
+    { method: "POST", admin: true, body: JSON.stringify(patch) },
+  );
+
 export const createChannel = (
   appId: string,
   input: {
