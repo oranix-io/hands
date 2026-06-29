@@ -80,6 +80,9 @@
     "run_worker_first": [
       "/api/*",
       "/public/*",
+      "/openapi.json",
+      "/docs",
+      "/docs/*",
       "/login/raft/callback",
       "/.well-known/*",
       "/health"
