@@ -511,8 +511,6 @@ function CreateChannelDialog({
   const [slug, setSlug] = useState("main");
   const [name, setName] = useState("Main");
   const [bundleId, setBundleId] = useState("");
-  const [password, setPassword] = useState("");
-  const [gitUrl, setGitUrl] = useState("");
   const toast = useToast();
 
   const create = useMutation({
@@ -521,8 +519,6 @@ function CreateChannelDialog({
         slug,
         name,
         bundle_id: bundleId.trim() || undefined,
-        password: password.trim() || undefined,
-        git_url: gitUrl.trim() || undefined,
       }),
     onSuccess: () => {
       toast.show({ kind: "success", title: `Channel '${slug}' created` });
@@ -590,25 +586,6 @@ function CreateChannelDialog({
               value={bundleId}
               onChange={(e) => setBundleId(e.target.value)}
               placeholder="com.example.myapp.beta"
-            />
-          </div>
-          <div>
-            <label className="label">Download password (optional)</label>
-            <input
-              type="password"
-              className="input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="leave blank for no gate"
-            />
-          </div>
-          <div>
-            <label className="label">Git URL (optional)</label>
-            <input
-              className="input font-mono text-xs"
-              value={gitUrl}
-              onChange={(e) => setGitUrl(e.target.value)}
-              placeholder="https://github.com/foo/bar/tree/beta"
             />
           </div>
           <div className="flex gap-2 justify-end pt-2">
