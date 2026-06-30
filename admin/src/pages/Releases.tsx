@@ -707,16 +707,6 @@ function NewReleaseDialog({
   // AppDetail Settings). Falls back to first channel if no default.
   const apps = useQuery({ queryKey: ["apps"], queryFn: () => listApps() });
   const thisApp = apps.data?.apps.find((a) => a.id === appId);
-  const matchingProductTypes =
-    productTypes.data?.product_types.filter((p) =>
-      productTypeMatchesPlatform(p, thisApp?.platform),
-    ) ?? [];
-  const targetProductTypes =
-    matchingProductTypes.length > 0
-      ? matchingProductTypes
-      : productTypes.data?.product_types ?? [];
-  const showProductTypePicker = targetProductTypes.length > 1;
-  const selectedProductType = targetProductTypes.find((p) => p.name === productType);
   const defaultChannelSlug =
     thisApp?.default_channel_slug ??
     channels.data?.channels
@@ -743,6 +733,19 @@ function NewReleaseDialog({
   const [rolloutPercent, setRolloutPercent] = useState(100);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const createdReleaseIdRef = useRef<string | null>(null);
+
+  // Compute the candidate product_types for this app's platform AFTER
+  // `productType` state is declared (TDZ-safe — `productType` is read here).
+  const matchingProductTypes =
+    productTypes.data?.product_types.filter((p) =>
+      productTypeMatchesPlatform(p, thisApp?.platform),
+    ) ?? [];
+  const targetProductTypes =
+    matchingProductTypes.length > 0
+      ? matchingProductTypes
+      : productTypes.data?.product_types ?? [];
+  const showProductTypePicker = targetProductTypes.length > 1;
+  const selectedProductType = targetProductTypes.find((p) => p.name === productType);
 
   // Pre-fill channel + product_type from app defaults once data is loaded.
   const [channelInit, setChannelInit] = useState(false);
