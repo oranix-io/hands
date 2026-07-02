@@ -579,7 +579,7 @@ export async function handleAuthLogout(c: Context<{ Bindings: Env }>) {
 export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
   const origin = appOrigin(c);
   return c.json({
-    schema: "https://app.raft.build/schemas/agent-manifest.v0.json",
+    schema: "slock-agent-manifest.v0",
     service: c.env.RAFT_CLIENT_ID || "quiver",
     docs_url: `${origin}/`,
     execution: {
