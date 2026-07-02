@@ -80,6 +80,7 @@
     "run_worker_first": [
       "/api/*",
       "/public/*",
+      "/share/*",
       "/openapi.json",
       "/docs",
       "/docs/*",

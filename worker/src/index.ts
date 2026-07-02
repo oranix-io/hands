@@ -33,6 +33,12 @@ import {
   handlePublicV2Latest,
   handlePublicV2UpdateCheck,
 } from "./routes/public_v2";
+import {
+  handleCreateReleaseShare,
+  handleListReleaseShares,
+  handlePublicReleaseShare,
+  handleRevokeReleaseShare,
+} from "./routes/shares";
 import { handleUploadApk } from "./routes/upload";
 import {
   handleListOperations,
@@ -298,6 +304,7 @@ app.get("/public/apps/:slug/channels", handlePublicListChannels);
 app.get("/public/v2/apps/:slug/latest", handlePublicV2Latest);
 app.get("/public/v2/apps/:slug/updates/check", handlePublicV2UpdateCheck);
 app.get("/public/r2/:key", handlePublicR2Download);
+app.get("/share/:token", handlePublicReleaseShare);
 app.get("/api/invites/:token", handleGetInvite);
 
 // Admin — protected by Quiver's Login with Raft session cookie.
@@ -380,6 +387,9 @@ admin.delete("/api/apps/:appId/releases/:releaseId", requireAppRole("publisher")
 admin.post("/api/apps/:appId/releases/:releaseId/rollback", requireAppRole("publisher"), handleRollbackRelease);
 admin.post("/api/apps/:appId/releases/:releaseId/bump-rollout", requireAppRole("publisher"), handleBumpRollout);
 admin.post("/api/apps/:appId/releases/:releaseId/force-update", requireAppRole("publisher"), handleForceUpdate);
+admin.get("/api/apps/:appId/releases/:releaseId/shares", requireAppRole("viewer"), handleListReleaseShares);
+admin.post("/api/apps/:appId/releases/:releaseId/shares", requireAppRole("publisher"), handleCreateReleaseShare);
+admin.delete("/api/apps/:appId/releases/:releaseId/shares/:shareId", requireAppRole("publisher"), handleRevokeReleaseShare);
 
 // Multipart APK upload → R2 (admin only, validates + audits)
 admin.post("/api/apps/:appId/upload", requireAppRole("publisher"), handleUploadApk);

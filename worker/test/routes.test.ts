@@ -158,6 +158,15 @@ function makeMockDb() {
       created_at INTEGER NOT NULL,
       FOREIGN KEY (release_id) REFERENCES releases(id) ON DELETE CASCADE
     );
+    CREATE TABLE release_shares (
+      id TEXT PRIMARY KEY,
+      release_id TEXT NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
     CREATE TABLE operation_logs (
       id TEXT PRIMARY KEY,
       app_id TEXT,
@@ -1543,7 +1552,38 @@ describe("quiver public API v2 — scope resolution", () => {
         new Response(JSON.stringify(data), {
           status,
           headers: { "content-type": "application/json" },
+      }),
+    } as any;
+  }
+
+  function makeShareAdminContext(
+    env: MockEnv,
+    params: Record<string, string>,
+    body: unknown = {},
+  ) {
+    return {
+      env,
+      req: {
+        url: "https://quiver-worker.test/api/apps/app-scope/releases/rel-share/shares",
+        param: (name: string) => params[name] ?? "",
+        json: async () => body,
+      },
+      get: (name: string) => (name === "admin_actor" ? "tester" : undefined),
+      json: (data: unknown, status = 200) =>
+        new Response(JSON.stringify(data), {
+          status,
+          headers: { "content-type": "application/json" },
         }),
+    } as any;
+  }
+
+  function makeSharePublicContext(env: MockEnv, token: string) {
+    return {
+      env,
+      req: {
+        url: `https://quiver-worker.test/share/${token}`,
+        param: (name: string) => (name === "token" ? token : ""),
+      },
     } as any;
   }
 
@@ -1894,6 +1934,109 @@ describe("quiver public API v2 — scope resolution", () => {
       `attachment; filename="scope-app-1.0.0-11.apk"; filename*=UTF-8''scope-app-1.0.0-11.apk`,
     );
     expect(await response.text()).toBe("apk");
+  });
+
+  it("creates public release shares with hashed tokens only", async () => {
+    const env = makeEnv();
+    const { handleCreateReleaseShare } = await import("../src/routes/shares");
+    await seedRelease(env, "rel-share", "build-share", [["full", "all"]], {
+      versionCode: 11,
+      versionName: "1.0.11",
+    });
+
+    const response = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, { ttl_seconds: 600 }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = await responseJson<any>(response);
+    expect(body.release_id).toBe("rel-share");
+    expect(body.share_url).toMatch(/^https:\/\/quiver\.example\.test\/share\//);
+    const token = new URL(body.share_url).pathname.replace("/share/", "");
+    const rows = await env.DB.prepare("SELECT id, token_hash, expires_at, revoked_at FROM release_shares WHERE id = ?")
+      .bind(body.id)
+      .all();
+    expect(rows.results).toHaveLength(1);
+    expect(rows.results[0].token_hash).toBe(createHash("sha256").update(token).digest("hex"));
+    expect(rows.results[0].token_hash).not.toBe(token);
+    expect(rows.results[0].revoked_at).toBeNull();
+  });
+
+  it("public release share page renders metadata and a signed download URL", async () => {
+    const env = makeEnv();
+    const { handleCreateReleaseShare, handlePublicReleaseShare } = await import("../src/routes/shares");
+    await seedRelease(env, "rel-share", "build-share", [["full", "all"]], {
+      versionCode: 11,
+      versionName: "1.0.11",
+    });
+    await seedAsset(env, "build-share", "asset-share", {
+      arch: "arm64-v8a",
+      sizeBytes: 123,
+    });
+    const created = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, { ttl_seconds: 600 }),
+    );
+    const createdBody = await responseJson<any>(created);
+    const token = new URL(createdBody.share_url).pathname.replace("/share/", "");
+
+    const response = await handlePublicReleaseShare(makeSharePublicContext(env, token));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    const html = await response.text();
+    expect(html).toContain("Scope App");
+    expect(html).toContain("1.0.11");
+    expect(html).toContain("build 11");
+    expect(html).toContain("arm64-v8a");
+    expect(html).toContain("/public/r2/apps%2Fapp-scope%2Fasset-share.apk");
+    expect(html).toContain("&amp;sig=");
+  });
+
+  it("public release shares stop working after revoke", async () => {
+    const env = makeEnv();
+    const { handleCreateReleaseShare, handlePublicReleaseShare, handleRevokeReleaseShare } = await import("../src/routes/shares");
+    await seedRelease(env, "rel-share", "build-share", [["full", "all"]], {
+      versionCode: 11,
+    });
+    await seedAsset(env, "build-share", "asset-share", { arch: "arm64-v8a" });
+    const created = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, { ttl_seconds: 600 }),
+    );
+    const createdBody = await responseJson<any>(created);
+    const token = new URL(createdBody.share_url).pathname.replace("/share/", "");
+
+    const revoke = await handleRevokeReleaseShare(
+      makeShareAdminContext(env, {
+        appId: "app-scope",
+        releaseId: "rel-share",
+        shareId: createdBody.id,
+      }),
+    );
+    expect(revoke.status).toBe(200);
+
+    const response = await handlePublicReleaseShare(makeSharePublicContext(env, token));
+    expect(response.status).toBe(404);
+  });
+
+  it("create release share rejects invalid TTL and cancelled releases", async () => {
+    const env = makeEnv();
+    const { handleCreateReleaseShare } = await import("../src/routes/shares");
+    await seedRelease(env, "rel-share", "build-share", [["full", "all"]], {
+      versionCode: 11,
+    });
+
+    const invalidTtl = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, { ttl_seconds: -1 }),
+    );
+    expect(invalidTtl.status).toBe(400);
+
+    await env.DB.prepare("UPDATE releases SET status = 'cancelled' WHERE id = ?")
+      .bind("rel-share")
+      .run();
+    const cancelled = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, { ttl_seconds: 600 }),
+    );
+    expect(cancelled.status).toBe(409);
   });
 
   it("public R2 download rejects unsigned active release assets", async () => {

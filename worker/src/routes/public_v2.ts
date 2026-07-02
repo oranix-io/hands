@@ -562,7 +562,7 @@ async function buildFallbackRelease(
   };
 }
 
-async function generateSignedR2Url(
+export async function generateSignedR2Url(
   env: Env,
   key: string,
   ttlSeconds: number,

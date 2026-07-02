@@ -21,6 +21,7 @@ import { Command } from "commander";
 import { registerAppCommands } from "./commands/apps.js";
 import { registerBuildCommands } from "./commands/builds.js";
 import { registerLoginCommands } from "./commands/login.js";
+import { registerReleaseCommands } from "./commands/releases.js";
 import { registerWhoamiCommand } from "./commands/whoami.js";
 import { getConfig } from "./lib/config.js";
 import { setApiBase } from "./lib/api.js";
@@ -52,6 +53,7 @@ registerLoginCommands(program);
 registerWhoamiCommand(program);
 registerAppCommands(program);
 registerBuildCommands(program);
+registerReleaseCommands(program);
 
 program
   .command("version")
