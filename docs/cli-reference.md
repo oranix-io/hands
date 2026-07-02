@@ -1,9 +1,13 @@
 # Quiver CLI Reference — `@oranix/quiver-cli`
 
-Status: **draft v2 — design + planned contract** (Phase 3 / Task X.1.6)
+Status: **alpha + planned contract** (Phase 3 / Task X.1.6)
 Companion to: `publish-architecture.md` §6, `public-api-reference.md`
 
-> **Caveat (2026-06-28)**: this doc describes the **design** of `@oranix/quiver-cli`. The CLI is not yet implemented (Phase 3.4). Some sections describe *current* contract (what you can call from CI today using raw HTTP / curl + the same JSON shapes the CLI will use), and some describe *planned* shape (commands not yet wrapped in the CLI binary). Each section header tags its status.
+> **Caveat (updated 2026-07-02)**: `@oranix/quiver-cli` is published on npm as
+> a public alpha package. Installed commands include `login`, `logout`,
+> `whoami`, `apps list/get`, `builds list/get`, and
+> `builds publish-android`. Some sections below still describe the planned
+> command taxonomy and are not implemented in the alpha binary yet.
 >
 > **Per @Codex-Kuikly-KMP专家's guidance**: I labeled this "X.1.6 — low-conflict finishing item" so we can stabilize the command taxonomy + auth/role boundary + error codes + compat strategy before starting the actual implementation. The doc itself is a target contract; do not treat command names or flag shapes as fixed until the npm package lands.
 
@@ -27,6 +31,7 @@ Companion to: `publish-architecture.md` §6, `public-api-reference.md`
 **Where to install**:
 - Per-project dev dependency (recommended): `npm install --save-dev @oranix/quiver-cli`
 - Global (occasional use): `npm install -g @oranix/quiver-cli`
+- One-off execution: `npm exec --package @oranix/quiver-cli@0.1.0 -- quiver --help`
 
 **Distribution**: public npm package. The CLI talks to any Quiver Worker instance (public `quiver-worker.artin.workers.dev` or self-hosted).
 
@@ -767,22 +772,26 @@ Token is hashed + stored at `~/.quiver/auth.json` with mode 0600. The CLI never 
 
 ---
 
-## 18. Implementation status (as of 2026-06-28)
+## 18. Implementation status (as of 2026-07-02)
 
-This doc is **the design target** for the future npm package `@oranix/quiver-cli`. The CLI binary does not exist yet, but **most of the commands described here already work today as HTTP calls** to the Worker's admin endpoints. CI recipes in §13 show the exact curl + jq sequence the CLI will execute.
+This doc is the design target plus alpha reference for npm package
+`@oranix/quiver-cli`. The CLI binary exists and is public on npm, but not every
+planned command in this document is implemented yet.
 
 **Phases**:
 
 - **Phase 2.1 + P2.2 (schema + backfill)** — ✅ DONE (commit `c6322ab`): product_types, release_types, channels, build_assets, releases, release_scopes tables on remote D1. 1 app + 1 legacy versions row backfilled. Builds table has parity with versions on `should_force_update` / `availability_at` / `provenance_json`.
 - **Phase 2.4.6 + P2.5.4-7 (backend)** — ✅ DONE (commit `2c77b97` by @Codex-Kuikly-KMP专家): builds + build_assets + releases + release_scopes CRUD with transactional supersede + audit + legacy /versions compat shim. **The CLI can talk to these endpoints today** via `curl + Authorization: Bearer $QUIVER_TOKEN`.
-- **Phase 3.4 (CLI npm package)** — 🔵 TODO: scaffold `packages/cli/` (or separate repo). First cut: `login` / `apps` / `builds` / `releases` / `ops` / `webhooks`. ~1 week work. Blocked on the npm package skeleton, not the backend.
+- **Phase 3.4 (CLI npm package)** — 🟡 ALPHA: `packages/cli/` is published as public npm package `@oranix/quiver-cli@0.1.0`. Current binary covers auth, app/build listing, and Android release publishing via `quiver builds publish-android`. Releases/ops/webhooks commands remain planned.
 - **Phase 3.3 (public API scope)** — 🔵 TODO: P3.3 endpoints (`/public/apps/:slug/bundles`, scope resolution on `/latest`) will get CLI commands like `quiver bundles list` / `quiver releases scope`. The doc will get a new section then.
 
-**Install (when shipped)**:
+**Install**:
 ```
 npm install --save-dev @oranix/quiver-cli
 # or
 npm install -g @oranix/quiver-cli
+# or one-off
+npm exec --package @oranix/quiver-cli@0.1.0 -- quiver --help
 ```
 
 ---
@@ -805,9 +814,9 @@ Per the public-api-reference compat policy, the CLI's command names + flag shape
 - **1.0.0** — first stable release. Subsequent minor versions are backward-compatible; major versions may break (with 6-month deprecation).
 - **Server compat** — the CLI requires Worker version >= a minimum (will be enforced at login). If you point the CLI at an older Worker, login fails with a clear version-mismatch error rather than silent misbehavior.
 
-## 21. Test + release process (planned)
+## 21. Test + release process
 
-When the CLI ships, every release will be:
+Every CLI release should be:
 1. Tagged in `quiver` (CLI repo) on green CI (typecheck, unit tests against a mock Worker, snapshot tests for command output)
 2. Published to npm under the `@oranix/quiver-cli` scope (public)
 3. Cross-tested against the latest 3 Worker releases (rolling compat window)

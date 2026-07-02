@@ -316,7 +316,8 @@ Same flow as humans. Agents default to `org_role='viewer'` and `app_role='viewer
 - Smoke test integration (real macOS / Windows / Linux VMs)
 - App transfer between orgs
 - Webhook delivery with retry-on-failure queue
-- CLI: `@oranix/quiver-cli` npm package for CI integration (see `cli-reference.md`)
+- Additional CLI commands beyond the current public `@oranix/quiver-cli` alpha
+  package (see `cli-reference.md`)
 
 ---
 
@@ -325,5 +326,5 @@ Same flow as humans. Agents default to `org_role='viewer'` and `app_role='viewer
 - `publish-architecture.md` — full system design
 - `publish-tasks.md` — implementation task tracker
 - `account-org-invite.md` — org/team/RBAC design
-- `cli-reference.md` — `@oranix/quiver-cli` design (Phase 3)
+- `cli-reference.md` — public `@oranix/quiver-cli` alpha and planned command taxonomy
 - `tasks.md` link from `publish-tasks.md` — full task list with status

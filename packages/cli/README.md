@@ -2,21 +2,23 @@
 
 Quiver CLI — manage apps, builds, releases from the terminal.
 
-Status: **alpha** (P3.4.1 / P3.4.2). See `docs/cli-reference.md` for the
-planned command taxonomy; v1 ships `login`, `logout`, `whoami`, `apps list/get`,
-and `builds list/get`. Other commands listed in the reference land
+Status: **alpha**. The npm package is public as `@oranix/quiver-cli`; v1 ships
+`login`, `logout`, `whoami`, `apps list/get`, `builds list/get`, and
+`builds publish-android`. Other commands listed in `docs/cli-reference.md` land
 incrementally as backend endpoints become available.
 
 ## Install
 
 ```bash
-# From the repo root (after `pnpm install` at the top level):
-pnpm --filter @oranix/quiver-cli build
-pnpm --filter @oranix/quiver-cli start -- whoami
-
-# Or, once published to npm:
 npm install -g @oranix/quiver-cli
 quiver --help
+
+# Or run without installing globally:
+npm exec --package @oranix/quiver-cli@0.1.0 -- quiver --help
+
+# Local repo development:
+pnpm --filter @oranix/quiver-cli build
+pnpm --filter @oranix/quiver-cli start -- whoami
 ```
 
 ## Quickstart
@@ -33,6 +35,13 @@ quiver apps list
 
 # 4. List builds for an app (by slug or id).
 quiver builds list myapp-android
+
+# 5. Publish an Android APK release.
+quiver builds publish-android raft-android \
+  --channel main \
+  --apk ./app-release.apk \
+  --version-name 1.0.3 \
+  --version-code 1000300
 ```
 
 ## CI mode

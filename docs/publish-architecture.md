@@ -581,7 +581,9 @@ LIMIT 1;
 
 ## 6. CLI — `quiver-cli`
 
-NPM package, ~30 commands. Mirrors `todesktop` CLI shape (npm script-friendly).
+Public npm package. The current alpha covers Quiver login, app/build inspection,
+and Android release publishing; planned commands continue to mirror the
+`todesktop` CLI shape.
 
 ### 6.1 Install
 
@@ -589,13 +591,15 @@ NPM package, ~30 commands. Mirrors `todesktop` CLI shape (npm script-friendly).
 npm install --save-dev @oranix/quiver-cli
 # or global
 npm install -g @oranix/quiver-cli
+# or one-off
+npm exec --package @oranix/quiver-cli@0.1.0 -- quiver --help
 ```
 
 ### 6.2 Auth
 
 ```
-quiver login                          # prompts for email + access token (saved to ~/.quiver/auth.json)
-QUIVER_TOKEN=... QUIVER_EMAIL=...    # CI mode: env vars
+quiver login                         # browser-assisted login, saved to ~/.config/quiver/auth.json
+QUIVER_AUTH_TOKEN=... quiver whoami  # CI / agent mode: bearer token env var
 ```
 
 ### 6.3 Commands
@@ -840,7 +844,8 @@ Availability:
 - Migration 0009: add `build_assets.target_app_version`, `build_assets.fingerprint_hash`. Add `releases.metadata` (per-release custom fields).
 - Container: add `electron-asar` + `rn-bundle` parsers.
 - API: add `/public/apps/:slug/bundles` endpoint. Add `release_scopes` resolution logic.
-- CLI: ship `@oranix/quiver-cli` to npm.
+- CLI: public alpha `@oranix/quiver-cli@0.1.0` is published to npm; remaining
+  planned commands continue incrementally.
 - ~1-2 weeks.
 
 Each phase is shippable independently.
@@ -849,7 +854,9 @@ Each phase is shippable independently.
 
 1. **Multi-tenancy** — `accounts` table? orgs? teams? v1: single-account model, defer multi-tenant. Affects `signing_credentials.owner_id` (currently `account`).
 
-2. **CLI distribution** — npm `@oranix/quiver-cli` is the obvious place, but @artin's users are mostly internal. Should it be public? Recommendation: ship as public npm package, document that server is the public quiver-worker.
+2. **CLI distribution** — resolved 2026-07-02: `@oranix/quiver-cli` is public on
+   npm. Default server is the public Quiver Worker, and self-hosted Workers can
+   be selected with `--api` / `QUIVER_API`.
 
 3. **Webhook delivery reliability** — fire-and-forget or retry-with-backoff? hot-updater doesn't have webhooks. ToDesktop has them but doesn't document reliability. Recommendation: in-D1 queue + Worker Cron trigger (every 5 min) to retry failed webhook deliveries. v2 concern.
 
