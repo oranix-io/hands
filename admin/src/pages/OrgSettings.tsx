@@ -403,15 +403,16 @@ function InvitesTab({
     onSuccess: (data) => {
       toast.show({
         kind: "success",
-        title: "Resent invite",
-        description: `New invite URL: ${data.invite_url.slice(0, 60)}…`,
+        title: "Invite link refreshed",
+        description: `Copied URL: ${data.invite_url.slice(0, 60)}…`,
       });
+      navigator.clipboard?.writeText(data.invite_url).catch(() => {});
       qc.invalidateQueries({ queryKey: ["org-invites", orgId] });
     },
     onError: (e) =>
       toast.show({
         kind: "error",
-        title: "Resend failed",
+        title: "Refresh failed",
         description: (e as Error).message,
       }),
   });
@@ -438,7 +439,7 @@ function InvitesTab({
               className="btn-primary text-xs"
               onClick={() => setShowCreate(true)}
             >
-              + Invite member
+              + Invite link
             </button>
           )}
         </div>
@@ -491,7 +492,7 @@ function InvitesTab({
                       onClick={() => resend.mutate(inv.id)}
                       disabled={resend.isPending}
                     >
-                      Resend
+                      Refresh link
                     </button>
                     <button
                       className="text-red-600 hover:underline"
@@ -549,8 +550,8 @@ function CreateInviteDialog({
     onSuccess: (data) => {
       toast.show({
         kind: "success",
-        title: `Invite created for ${email}`,
-        description: `Invite URL: ${data.invite_url.slice(0, 60)}…`,
+        title: `Invite link created for ${email}`,
+        description: `Copied URL: ${data.invite_url.slice(0, 60)}…`,
       });
       // Copy invite URL to clipboard for the admin to share
       navigator.clipboard?.writeText(data.invite_url).catch(() => {});
@@ -571,7 +572,7 @@ function CreateInviteDialog({
       }}
     >
       <div className="card max-w-md w-full relative">
-        <h2 className="text-lg font-bold mb-4">Invite member</h2>
+        <h2 className="text-lg font-bold mb-4">Create member invite link</h2>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -624,7 +625,7 @@ function CreateInviteDialog({
               className="btn-primary"
               disabled={create.isPending || !email.trim()}
             >
-              {create.isPending ? "Creating…" : "Create invite"}
+              {create.isPending ? "Creating…" : "Create invite link"}
             </button>
           </div>
         </form>

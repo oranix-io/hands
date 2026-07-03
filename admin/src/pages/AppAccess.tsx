@@ -1067,8 +1067,8 @@ function InviteToAppForm({ appId }: { appId: string }) {
     onSuccess: (data) => {
       toast.show({
         kind: "success",
-        title: `Invite sent to ${email}`,
-        description: `URL: ${data.invite_url.slice(0, 60)}…`,
+        title: `Invite link created for ${email}`,
+        description: `Copied URL: ${data.invite_url.slice(0, 60)}…`,
       });
       navigator.clipboard?.writeText(data.invite_url).catch(() => {});
       qc.invalidateQueries({ queryKey: ["org-invites", orgId!] });
@@ -1090,13 +1090,13 @@ function InviteToAppForm({ appId }: { appId: string }) {
   return (
     <div className="card !p-4 text-sm">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold">Invite to this app</h3>
+        <h3 className="text-base font-semibold">Create app invite link</h3>
         {!showForm && (
           <button
             className="btn-secondary text-xs"
             onClick={() => setShowForm(true)}
           >
-            + Invite
+            + Link
           </button>
         )}
       </div>
@@ -1138,7 +1138,7 @@ function InviteToAppForm({ appId }: { appId: string }) {
           <p className="text-xs text-slate-500">
             The invitee needs an account with this email; accepting the
             invite makes them an org viewer (auto) and grants app access
-            with the role you pick. URL is copied to clipboard after send.
+            with the role you pick. The URL is copied to clipboard after creation.
           </p>
           <div className="flex gap-2">
             <button
@@ -1146,7 +1146,7 @@ function InviteToAppForm({ appId }: { appId: string }) {
               className="btn-primary text-xs"
               disabled={invite.isPending || !email.trim()}
             >
-              {invite.isPending ? "Sending…" : "Send invite"}
+              {invite.isPending ? "Creating…" : "Create invite link"}
             </button>
             <button
               type="button"
@@ -1159,9 +1159,9 @@ function InviteToAppForm({ appId }: { appId: string }) {
         </form>
       ) : (
         <p className="text-xs text-slate-500">
-          Send an invite to grant app access. The invitee is added to the
-          org as a viewer automatically when they accept; the picked role
-          (publisher / viewer) controls what they can do on this app.
+          Create an invite link to grant app access, then share the copied URL
+          manually. The invitee is added to the org as a viewer automatically
+          when they accept; the picked role controls what they can do on this app.
         </p>
       )}
     </div>

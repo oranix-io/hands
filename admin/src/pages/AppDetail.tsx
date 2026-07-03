@@ -183,7 +183,7 @@ function AppSettings({
     onSuccess: (_, archived) => {
       toast.show({
         kind: "success",
-        title: archived ? "App deleted" : "App restored",
+        title: archived ? "App archived" : "App restored",
       });
       qc.invalidateQueries({ queryKey: ["apps"] });
       qc.invalidateQueries({ queryKey: ["builds", appId] });
@@ -193,7 +193,7 @@ function AppSettings({
     onError: (e) =>
       toast.show({
         kind: "error",
-        title: "Delete failed",
+        title: "Archive failed",
         description: (e as Error).message,
       }),
   });
@@ -207,31 +207,31 @@ function AppSettings({
       {/* Default release channel picker */}
       <DefaultChannelPicker appId={appId} app={app} isOrgAdmin={isOrgAdmin} />
 
-      {/* Danger zone: delete / restore */}
+      {/* Danger zone: archive / restore */}
       <div className="border-t border-slate-100 pt-3">
         <h3 className="text-sm font-medium text-slate-700 mb-2">
           Danger zone
         </h3>
         {!isOrgAdmin && (
           <p className="text-xs text-yellow-700 mb-2">
-            ⚠ Org owner / admin required to delete apps.
+            ⚠ Org owner / admin required to archive apps.
           </p>
         )}
 
         <div className="flex items-center justify-between gap-2 p-3 border border-slate-200 rounded-md">
           <div>
             <div className="font-medium">
-              {app.archived ? "App is deleted" : "App is active"}
+              {app.archived ? "App is archived" : "App is active"}
             </div>
             <div className="text-xs text-slate-500">
               {app.archived
-                ? "Deleted apps reject new uploads but remain restorable. " +
+                ? "Archived apps reject new uploads but remain restorable. " +
                   "Restore the app to resume normal operation."
                 : "Active apps accept uploads + releases normally."}
             </div>
             {app.archived_at && (
               <div className="text-xs text-slate-400 mt-1">
-                deleted_at: {new Date(app.archived_at).toISOString()}
+                archived_at: {new Date(app.archived_at).toISOString()}
               </div>
             )}
           </div>
@@ -241,14 +241,14 @@ function AppSettings({
               onClick={() => setConfirmArchive(true)}
               disabled={archive.isPending}
             >
-              {app.archived ? "Restore app" : "Delete app"}
+              {app.archived ? "Restore app" : "Archive app"}
             </button>
           )}
         </div>
 
         <ConfirmActionDialog
           open={confirmArchive}
-          title={app.archived ? "Restore this app?" : "Delete this app?"}
+          title={app.archived ? "Restore this app?" : "Archive this app?"}
           objectLabel={app.name ?? app.slug ?? app.id}
           objectHint={`slug: ${app.slug}`}
           objectSummary={
@@ -273,20 +273,20 @@ function AppSettings({
               </>
             ) : (
               <>
-                Deleting marks the app as <strong>deleted</strong>.
+                Archiving marks the app as <strong>archived</strong>.
                 The app remains viewable in lists and admin pages, but{" "}
                 <strong>new uploads are rejected</strong>.
                 <br />
                 <span className="text-xs text-slate-500">
-                  This is a reversible delete: builds,
+                  This is reversible: builds,
                   releases, and assets are kept as-is. The underlying binary
-                  data in R2 is not deleted.
+                  data in R2 is not removed.
                 </span>
               </>
             )
           }
-          confirmLabel={app.archived ? "Restore app" : "Delete app"}
-          cancelLabel={app.archived ? "Keep deleted" : "Keep app"}
+          confirmLabel={app.archived ? "Restore app" : "Archive app"}
+          cancelLabel={app.archived ? "Keep archived" : "Keep app"}
           confirmKind={app.archived ? "primary" : "danger"}
           pending={archive.isPending}
           onCancel={() => setConfirmArchive(false)}

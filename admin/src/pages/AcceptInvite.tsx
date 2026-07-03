@@ -118,7 +118,7 @@ export function AcceptInvite({ token }: { token: string }) {
           <p className="text-sm text-red-600 my-4">
             This invite expired on{" "}
             {new Date(invite.expires_at).toISOString().slice(0, 16)}Z. Ask the
-            inviter to send a new one.
+            inviter to create a new link.
           </p>
         )}
         {isAccepted && (
