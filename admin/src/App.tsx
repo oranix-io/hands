@@ -6,10 +6,11 @@ import {
   Navigate,
   useParams,
   useNavigate,
+  useLocation,
   Link,
 } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppsList } from "./pages/AppsList";
 import { AppDetail } from "./pages/AppDetail";
 import { AuditLog } from "./pages/AuditLog";
@@ -301,9 +302,32 @@ function AcceptInviteRoute() {
   return <AcceptInvite token={token} />;
 }
 
+function PageTitle() {
+  const { pathname } = useLocation();
+  const title = (() => {
+    if (pathname === "/") return "Apps";
+    if (pathname === "/settings") return "Settings";
+    if (pathname.startsWith("/orgs/")) return "Org";
+    if (pathname.startsWith("/invites/")) return "Invite";
+    if (pathname.includes("/releases")) return "Releases";
+    if (pathname.includes("/builds")) return "Builds";
+    if (pathname.includes("/access")) return "Access";
+    if (pathname.includes("/audit")) return "Audit";
+    if (pathname.startsWith("/apps/")) return "App";
+    return "Not Found";
+  })();
+
+  useEffect(() => {
+    document.title = `${title} - Quiver`;
+  }, [title]);
+
+  return null;
+}
+
 export function App() {
   return (
     <BrowserRouter>
+      <PageTitle />
       <AuthGate />
     </BrowserRouter>
   );
