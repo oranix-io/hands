@@ -229,58 +229,44 @@ function AppContextNav() {
   const { appId } = useParams();
   if (!appId) return null;
   const base = `/apps/${appId}`;
+  const tabClass = ({ isActive }: { isActive: boolean }) =>
+    `inline-flex h-9 items-center rounded-md px-3 text-sm ${
+      isActive
+        ? "bg-slate-100 font-medium text-slate-950"
+        : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+    }`;
+
   return (
     <div className="bg-white border-b border-slate-200 -mt-px">
-      <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-2">
-        <span className="text-xs text-slate-500 mr-2">App context:</span>
-        <NavLink
-          to={`${base}/releases`}
-          className={({ isActive }) =>
-            `px-3 py-1 rounded-md text-sm font-medium ${
-              isActive ? "bg-slate-900 text-white" : "bg-slate-100 hover:bg-slate-200"
-            }`
-          }
-        >
-          Releases
-        </NavLink>
+      <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-1">
         <NavLink
           to={base}
           end
-          className={({ isActive }) =>
-            `px-3 py-1 rounded-md text-sm ${
-              isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-            }`
-          }
+          className={tabClass}
         >
           Overview
         </NavLink>
         <NavLink
+          to={`${base}/releases`}
+          className={tabClass}
+        >
+          Releases
+        </NavLink>
+        <NavLink
           to={`${base}/builds`}
-          className={({ isActive }) =>
-            `px-3 py-1 rounded-md text-sm ${
-              isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-            }`
-          }
+          className={tabClass}
         >
           Builds
         </NavLink>
         <NavLink
           to={`${base}/access`}
-          className={({ isActive }) =>
-            `px-3 py-1 rounded-md text-sm ${
-              isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-            }`
-          }
+          className={tabClass}
         >
           Access
         </NavLink>
         <NavLink
           to={`${base}/audit`}
-          className={({ isActive }) =>
-            `px-3 py-1 rounded-md text-sm ${
-              isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-            }`
-          }
+          className={tabClass}
         >
           Audit
         </NavLink>
