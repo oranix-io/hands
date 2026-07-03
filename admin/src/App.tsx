@@ -12,7 +12,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { AppsList } from "./pages/AppsList";
-import { AppDetail } from "./pages/AppDetail";
+import { AppChannels, AppDetail, AppSettings } from "./pages/AppDetail";
 import { AuditLog } from "./pages/AuditLog";
 import { Settings } from "./pages/Settings";
 import { Builds } from "./pages/Builds";
@@ -244,9 +244,6 @@ function Header({ account }: { account: AuthAccount }) {
                 {account.display_name.slice(0, 1).toUpperCase()}
               </span>
             )}
-            <span className="text-xs text-slate-400" aria-hidden="true">
-              ▾
-            </span>
           </button>
           {showAccountMenu && (
             <div className="absolute right-0 top-full z-30 mt-2 w-64 rounded-md border border-slate-200 bg-white p-2 shadow-lg">
@@ -300,6 +297,12 @@ function AppContextNav() {
           Overview
         </NavLink>
         <NavLink
+          to={`${base}/channels`}
+          className={tabClass}
+        >
+          Channels
+        </NavLink>
+        <NavLink
           to={`${base}/releases`}
           className={tabClass}
         >
@@ -323,6 +326,12 @@ function AppContextNav() {
         >
           Audit
         </NavLink>
+        <NavLink
+          to={`${base}/settings`}
+          className={tabClass}
+        >
+          Settings
+        </NavLink>
       </div>
     </div>
   );
@@ -330,16 +339,20 @@ function AppContextNav() {
 
 function AppDetailRoute() {
   const { appId } = useParams();
-  const navigate = useNavigate();
   if (!appId) return null;
-  return (
-    <AppDetail
-      appId={appId}
-      onShowAudit={() => navigate(`/apps/${appId}/audit`)}
-      onShowReleases={() => navigate(`/apps/${appId}/releases`)}
-      onShowAccess={() => navigate(`/apps/${appId}/access`)}
-    />
-  );
+  return <AppDetail appId={appId} />;
+}
+
+function AppChannelsRoute() {
+  const { appId } = useParams();
+  if (!appId) return null;
+  return <AppChannels appId={appId} />;
+}
+
+function AppSettingsRoute() {
+  const { appId } = useParams();
+  if (!appId) return null;
+  return <AppSettings appId={appId} />;
 }
 
 function AppAccessRoute() {
@@ -423,10 +436,12 @@ function PageTitle() {
     if (pathname === "/settings") return "Settings";
     if (pathname.startsWith("/orgs/")) return "Org";
     if (pathname.startsWith("/invites/")) return "Invite";
+    if (pathname.includes("/channels")) return "Channels";
     if (pathname.includes("/releases")) return "Releases";
     if (pathname.includes("/builds")) return "Builds";
     if (pathname.includes("/access")) return "Access";
     if (pathname.includes("/audit")) return "Audit";
+    if (pathname.includes("/settings")) return "Settings";
     if (pathname.startsWith("/apps/")) return "Overview";
     return "Not Found";
   })();
@@ -641,10 +656,12 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
         <Route path="/apps/:appId" element={<AppShell />}>
           <Route index element={<AppDetailRoute />} />
           <Route path="publish" element={<LegacyPublishRedirect />} />
+          <Route path="channels" element={<AppChannelsRoute />} />
           <Route path="builds" element={<BuildsRoute />} />
           <Route path="releases" element={<ReleasesRoute />} />
           <Route path="access" element={<AppAccessRoute />} />
           <Route path="audit" element={<AuditRoute />} />
+          <Route path="settings" element={<AppSettingsRoute />} />
         </Route>
         <Route
           path="*"

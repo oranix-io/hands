@@ -16,19 +16,7 @@ import {
 import { useToast } from "../components/Toast";
 import { Operations } from "./Operations";
 
-export function AppDetail({
-  appId,
-  onShowAudit,
-  onShowReleases,
-  onShowAccess,
-}: {
-  appId: string;
-  onShowAudit: () => void;
-  onShowReleases: () => void;
-  onShowAccess: () => void;
-}) {
-  const qc = useQueryClient();
-  const toast = useToast();
+export function AppDetail({ appId }: { appId: string }) {
   const apps = useQuery({ queryKey: ["apps"], queryFn: listApps });
   const app = apps.data?.apps.find((a) => a.id === appId);
   const channels = useQuery({
@@ -36,39 +24,76 @@ export function AppDetail({
     queryFn: () => listChannels(appId),
   });
 
+  return (
+    <div>
+      <AppHeading app={app} />
+
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-lg font-semibold">App overview</h2>
+            <p className="text-xs text-slate-500">
+              Releases are managed from the{" "}
+              <a href={`/apps/${appId}/releases`} className="underline">
+                Releases
+              </a>{" "}
+              tab.
+            </p>
+          </div>
+          {channels.data?.channels.length ? (
+            <a
+              href={`/apps/${appId}/releases`}
+              className="btn-primary text-sm no-underline"
+            >
+              Publish release →
+            </a>
+          ) : (
+            <a
+              href={`/apps/${appId}/channels`}
+              className="btn-primary text-sm no-underline"
+            >
+              Create channel first
+            </a>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <Operations appId={appId} />
+      </section>
+    </div>
+  );
+}
+
+function AppHeading({ app }: { app?: App }) {
+  return (
+    <div className="mb-6">
+      <div className="text-sm text-slate-500">App</div>
+      <h1 className="text-2xl font-bold">
+        {app?.name ?? "..."}{" "}
+        <span className="badge-blue align-middle">{app?.platform}</span>
+      </h1>
+      <div className="text-sm text-slate-500 font-mono">{app?.slug}</div>
+    </div>
+  );
+}
+
+export function AppChannels({ appId }: { appId: string }) {
+  const qc = useQueryClient();
+  const apps = useQuery({ queryKey: ["apps"], queryFn: listApps });
+  const app = apps.data?.apps.find((a) => a.id === appId);
+  const channels = useQuery({
+    queryKey: ["channels", appId],
+    queryFn: () => listChannels(appId),
+  });
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
 
   return (
     <div>
-      <div className="mb-6">
-        <div className="text-sm text-slate-500">App</div>
-        <h1 className="text-2xl font-bold">
-          {app?.name ?? "..."}{" "}
-          <span className="badge-blue align-middle">{app?.platform}</span>
-        </h1>
-        <div className="text-sm text-slate-500 font-mono">{app?.slug}</div>
-        <button
-          onClick={onShowAudit}
-          className="mt-2 text-sm text-blue-600 hover:underline inline-block mr-3"
-        >
-          View audit log →
-        </button>
-        <button
-          onClick={onShowReleases}
-          className="mt-2 text-sm text-blue-600 hover:underline inline-block mr-3"
-        >
-          Manage releases →
-        </button>
-        <button
-          onClick={onShowAccess}
-          className="mt-2 text-sm text-blue-600 hover:underline inline-block"
-        >
-          Manage access →
-        </button>
-      </div>
+      <AppHeading app={app} />
 
-      <section className="mb-8">
+      <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Channels</h2>
           <button
@@ -115,62 +140,15 @@ export function AppDetail({
           />
         )}
       </section>
-
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-semibold">App overview</h2>
-            <p className="text-xs text-slate-500">
-              Releases are managed from the{" "}
-              <a href={`/apps/${appId}/releases`} className="underline">
-                Releases
-              </a>{" "}
-              page.
-            </p>
-          </div>
-          {channels.data?.channels.length ? (
-            <a
-              href={`/apps/${appId}/releases`}
-              className="btn-primary text-sm no-underline"
-            >
-              Publish release →
-            </a>
-          ) : (
-            <button
-              type="button"
-              className="btn-primary text-sm"
-              onClick={() => setShowCreateChannel(true)}
-            >
-              Create channel first
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className="mt-8">
-        <Operations appId={appId} />
-      </section>
-
-      <section className="mt-8">
-        <AppSettings appId={appId} app={app} />
-      </section>
     </div>
   );
 }
 
-function AppSettings({
-  appId,
-  app,
-}: {
-  appId: string;
-  app: ReturnType<typeof listApps> extends Promise<infer R>
-    ? R extends { apps: Array<infer A> }
-      ? A | undefined
-      : undefined
-    : undefined;
-}) {
+export function AppSettings({ appId }: { appId: string }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const apps = useQuery({ queryKey: ["apps"], queryFn: listApps });
+  const app = apps.data?.apps.find((a) => a.id === appId);
   const me = useQuery({ queryKey: ["auth-me"], queryFn: () => getAuthMe() });
   const orgRole = me.data?.account.org_role ?? null;
   const isOrgAdmin = orgRole === "owner" || orgRole === "admin";
@@ -201,104 +179,108 @@ function AppSettings({
   if (!app) return null;
 
   return (
-    <div className="card !p-4 text-sm space-y-3">
-      <h2 className="text-base font-semibold">Settings</h2>
+    <div>
+      <AppHeading app={app} />
 
-      {/* Default release channel picker */}
-      <DefaultChannelPicker appId={appId} app={app} isOrgAdmin={isOrgAdmin} />
+      <div className="card !p-4 text-sm space-y-3">
+        <h2 className="text-base font-semibold">Settings</h2>
 
-      {/* Danger zone: archive / restore */}
-      <div className="border-t border-slate-100 pt-3">
-        <h3 className="text-sm font-medium text-slate-700 mb-2">
-          Danger zone
-        </h3>
-        {!isOrgAdmin && (
-          <p className="text-xs text-yellow-700 mb-2">
-            ⚠ Org owner / admin required to archive apps.
-          </p>
-        )}
+        {/* Default release channel picker */}
+        <DefaultChannelPicker appId={appId} app={app} isOrgAdmin={isOrgAdmin} />
 
-        <div className="flex items-center justify-between gap-2 p-3 border border-slate-200 rounded-md">
-          <div>
-            <div className="font-medium">
-              {app.archived ? "App is archived" : "App is active"}
-            </div>
-            <div className="text-xs text-slate-500">
-              {app.archived
-                ? "Archived apps reject new uploads but remain restorable. " +
-                  "Restore the app to resume normal operation."
-                : "Active apps accept uploads + releases normally."}
-            </div>
-            {app.archived_at && (
-              <div className="text-xs text-slate-400 mt-1">
-                archived_at: {new Date(app.archived_at).toISOString()}
+        {/* Danger zone: archive / restore */}
+        <div className="border-t border-slate-100 pt-3">
+          <h3 className="text-sm font-medium text-slate-700 mb-2">
+            Danger zone
+          </h3>
+          {!isOrgAdmin && (
+            <p className="text-xs text-yellow-700 mb-2">
+              ⚠ Org owner / admin required to archive apps.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between gap-2 p-3 border border-slate-200 rounded-md">
+            <div>
+              <div className="font-medium">
+                {app.archived ? "App is archived" : "App is active"}
               </div>
+              <div className="text-xs text-slate-500">
+                {app.archived
+                  ? "Archived apps reject new uploads but remain restorable. " +
+                    "Restore the app to resume normal operation."
+                  : "Active apps accept uploads + releases normally."}
+              </div>
+              {app.archived_at && (
+                <div className="text-xs text-slate-400 mt-1">
+                  archived_at: {new Date(app.archived_at).toISOString()}
+                </div>
+              )}
+            </div>
+            {isOrgAdmin && (
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => setConfirmArchive(true)}
+                disabled={archive.isPending}
+              >
+                {app.archived ? "Restore app" : "Archive app"}
+              </button>
             )}
           </div>
-          {isOrgAdmin && (
-            <button
-              className="btn-secondary text-xs"
-              onClick={() => setConfirmArchive(true)}
-              disabled={archive.isPending}
-            >
-              {app.archived ? "Restore app" : "Archive app"}
-            </button>
-          )}
-        </div>
 
-        <ConfirmActionDialog
-          open={confirmArchive}
-          title={app.archived ? "Restore this app?" : "Archive this app?"}
-          objectLabel={app.name ?? app.slug ?? app.id}
-          objectHint={`slug: ${app.slug}`}
-          objectSummary={
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono">
-              <div className="text-slate-500">id</div>
-              <div>{app.id.slice(0, 8)}…</div>
-              <div className="text-slate-500">slug</div>
-              <div>{app.slug}</div>
-              <div className="text-slate-500">status</div>
-              <div>{app.archived ? "archived" : "active"}</div>
-            </div>
-          }
-          body={
-            app.archived ? (
-              <>
-                Restoring returns the app to <strong>active</strong> status.{" "}
-                New uploads and releases will be accepted again.
-                <br />
-                <span className="text-xs text-slate-500">
-                  Existing builds, releases, and assets are kept as-is.
-                </span>
-              </>
-            ) : (
-              <>
-                Archiving marks the app as <strong>archived</strong>.
-                The app remains viewable in lists and admin pages, but{" "}
-                <strong>new uploads are rejected</strong>.
-                <br />
-                <span className="text-xs text-slate-500">
-                  This is reversible: builds,
-                  releases, and assets are kept as-is. The underlying binary
-                  data in R2 is not removed.
-                </span>
-              </>
-            )
-          }
-          confirmLabel={app.archived ? "Restore app" : "Archive app"}
-          cancelLabel={app.archived ? "Keep archived" : "Keep app"}
-          confirmKind={app.archived ? "primary" : "danger"}
-          pending={archive.isPending}
-          onCancel={() => setConfirmArchive(false)}
-          onConfirm={() => {
-            archive.mutate(!app.archived);
-            setConfirmArchive(false);
-          }}
-        />
-        <p className="text-xs text-slate-500 mt-2">
-          Future: signing credential binding, custom domains, app
-          ownership transfer.
-        </p>
+          <ConfirmActionDialog
+            open={confirmArchive}
+            title={app.archived ? "Restore this app?" : "Archive this app?"}
+            objectLabel={app.name ?? app.slug ?? app.id}
+            objectHint={`slug: ${app.slug}`}
+            objectSummary={
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono">
+                <div className="text-slate-500">id</div>
+                <div>{app.id.slice(0, 8)}…</div>
+                <div className="text-slate-500">slug</div>
+                <div>{app.slug}</div>
+                <div className="text-slate-500">status</div>
+                <div>{app.archived ? "archived" : "active"}</div>
+              </div>
+            }
+            body={
+              app.archived ? (
+                <>
+                  Restoring returns the app to <strong>active</strong> status.{" "}
+                  New uploads and releases will be accepted again.
+                  <br />
+                  <span className="text-xs text-slate-500">
+                    Existing builds, releases, and assets are kept as-is.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Archiving marks the app as <strong>archived</strong>.
+                  The app remains viewable in lists and admin pages, but{" "}
+                  <strong>new uploads are rejected</strong>.
+                  <br />
+                  <span className="text-xs text-slate-500">
+                    This is reversible: builds,
+                    releases, and assets are kept as-is. The underlying binary
+                    data in R2 is not removed.
+                  </span>
+                </>
+              )
+            }
+            confirmLabel={app.archived ? "Restore app" : "Archive app"}
+            cancelLabel={app.archived ? "Keep archived" : "Keep app"}
+            confirmKind={app.archived ? "primary" : "danger"}
+            pending={archive.isPending}
+            onCancel={() => setConfirmArchive(false)}
+            onConfirm={() => {
+              archive.mutate(!app.archived);
+              setConfirmArchive(false);
+            }}
+          />
+          <p className="text-xs text-slate-500 mt-2">
+            Future: signing credential binding, custom domains, app
+            ownership transfer.
+          </p>
+        </div>
       </div>
     </div>
   );
