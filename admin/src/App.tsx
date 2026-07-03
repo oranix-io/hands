@@ -386,31 +386,169 @@ function AuthGate() {
   }
 
   if (me.isError || !me.data?.authenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="card max-w-md w-full text-center space-y-4">
-          <div>
-            <h1 className="text-2xl font-bold">quiver</h1>
-            <p className="text-sm text-slate-600 mt-2">
-              Admin access requires Login with Raft.
-            </p>
-          </div>
-          <a
-            className="inline-flex w-full items-center justify-center gap-3 rounded-none border-2 border-slate-950 bg-[#ffd440] px-5 py-3 font-black text-slate-950 shadow-[6px_6px_0_#020617] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[8px_8px_0_#020617] active:translate-x-1 active:translate-y-1 active:shadow-[3px_3px_0_#020617]"
-            href={loginUrl()}
-          >
-            <RaftIcon className="h-6 w-6 text-slate-950" />
-            Login with Raft
-          </a>
-          <p className="text-xs text-slate-500">
-            Cloudflare Access and browser-visible API tokens are not used.
-          </p>
-        </div>
-      </div>
-    );
+    return <PublicLanding />;
   }
 
   return <AuthenticatedApp account={me.data.account} />;
+}
+
+function PublicLanding() {
+  useEffect(() => {
+    document.title = "Quiver - Android release distribution";
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-950">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
+          <a href="/" className="inline-flex items-center gap-2 font-bold">
+            <QuiverMark className="h-9 w-9 flex-none" />
+            <span className="text-xl leading-none">Quiver</span>
+          </a>
+          <nav className="flex items-center gap-2 text-sm">
+            <a
+              href="/docs"
+              className="hidden h-10 items-center rounded-md px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-950 sm:inline-flex"
+            >
+              API docs
+            </a>
+            <a
+              href="https://github.com/oranix-io/quiver/blob/main/docs/cli-reference.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden h-10 items-center rounded-md px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-950 sm:inline-flex"
+            >
+              CLI
+            </a>
+            <a
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-950 px-4 font-medium text-white hover:bg-slate-800"
+              href={loginUrl()}
+            >
+              <RaftIcon className="h-5 w-5" />
+              Login
+            </a>
+          </nav>
+        </div>
+      </header>
+
+      <main>
+        <section className="border-b border-slate-200 bg-white">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-[1.1fr_0.9fr] md:items-center md:py-20">
+            <div className="max-w-2xl">
+              <div className="mb-4 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                Release distribution for Raft-built apps
+              </div>
+              <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
+                Ship Android builds, releases, and share links from one place.
+              </h1>
+              <p className="mt-5 text-lg leading-8 text-slate-600">
+                Quiver manages APK uploads, release channels, public update
+                checks, share pages, and Raft-based access control for humans
+                and agents.
+              </p>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <a
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-slate-950 px-5 text-sm font-medium text-white hover:bg-slate-800"
+                  href={loginUrl()}
+                >
+                  <RaftIcon className="h-5 w-5" />
+                  Login with Raft
+                </a>
+                <a
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-5 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                  href="/docs"
+                >
+                  Open API docs
+                </a>
+                <a
+                  className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-5 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                  href="https://github.com/oranix-io/quiver"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  GitHub
+                </a>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-950 p-5 text-sm text-slate-100 shadow-sm">
+              <div className="mb-4 flex items-center justify-between border-b border-slate-700 pb-3">
+                <span className="font-medium">quiver release</span>
+                <span className="rounded bg-sky-400/15 px-2 py-0.5 text-xs text-sky-200">
+                  main
+                </span>
+              </div>
+              <div className="space-y-3 font-mono text-xs leading-6 text-slate-300">
+                <div>$ npm exec --package @oranix/quiver-cli -- quiver builds publish-android raft-android</div>
+                <div className="text-slate-500">uploading APK and metadata...</div>
+                <div className="text-slate-500">creating release on channel main...</div>
+                <div className="text-emerald-300">release: 14998dba-cfde-4002-8c01-230a2760f662</div>
+                <div className="text-emerald-300">share: https://quiver.oranix.io/share/...</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto grid max-w-6xl gap-4 px-4 py-8 sm:grid-cols-2 lg:grid-cols-4">
+          <LandingFeature
+            title="Channels"
+            body="Keep main, preview, nightly, or debug releases separated by app."
+          />
+          <LandingFeature
+            title="Update checks"
+            body="Serve public latest/update responses with signed APK downloads."
+          />
+          <LandingFeature
+            title="Share pages"
+            body="Create expiring download pages with view and download counts."
+          />
+          <LandingFeature
+            title="Raft access"
+            body="Use Raft login, org roles, direct app members, and server visibility."
+          />
+        </section>
+
+        <section className="border-t border-slate-200 bg-white">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Build from CI or local scripts.</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                The public npm CLI can publish Android releases and create share
+                links from GitHub Actions, local packaging lanes, or Raft agents.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <a
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                href="https://github.com/oranix-io/quiver/blob/main/docs/cli-reference.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                CLI reference
+              </a>
+              <a
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                href="https://github.com/oranix-io/quiver/blob/main/docs/admin-user-guide.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Admin guide
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function LandingFeature({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{body}</p>
+    </div>
+  );
 }
 
 function AuthenticatedApp({ account }: { account: AuthAccount }) {
