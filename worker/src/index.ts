@@ -647,6 +647,9 @@ admin.delete("/api/apps/:appId/deploy-tokens/:tokenId", requireAppRole("admin"),
 
 app.route("/", admin);
 
+app.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+app.on("HEAD", "*", (c) => c.env.ASSETS.fetch(c.req.raw));
+
 // ============================================================================
 // Scheduled handler — Worker Cron Trigger (every 5 min)
 // Reaps pending webhook deliveries and POSTs them to subscriber URLs.
