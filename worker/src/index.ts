@@ -268,20 +268,37 @@ function parseBadgingAndCerts(
 
 const app = new Hono<{ Bindings: Env }>();
 
-// CORS for the admin UI hosted at quiver-admin.pages.dev (and any other
-// pages.dev preview URLs). In production you'd lock this down further.
+function allowedCorsOrigin(origin: string, env: Env): string | null {
+  if (!origin) return "*";
+
+  const allowed = (env.CORS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const entry of allowed) {
+    if (entry === "*") return origin;
+    if (entry === origin) return origin;
+    if (entry.includes("*")) {
+      const pattern = new RegExp(
+        `^${entry
+          .split("*")
+          .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join(".*")}$`,
+      );
+      if (pattern.test(origin)) return origin;
+    }
+  }
+
+  return null;
+}
+
+// CORS is intentionally driven by environment config so deployment-specific
+// admin/dev origins are not hardcoded in server code.
 app.use(
   "*",
   cors({
-    origin: (origin) => {
-      if (!origin) return "*";
-      if (origin === "https://quiver-admin.pages.dev") return origin;
-      if (origin === "http://localhost:5173") return origin;
-      if (/^https:\/\/[a-f0-9]+\.quiver-admin\.pages\.dev$/.test(origin)) {
-        return origin;
-      }
-      return origin;
-    },
+    origin: (origin, c) => allowedCorsOrigin(origin, c.env),
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["content-type", "authorization"],
     credentials: false,

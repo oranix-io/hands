@@ -64,16 +64,16 @@ function callbackUrl(c: Context<{ Bindings: Env }>): string {
 function requireRaftConfig(c: Context<{ Bindings: Env }>) {
   const clientId = c.env.RAFT_CLIENT_ID;
   const clientSecret = c.env.RAFT_CLIENT_SECRET;
-  const raftOrigin = c.env.RAFT_ORIGIN || "https://app.raft.build";
-  const raftApiOrigin = c.env.RAFT_API_ORIGIN || "https://api.raft.build";
-  if (!clientId || !clientSecret) {
+  const raftOrigin = c.env.RAFT_ORIGIN;
+  const raftApiOrigin = c.env.RAFT_API_ORIGIN;
+  if (!clientId || !clientSecret || !raftOrigin || !raftApiOrigin) {
     return {
       ok: false as const,
       response: c.json(
         {
           error: "Login with Raft is not configured",
           detail:
-            "Set RAFT_CLIENT_ID and RAFT_CLIENT_SECRET on the Worker before disabling Cloudflare Access.",
+            "Set RAFT_CLIENT_ID, RAFT_CLIENT_SECRET, RAFT_ORIGIN, and RAFT_API_ORIGIN on the Worker before disabling Cloudflare Access.",
         },
         503,
       ),

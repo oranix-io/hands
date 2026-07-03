@@ -12,6 +12,7 @@ declare global {
     RAFT_ORIGIN?: string;
     RAFT_API_ORIGIN?: string;
     RAFT_CLIENT_ID?: string;
+    CORS_ALLOWED_ORIGINS?: string;
     SIGNED_URL_SECRET?: string;
     SHARE_STATS_SALT?: string;
     RAFT_ALLOWED_SERVER_IDS?: string;
