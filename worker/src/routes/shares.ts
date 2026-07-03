@@ -10,6 +10,10 @@ type ShareRow = {
   created_at: number;
   expires_at: number;
   revoked_at: number | null;
+  view_count: number;
+  unique_view_count: number;
+  download_count: number;
+  unique_download_count: number;
 };
 
 type SharePageRow = {
@@ -31,6 +35,13 @@ type SharePageRow = {
   size_bytes: number;
   r2_key: string;
   file_hash: string;
+};
+
+type ShareStats = {
+  view_count: number;
+  unique_view_count: number;
+  download_count: number;
+  unique_download_count: number;
 };
 
 const DEFAULT_SHARE_TTL_SECONDS = 24 * 60 * 60;
@@ -106,10 +117,21 @@ export async function handleListReleaseShares(c: AdminContext) {
   if (!release) return c.json({ error: "release not found" }, 404);
 
   const { results } = await c.env.DB.prepare(
-    `SELECT id, token_hash, created_at, expires_at, revoked_at
-     FROM release_shares
-     WHERE release_id = ?1
-     ORDER BY created_at DESC`,
+    `SELECT
+       rs.id,
+       rs.token_hash,
+       rs.created_at,
+       rs.expires_at,
+       rs.revoked_at,
+       COALESCE(SUM(CASE WHEN rse.event_type = 'view' THEN 1 ELSE 0 END), 0) AS view_count,
+       COALESCE(COUNT(DISTINCT CASE WHEN rse.event_type = 'view' THEN rse.visitor_hash END), 0) AS unique_view_count,
+       COALESCE(SUM(CASE WHEN rse.event_type = 'download' THEN 1 ELSE 0 END), 0) AS download_count,
+       COALESCE(COUNT(DISTINCT CASE WHEN rse.event_type = 'download' THEN rse.visitor_hash END), 0) AS unique_download_count
+     FROM release_shares rs
+     LEFT JOIN release_share_events rse ON rse.share_id = rs.id
+     WHERE rs.release_id = ?1
+     GROUP BY rs.id
+     ORDER BY rs.created_at DESC`,
   )
     .bind(releaseId)
     .all<ShareRow>();
@@ -158,9 +180,41 @@ export async function handlePublicReleaseShare(c: Context<{ Bindings: Env }>) {
   const token = c.req.param("token");
   if (!token) return htmlResponse(renderErrorPage("Missing share token"), 400);
 
+  const row = await findActiveShare(c.env.DB, token);
+
+  if (!row) {
+    return htmlResponse(renderErrorPage("This share link is expired, revoked, or unavailable."), 404);
+  }
+
+  await recordShareEvent(c, row.share_id, "view");
+  const stats = await loadShareStats(c.env.DB, row.share_id);
+  const downloadUrl = new URL(`/share/${token}/download`, publicRequestOrigin(c)).toString();
+  return htmlResponse(renderSharePage(row, stats, downloadUrl));
+}
+
+export async function handlePublicReleaseShareDownload(c: Context<{ Bindings: Env }>) {
+  const token = c.req.param("token");
+  if (!token) return htmlResponse(renderErrorPage("Missing share token"), 400);
+
+  const row = await findActiveShare(c.env.DB, token);
+  if (!row) {
+    return htmlResponse(renderErrorPage("This share link is expired, revoked, or unavailable."), 404);
+  }
+
+  await recordShareEvent(c, row.share_id, "download");
+  const ttl = Number(c.env.SIGNED_URL_TTL_SECONDS ?? "3600");
+  const signedUrl = await generateSignedR2Url(
+    c.env,
+    row.r2_key,
+    ttl,
+    publicRequestOrigin(c),
+  );
+  return c.redirect(signedUrl, 302);
+}
+
+async function findActiveShare(db: D1Database, token: string): Promise<SharePageRow | null> {
   const tokenHash = await sha256Hex(token);
-  const now = Date.now();
-  const row = await c.env.DB.prepare(
+  return db.prepare(
     `SELECT
        rs.id AS share_id,
        rs.expires_at AS expires_at,
@@ -194,21 +248,42 @@ export async function handlePublicReleaseShare(c: Context<{ Bindings: Env }>) {
      ORDER BY ba.filetype = 'apk' DESC, ba.created_at ASC
      LIMIT 1`,
   )
-    .bind(tokenHash, now)
+    .bind(tokenHash, Date.now())
     .first<SharePageRow>();
+}
 
-  if (!row) {
-    return htmlResponse(renderErrorPage("This share link is expired, revoked, or unavailable."), 404);
-  }
+async function recordShareEvent(
+  c: Context<{ Bindings: Env }>,
+  shareId: string,
+  eventType: "view" | "download",
+): Promise<void> {
+  const visitorHash = await shareVisitorHash(c);
+  await c.env.DB.prepare(
+    `INSERT INTO release_share_events (id, share_id, event_type, visitor_hash, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5)`,
+  )
+    .bind(crypto.randomUUID(), shareId, eventType, visitorHash, Date.now())
+    .run();
+}
 
-  const ttl = Number(c.env.SIGNED_URL_TTL_SECONDS ?? "3600");
-  const downloadUrl = await generateSignedR2Url(
-    c.env,
-    row.r2_key,
-    ttl,
-    publicRequestOrigin(c),
-  );
-  return htmlResponse(renderSharePage(row, downloadUrl));
+async function loadShareStats(db: D1Database, shareId: string): Promise<ShareStats> {
+  const row = await db.prepare(
+    `SELECT
+       COALESCE(SUM(CASE WHEN event_type = 'view' THEN 1 ELSE 0 END), 0) AS view_count,
+       COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'view' THEN visitor_hash END), 0) AS unique_view_count,
+       COALESCE(SUM(CASE WHEN event_type = 'download' THEN 1 ELSE 0 END), 0) AS download_count,
+       COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'download' THEN visitor_hash END), 0) AS unique_download_count
+     FROM release_share_events
+     WHERE share_id = ?1`,
+  )
+    .bind(shareId)
+    .first<ShareStats>();
+  return {
+    view_count: Number(row?.view_count ?? 0),
+    unique_view_count: Number(row?.unique_view_count ?? 0),
+    download_count: Number(row?.download_count ?? 0),
+    unique_download_count: Number(row?.unique_download_count ?? 0),
+  };
 }
 
 function normalizeShareTtl(ttl: number | undefined): number {
@@ -257,6 +332,25 @@ function publicRequestOrigin(c: Context<any>): string {
   return new URL(c.req.url).origin;
 }
 
+async function shareVisitorHash(c: Context<{ Bindings: Env }>): Promise<string> {
+  const ip =
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    (c.req.raw as Request & { cf?: { clientIp?: string } }).cf?.clientIp ||
+    "unknown-ip";
+  const userAgent = c.req.header("user-agent") || "unknown-ua";
+  const language = c.req.header("accept-language") || "";
+  const salt =
+    c.env.SHARE_STATS_SALT ||
+    c.env.SIGNED_URL_SECRET ||
+    c.env.ADMIN_API_TOKEN ||
+    c.env.RAFT_CLIENT_SECRET;
+  if (!salt) {
+    throw new Error("SHARE_STATS_SALT, SIGNED_URL_SECRET, ADMIN_API_TOKEN, or RAFT_CLIENT_SECRET must be configured");
+  }
+  return sha256Hex(`${salt}\n${ip}\n${userAgent}\n${language}`);
+}
+
 function htmlResponse(html: string, status = 200): Response {
   return new Response(html, {
     status,
@@ -267,7 +361,7 @@ function htmlResponse(html: string, status = 200): Response {
   });
 }
 
-function renderSharePage(row: SharePageRow, downloadUrl: string): string {
+function renderSharePage(row: SharePageRow, stats: ShareStats, downloadUrl: string): string {
   const title = `${row.app_slug} ${row.version_name} (${row.version_code})`;
   const expiresIso = new Date(row.expires_at).toISOString();
   return `<!doctype html>
@@ -287,10 +381,15 @@ function renderSharePage(row: SharePageRow, downloadUrl: string): string {
     dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
     a.download { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 6px; background: #176f5d; color: white; text-decoration: none; font-weight: 700; }
     .notes { margin-top: 22px; white-space: pre-wrap; color: #3b3f45; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+    .stat strong { display: block; color: #1e1f22; font-size: 18px; }
+    .stat span { display: block; color: #707782; font-size: 12px; font-weight: 500; }
     @media (prefers-color-scheme: dark) {
       body { background: #17191c; color: #f5f5f2; }
       p, dt { color: #aeb5bf; }
       .notes { color: #d2d6dc; }
+      .stat strong { color: #f5f5f2; }
+      .stat span { color: #aeb5bf; }
     }
   </style>
 </head>
@@ -305,6 +404,13 @@ function renderSharePage(row: SharePageRow, downloadUrl: string): string {
       <dt>Platform</dt><dd>${escapeHtml([row.platform, row.arch, row.variant].filter(Boolean).join(" / "))}</dd>
       <dt>Checksum</dt><dd>${escapeHtml(row.file_hash)}</dd>
       <dt>Expires</dt><dd><time id="expires-at" datetime="${escapeAttribute(expiresIso)}" data-expires-at="${row.expires_at}">${escapeHtml(expiresIso)}</time></dd>
+      <dt>Stats</dt>
+      <dd class="stats">
+        <span class="stat"><strong>${stats.unique_view_count}</strong><span>visitors</span></span>
+        <span class="stat"><strong>${stats.view_count}</strong><span>views</span></span>
+        <span class="stat"><strong>${stats.unique_download_count}</strong><span>downloaders</span></span>
+        <span class="stat"><strong>${stats.download_count}</strong><span>downloads</span></span>
+      </dd>
     </dl>
     <a class="download" href="${escapeAttribute(downloadUrl)}">Download APK</a>
     ${row.changelog ? `<div class="notes">${escapeHtml(row.changelog)}</div>` : ""}

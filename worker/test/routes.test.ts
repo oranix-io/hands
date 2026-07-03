@@ -166,6 +166,13 @@ function makeMockDb() {
       expires_at INTEGER NOT NULL,
       revoked_at INTEGER
     );
+    CREATE TABLE release_share_events (
+      id TEXT PRIMARY KEY,
+      share_id TEXT NOT NULL REFERENCES release_shares(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL CHECK (event_type IN ('view', 'download')),
+      visitor_hash TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
     CREATE TABLE operation_logs (
       id TEXT PRIMARY KEY,
       app_id TEXT,
@@ -1575,13 +1582,28 @@ describe("quiver public API v2 — scope resolution", () => {
     } as any;
   }
 
-  function makeSharePublicContext(env: MockEnv, token: string) {
+  function makeSharePublicContext(
+    env: MockEnv,
+    token: string,
+    headers: Record<string, string | undefined> = {
+      "cf-connecting-ip": "203.0.113.10",
+      "user-agent": "vitest",
+      "accept-language": "en-US",
+    },
+  ) {
     return {
       env,
       req: {
         url: `https://quiver-worker.test/share/${token}`,
         param: (name: string) => (name === "token" ? token : ""),
+        header: (name: string) => headers[name.toLowerCase()] ?? headers[name],
+        raw: { cf: { clientIp: "203.0.113.10" } },
       },
+      redirect: (url: string, status = 302) =>
+        new Response(null, {
+          status,
+          headers: { location: url },
+        }),
     } as any;
   }
 
@@ -1986,11 +2008,60 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(html).toContain("1.0.11");
     expect(html).toContain("build 11");
     expect(html).toContain("arm64-v8a");
-    expect(html).toContain("/public/r2/apps%2Fapp-scope%2Fasset-share.apk");
-    expect(html).toContain("&amp;sig=");
+    expect(html).toContain(`/share/${token}/download`);
     expect(html).toContain('id="expires-at"');
     expect(html).toContain("data-expires-at=");
     expect(html).toContain("Intl.DateTimeFormat");
+    expect(html).toContain("<dt>Stats</dt>");
+    expect(html).toContain("<span>visitors</span>");
+
+    const events = await env.DB.prepare("SELECT event_type, COUNT(*) AS count FROM release_share_events GROUP BY event_type")
+      .bind()
+      .all();
+    expect(events.results).toEqual([{ event_type: "view", count: 1 }]);
+  });
+
+  it("share download redirects to signed R2 and records download stats", async () => {
+    const env = makeEnv();
+    const {
+      handleCreateReleaseShare,
+      handleListReleaseShares,
+      handlePublicReleaseShare,
+      handlePublicReleaseShareDownload,
+    } = await import("../src/routes/shares");
+    await seedRelease(env, "rel-share", "build-share", [["full", "all"]], {
+      versionCode: 11,
+      versionName: "1.0.11",
+    });
+    await seedAsset(env, "build-share", "asset-share", {
+      arch: "arm64-v8a",
+      sizeBytes: 123,
+    });
+    const created = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, { ttl_seconds: 600 }),
+    );
+    const createdBody = await responseJson<any>(created);
+    const token = new URL(createdBody.share_url).pathname.replace("/share/", "");
+    await handlePublicReleaseShare(makeSharePublicContext(env, token));
+
+    const download = await handlePublicReleaseShareDownload(makeSharePublicContext(env, token));
+
+    expect(download.status).toBe(302);
+    const location = download.headers.get("location") ?? "";
+    expect(location).toMatch(/^https:\/\/quiver-worker\.test\/public\/r2\//);
+    expect(location).toContain("asset-share.apk");
+    expect(location).toContain("&sig=");
+
+    const list = await handleListReleaseShares(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }),
+    );
+    const body = await responseJson<any>(list);
+    expect(body.shares[0]).toMatchObject({
+      view_count: 1,
+      unique_view_count: 1,
+      download_count: 1,
+      unique_download_count: 1,
+    });
   });
 
   it("public release shares stop working after revoke", async () => {

@@ -36,6 +36,7 @@ import {
 import {
   handleCreateReleaseShare,
   handleListReleaseShares,
+  handlePublicReleaseShareDownload,
   handlePublicReleaseShare,
   handleRevokeReleaseShare,
 } from "./routes/shares";
@@ -316,6 +317,7 @@ app.get("/public/apps/:slug/channels", handlePublicListChannels);
 app.get("/public/v2/apps/:slug/latest", handlePublicV2Latest);
 app.get("/public/v2/apps/:slug/updates/check", handlePublicV2UpdateCheck);
 app.get("/public/r2/:key", handlePublicR2Download);
+app.get("/share/:token/download", handlePublicReleaseShareDownload);
 app.get("/share/:token", handlePublicReleaseShare);
 app.get("/api/invites/:token", handleGetInvite);
 
