@@ -13,6 +13,7 @@ import {
   SESSION_COOKIE,
   type AdminAccount,
 } from "../middleware/auth";
+import { isSecureRequest, requestOrigin } from "../lib/origin";
 
 const LOGIN_PENDING_COOKIE = "quiver_raft_login_pending";
 const LOGIN_RETURN_COOKIE = "quiver_raft_return";
@@ -50,11 +51,11 @@ function now() {
 }
 
 function appOrigin(c: Context<{ Bindings: Env }>): string {
-  return new URL(c.req.url).origin;
+  return requestOrigin(c);
 }
 
 function secureCookie(c: Context<{ Bindings: Env }>): boolean {
-  return new URL(c.req.url).protocol === "https:";
+  return isSecureRequest(c);
 }
 
 function callbackUrl(c: Context<{ Bindings: Env }>): string {

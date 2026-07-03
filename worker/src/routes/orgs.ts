@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { currentActorInfo, type AdminEnv } from "../middleware/auth";
+import { requestOrigin } from "../lib/origin";
 import {
   currentAccount,
   ensureAppRole,
@@ -22,7 +23,7 @@ function now() {
 }
 
 function appOrigin(c: Context<any>) {
-  return new URL(c.req.url).origin;
+  return requestOrigin(c);
 }
 
 function normalizeEmail(email: unknown) {

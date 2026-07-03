@@ -18,6 +18,7 @@
  */
 
 import type { Context } from "hono";
+import { requestOrigin } from "../lib/origin";
 
 interface ScopedResolution {
   release_id: string;
@@ -575,7 +576,7 @@ export async function generateSignedR2Url(
 }
 
 function publicRequestOrigin(c: Context<{ Bindings: Env }>): string {
-  return new URL(c.req.url).origin;
+  return requestOrigin(c);
 }
 
 export async function handlePublicR2Download(c: Context<{ Bindings: Env }>) {

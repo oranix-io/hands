@@ -116,6 +116,7 @@ import {
   requireOrgRole,
 } from "./lib/permissions";
 import { openApiDocument } from "./openapi";
+import { requestOrigin } from "./lib/origin";
 
 // ---------- Container binding (APK parser) ----------
 //
@@ -313,7 +314,7 @@ app.get("/openapi.json", (c) => c.json({
   ...openApiDocument,
   servers: [
     {
-      url: new URL(c.req.url).origin,
+      url: requestOrigin(c),
       description: "Current request origin",
     },
     {

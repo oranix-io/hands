@@ -18,6 +18,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
+import { isSecureRequest, requestOrigin } from "../src/lib/origin";
 
 // ---------- Test harness ----------
 
@@ -915,6 +916,30 @@ describe("quiver route handlers — SQL smoke", () => {
         )
         .run(),
     ).rejects.toThrow(/UNIQUE|SQLITE_CONSTRAINT/);
+  });
+});
+
+describe("auth origin handling", () => {
+  it("canonicalizes public http custom-domain requests to https", () => {
+    const ctx = {
+      req: {
+        url: "http://quiver.oranix.io/api/auth/login?return=/apps",
+        header: () => null,
+      },
+    };
+    expect(requestOrigin(ctx as any)).toBe("https://quiver.oranix.io");
+    expect(isSecureRequest(ctx as any)).toBe(true);
+  });
+
+  it("preserves localhost http origins for local development", () => {
+    const ctx = {
+      req: {
+        url: "http://localhost:8787/api/auth/login",
+        header: () => null,
+      },
+    };
+    expect(requestOrigin(ctx as any)).toBe("http://localhost:8787");
+    expect(isSecureRequest(ctx as any)).toBe(false);
   });
 });
 

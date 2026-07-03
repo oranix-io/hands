@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { requestOrigin } from "../lib/origin";
 import { currentActor, type AdminEnv } from "../middleware/auth";
 import { generateSignedR2Url } from "./public_v2";
 
@@ -329,7 +330,7 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 function publicRequestOrigin(c: Context<any>): string {
-  return new URL(c.req.url).origin;
+  return requestOrigin(c);
 }
 
 async function shareVisitorHash(c: Context<{ Bindings: Env }>): Promise<string> {
