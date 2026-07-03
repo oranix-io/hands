@@ -14,7 +14,6 @@ import { Container, getRandom } from "@cloudflare/containers";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
-import { apiReference } from "@scalar/hono-api-reference";
 
 import { authMiddleware, currentActor } from "./middleware/auth";
 import {
@@ -306,13 +305,55 @@ app.get("/openapi.json", (c) => c.json({
     },
   ],
 }));
-app.get(
-  "/api-docs",
-  apiReference({
-    url: "/openapi.json",
-    theme: "default",
-  }),
-);
+app.get("/api-docs", (c) => c.html(`<!doctype html>
+<html lang="en">
+  <head>
+    <title>Quiver API Reference</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      .quiver-api-header {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 18px;
+        border-bottom: 1px solid #e2e8f0;
+        background: #ffffff;
+      }
+      .quiver-api-header a {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: #0f172a;
+        font-size: 18px;
+        font-weight: 500;
+        text-decoration: none;
+      }
+      .quiver-api-header img { width: 32px; height: 32px; border-radius: 8px; }
+      #app { min-height: calc(100vh - 57px); }
+    </style>
+  </head>
+  <body>
+    <header class="quiver-api-header">
+      <a href="/" aria-label="Quiver home">
+        <img src="/favicon.svg" alt="" />
+        <span>Quiver</span>
+      </a>
+    </header>
+    <div id="app"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script>
+      Scalar.createApiReference('#app', {
+        url: '/openapi.json',
+        theme: 'default',
+        customCss: '#references { min-height: calc(100vh - 57px); }'
+      })
+    </script>
+  </body>
+</html>`));
 const publicDocs = new Set([
   "/docs/",
   "/docs/admin-user-guide/",

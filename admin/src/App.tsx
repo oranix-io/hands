@@ -95,7 +95,7 @@ function Header({ account }: { account: AuthAccount }) {
         <div className="flex items-center gap-6">
           <Link
             to="/"
-            className="inline-flex h-10 items-center gap-2 text-xl font-bold tracking-tight leading-none"
+            className="inline-flex h-10 items-center gap-2 text-xl font-medium tracking-tight leading-none"
             aria-label="Quiver"
           >
             <QuiverMark className="h-8 w-8 flex-none" />
@@ -407,7 +407,7 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
     <div className="min-h-screen bg-slate-50 text-slate-950">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <a href="/" className="inline-flex items-center gap-2 font-bold">
+          <a href="/" className="inline-flex items-center gap-2 font-medium">
             <QuiverMark className="h-9 w-9 flex-none" />
             <span className="text-xl leading-none">Quiver</span>
           </a>

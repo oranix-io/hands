@@ -186,7 +186,7 @@ function layout({ title, description, body, activeSlug }) {
     a:hover { text-decoration: underline; }
     header { background: var(--panel); border-bottom: 1px solid var(--line); }
     .top { max-width: 1180px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-    .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; color: var(--ink); }
+    .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; font-size: 20px; color: var(--ink); }
     .brand img { width: 36px; height: 36px; border-radius: 8px; }
     .top nav { display: flex; align-items: center; gap: 8px; font-size: 14px; }
     .top nav a { color: var(--muted); padding: 9px 11px; border-radius: 6px; }
