@@ -740,6 +740,55 @@ describe("quiver route handlers — SQL smoke", () => {
     expect(isAppAtLeast("viewer", "publisher")).toBe(false);
   });
 
+  it("allows org viewers to read app-scoped routes without publish access", async () => {
+    const now = Date.now();
+    await env.DB
+      .prepare(
+        `INSERT INTO organizations
+         (id, slug, name, external_provider, external_id, created_at, archived)
+         VALUES (?, ?, ?, 'raft', ?, ?, 0)`,
+      )
+      .bind("raft_viewer", "viewer-org", "Viewer Org", "viewer-org", now)
+      .run();
+    await env.DB
+      .prepare(
+        `INSERT INTO raft_accounts
+         (id, provider, provider_subject, server_id, server_slug, principal_type,
+          server_role, username, display_name, avatar_url, raw_profile,
+          created_at, updated_at, last_login_at)
+         VALUES (?, 'raft', ?, 'viewer-server', 'viewer-server', 'human', NULL, ?, ?, NULL, '{}', ?, ?, ?)`,
+      )
+      .bind("viewer-account", "viewer-sub", "viewer", "Viewer", now, now, now)
+      .run();
+    await env.DB
+      .prepare("INSERT INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind("app-org-viewer", "raft_viewer", "org-viewer-app", "Org Viewer App", "android", now)
+      .run();
+    await env.DB
+      .prepare("INSERT INTO org_members (id, org_id, account_id, org_role, joined_at) VALUES (?, ?, ?, ?, ?)")
+      .bind("orgmem-viewer", "raft_viewer", "viewer-account", "viewer", now)
+      .run();
+
+    const { ensureAppRole } = await import("../src/lib/permissions");
+    const ctx = {
+      env,
+      get: (key: string) =>
+        key === "admin_account"
+          ? { id: "viewer-account" }
+          : undefined,
+      json: (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status }),
+    };
+
+    await expect(ensureAppRole(ctx as any, "app-org-viewer", "viewer")).resolves.toMatchObject({
+      ok: true,
+      org_role: "viewer",
+    });
+    const publishAccess = await ensureAppRole(ctx as any, "app-org-viewer", "publisher");
+    expect(publishAccess.ok).toBe(false);
+    if (!publishAccess.ok) expect(publishAccess.response.status).toBe(403);
+  });
+
   it("permission helpers include Raft server app grants", async () => {
     const now = Date.now();
     await env.DB

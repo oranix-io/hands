@@ -186,9 +186,12 @@ export async function ensureAppRole(c: AdminContext, appId: string, minimum: App
     return { ok: false as const, response: c.json({ error: "unauthorized" }, 401) };
   }
   const role = await getEffectiveRole(c.env.DB, account.id, { appId });
-  const orgAllowsAdmin = isOrgAtLeast(role.org_role, "admin");
+  const orgAllows =
+    minimum === "viewer"
+      ? isOrgAtLeast(role.org_role, "viewer")
+      : isOrgAtLeast(role.org_role, "admin");
   const appAllows = isAppAtLeast(role.app_role, minimum);
-  if (!orgAllowsAdmin && !appAllows) {
+  if (!orgAllows && !appAllows) {
     return {
       ok: false as const,
       response: c.json(

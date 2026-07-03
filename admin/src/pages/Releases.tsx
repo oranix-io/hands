@@ -373,27 +373,31 @@ function ReleaseRow({
             Edit
           </button>
         )}
-        {r.status === "active" && (
+        {(r.status === "active" || r.status === "superseded") && (
           <>
-            <button
-              className="btn-secondary text-xs"
-              onClick={() => setShowRollout(!showRollout)}
-            >
-              Bump rollout
-            </button>
-            <button
-              className="btn-secondary text-xs"
-              onClick={() => toggleForce.mutate()}
-              disabled={toggleForce.isPending}
-            >
-              {r.should_force_update ? "Unforce" : "Force"}
-            </button>
+            {r.status === "active" && (
+              <>
+                <button
+                  className="btn-secondary text-xs"
+                  onClick={() => setShowRollout(!showRollout)}
+                >
+                  Bump rollout
+                </button>
+                <button
+                  className="btn-secondary text-xs"
+                  onClick={() => toggleForce.mutate()}
+                  disabled={toggleForce.isPending}
+                >
+                  {r.should_force_update ? "Unforce" : "Force"}
+                </button>
+              </>
+            )}
             <button
               className="btn-secondary text-xs"
               onClick={() => rollback.mutate()}
               disabled={rollback.isPending}
             >
-              Roll back
+              {r.status === "superseded" ? "Restore as active" : "Roll back"}
             </button>
           </>
         )}

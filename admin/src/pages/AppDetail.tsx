@@ -23,10 +23,29 @@ export function AppDetail({ appId }: { appId: string }) {
     queryKey: ["channels", appId],
     queryFn: () => listChannels(appId),
   });
+  const appMissing = !apps.isLoading && !apps.error && !app;
 
   return (
     <div>
       <AppHeading app={app} />
+      {apps.error && (
+        <AppErrorBanner
+          title="Cannot load apps"
+          error={apps.error}
+        />
+      )}
+      {appMissing && (
+        <AppErrorBanner
+          title="App is not available"
+          description="This app is not visible to the current account, or it no longer exists."
+        />
+      )}
+      {channels.error && (
+        <AppErrorBanner
+          title="Cannot load app details"
+          error={channels.error}
+        />
+      )}
 
       <section>
         <div className="flex items-center justify-between mb-3">
@@ -61,6 +80,25 @@ export function AppDetail({ appId }: { appId: string }) {
       <section className="mt-8">
         <Operations appId={appId} />
       </section>
+    </div>
+  );
+}
+
+function AppErrorBanner({
+  title,
+  description,
+  error,
+}: {
+  title: string;
+  description?: string;
+  error?: unknown;
+}) {
+  return (
+    <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+      <div className="font-medium">{title}</div>
+      <div className="text-xs mt-1">
+        {description ?? (error instanceof Error ? error.message : String(error))}
+      </div>
     </div>
   );
 }
