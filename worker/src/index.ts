@@ -416,6 +416,26 @@ app.get("/share/:token/download", handlePublicReleaseShareDownload);
 app.get("/share/:token", handlePublicReleaseShare);
 app.get("/api/invites/:token", handleGetInvite);
 
+function isWorkerRoute(pathname: string): boolean {
+  return pathname === "/health" ||
+    pathname === "/openapi.json" ||
+    pathname === "/api-docs" ||
+    pathname === "/docs" ||
+    pathname === "/login/raft/callback" ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/public/") ||
+    pathname.startsWith("/share/") ||
+    pathname.startsWith("/docs/") ||
+    pathname.startsWith("/.well-known/");
+}
+
+app.use("*", async (c, next) => {
+  if ((c.req.method === "GET" || c.req.method === "HEAD") && !isWorkerRoute(new URL(c.req.url).pathname)) {
+    return c.env.ASSETS.fetch(c.req.raw);
+  }
+  return next();
+});
+
 // Admin — protected by Quiver's Login with Raft session cookie.
 const admin = new Hono<{
   Bindings: Env;
@@ -646,9 +666,6 @@ admin.post("/api/apps/:appId/deploy-tokens", requireAppRole("admin"), handleCrea
 admin.delete("/api/apps/:appId/deploy-tokens/:tokenId", requireAppRole("admin"), handleRevokeAppDeployToken);
 
 app.route("/", admin);
-
-app.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
-app.on("HEAD", "*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 // ============================================================================
 // Scheduled handler — Worker Cron Trigger (every 5 min)
