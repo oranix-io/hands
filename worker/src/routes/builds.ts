@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { currentActor, type AdminEnv } from "../middleware/auth";
+import { presignR2DownloadUrl } from "../lib/r2_presign";
 import { emitWebhookEvent } from "./webhooks";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
@@ -421,14 +422,22 @@ export async function handleDownloadBuildAsset(c: Context<{ Bindings: Env }>) {
     .first<BuildAssetDownloadRow>();
   if (!asset) return c.json({ error: "asset not found" }, 404);
 
+  const contentDisposition = contentDispositionForBuildAsset(asset);
+  const directUrl = await presignR2DownloadUrl(c.env, {
+    key: asset.r2_key,
+    filetype: asset.filetype,
+    contentDisposition,
+  }, Number(c.env.R2_PRESIGNED_DOWNLOAD_TTL_SECONDS ?? c.env.SIGNED_URL_TTL_SECONDS ?? "3600"));
+  if (directUrl) {
+    const objectHead = await c.env.APK_BUCKET.head(asset.r2_key);
+    if (!objectHead) return c.json({ error: "object not found" }, 404);
+    await incrementBuildAssetDownloadCount(c.env.DB, assetId, buildId);
+    return c.redirect(directUrl, 302);
+  }
+
   const object = await c.env.APK_BUCKET.get(asset.r2_key);
   if (!object) return c.json({ error: "object not found" }, 404);
-
-  await c.env.DB.prepare(
-    "UPDATE build_assets SET download_count = download_count + 1 WHERE id = ?1 AND build_id = ?2",
-  )
-    .bind(assetId, buildId)
-    .run();
+  await incrementBuildAssetDownloadCount(c.env.DB, assetId, buildId);
 
   const headers = new Headers();
   object.writeHttpMetadata(headers);
@@ -436,7 +445,7 @@ export async function handleDownloadBuildAsset(c: Context<{ Bindings: Env }>) {
   headers.set("cache-control", "private, max-age=0, no-store");
   headers.set("content-type", contentTypeForAsset(asset.filetype));
   headers.set("content-length", String(asset.size_bytes));
-  headers.set("content-disposition", contentDispositionForBuildAsset(asset));
+  headers.set("content-disposition", contentDisposition);
   return new Response(object.body, { headers });
 }
 
@@ -488,6 +497,18 @@ export async function handleDeleteBuild(c: Context<{ Bindings: Env }>) {
     .run();
   await insertAuditLog(c.env.DB, appId, "build.delete", currentActor(c), { buildId });
   return c.json({ ok: true });
+}
+
+async function incrementBuildAssetDownloadCount(
+  db: D1Database,
+  assetId: string,
+  buildId: string,
+) {
+  await db.prepare(
+    "UPDATE build_assets SET download_count = download_count + 1 WHERE id = ?1 AND build_id = ?2",
+  )
+    .bind(assetId, buildId)
+    .run();
 }
 
 function contentDispositionForBuildAsset(asset: BuildAssetDownloadRow): string {

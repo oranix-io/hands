@@ -35,6 +35,11 @@ interface MockEnv {
   RAFT_API_ORIGIN: string;
   SIGNED_URL_SECRET?: string;
   SIGNED_URL_TTL_SECONDS: string;
+  R2_ACCOUNT_ID?: string;
+  R2_BUCKET_NAME?: string;
+  R2_S3_ACCESS_KEY_ID?: string;
+  R2_S3_SECRET_ACCESS_KEY?: string;
+  R2_PRESIGNED_DOWNLOAD_TTL_SECONDS?: string;
   APK_PARSER: unknown;
   MAX_APK_SIZE_MB: string;
 }
@@ -1749,6 +1754,14 @@ describe("quiver public API v2 — scope resolution", () => {
     return env;
   }
 
+  function configureR2Presign(env: MockEnv) {
+    env.R2_ACCOUNT_ID = "test-account";
+    env.R2_BUCKET_NAME = "quiver-apks";
+    env.R2_S3_ACCESS_KEY_ID = "test-access-key";
+    env.R2_S3_SECRET_ACCESS_KEY = "test-secret-key";
+    env.R2_PRESIGNED_DOWNLOAD_TTL_SECONDS = "600";
+  }
+
   async function seedRelease(
     env: any,
     releaseId: string,
@@ -1891,6 +1904,11 @@ describe("quiver public API v2 — scope resolution", () => {
           status,
           headers: { "content-type": "application/json" },
       }),
+      redirect: (url: string, status = 302) =>
+        new Response(null, {
+          status,
+          headers: { location: url },
+        }),
     } as any;
   }
 
@@ -1915,6 +1933,11 @@ describe("quiver public API v2 — scope resolution", () => {
         new Response(JSON.stringify(data), {
           status,
           headers: { "content-type": "application/json" },
+        }),
+      redirect: (url: string, status = 302) =>
+        new Response(null, {
+          status,
+          headers: { location: url },
         }),
     } as any;
   }
@@ -2314,6 +2337,62 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(await response.text()).toBe("apk");
   });
 
+  it("public R2 download redirects to presigned R2 when S3 credentials are configured", async () => {
+    const env = makeEnv();
+    configureR2Presign(env);
+    const { handlePublicR2Download, handlePublicV2UpdateCheck } = await import("../src/routes/public_v2");
+    await seedRelease(env, "rel-direct-download", "build-direct-download", [["full", "all"]], {
+      versionCode: 11,
+    });
+    await seedAsset(env, "build-direct-download", "asset-direct-download", {
+      arch: "arm64-v8a",
+      sizeBytes: 3,
+    });
+    const key = "apps/app-scope/asset-direct-download.apk";
+    env.APK_BUCKET = {
+      head: async (requestedKey: string) => {
+        if (requestedKey !== key) return null;
+        return { httpEtag: "\"asset-direct-download\"" };
+      },
+      get: async (requestedKey: string) => {
+        if (requestedKey !== key) return null;
+        return {
+          body: new Blob(["apk"]).stream(),
+          httpEtag: "\"asset-direct-download\"",
+          writeHttpMetadata: () => undefined,
+        };
+      },
+    };
+
+    const check = await handlePublicV2UpdateCheck(
+      makePublicContext(env, {
+        channel: "production",
+        product_type: "android-apk",
+        current_version_code: "10",
+        platform: "android",
+        arch: "arm64-v8a",
+      }),
+    );
+    const body = await responseJson<any>(check);
+    const url = new URL(body.asset.download_url);
+    const response = await handlePublicR2Download(
+      makePublicDownloadContext(env, decodeURIComponent(url.pathname.replace("/public/r2/", "")), {
+        expires: url.searchParams.get("expires") ?? undefined,
+        sig: url.searchParams.get("sig") ?? undefined,
+      }),
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.origin).toBe("https://test-account.r2.cloudflarestorage.com");
+    expect(location.pathname).toBe("/quiver-apks/apps/app-scope/asset-direct-download.apk");
+    expect(location.searchParams.get("X-Amz-Algorithm")).toBe("AWS4-HMAC-SHA256");
+    expect(location.searchParams.get("X-Amz-SignedHeaders")).toBe("host");
+    expect(location.searchParams.get("X-Amz-Expires")).toBe("600");
+    expect(location.searchParams.get("X-Amz-Signature")).toMatch(/^[0-9a-f]{64}$/);
+    expect(location.searchParams.get("response-content-disposition")).toContain("scope-app-1.0.0-11.apk");
+  });
+
   it("authenticated build asset download serves support artifacts", async () => {
     const env = makeEnv();
     const { handleDownloadBuildAsset } = await import("../src/routes/builds");
@@ -2353,6 +2432,54 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(await response.text()).toBe('{"ok":true}\n');
     const row = await env.DB.prepare("SELECT download_count FROM build_assets WHERE id = ?")
       .bind("asset-metadata")
+      .first() as { download_count: number } | null;
+    expect(row?.download_count).toBe(1);
+  });
+
+  it("authenticated build asset download redirects support artifacts to presigned R2", async () => {
+    const env = makeEnv();
+    configureR2Presign(env);
+    const { handleDownloadBuildAsset } = await import("../src/routes/builds");
+    await seedRelease(env, "rel-direct-metadata", "build-direct-metadata", [["full", "all"]], {
+      versionCode: 12,
+      versionName: "1.0.12",
+    });
+    await seedAsset(env, "build-direct-metadata", "asset-direct-metadata", {
+      artifactKind: "metadata-file",
+      filetype: "json",
+      sizeBytes: 14,
+    });
+    const key = "apps/app-scope/asset-direct-metadata.apk";
+    env.APK_BUCKET = {
+      head: async (requestedKey: string) => {
+        if (requestedKey !== key) return null;
+        return { httpEtag: "\"asset-direct-metadata\"" };
+      },
+      get: async (requestedKey: string) => {
+        if (requestedKey !== key) return null;
+        return {
+          body: new Blob(['{"ok":true}\n']).stream(),
+          httpEtag: "\"asset-direct-metadata\"",
+          writeHttpMetadata: () => undefined,
+        };
+      },
+    };
+
+    const response = await handleDownloadBuildAsset(
+      makeBuildAssetDownloadContext(env, "build-direct-metadata", "asset-direct-metadata"),
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.origin).toBe("https://test-account.r2.cloudflarestorage.com");
+    expect(location.pathname).toBe("/quiver-apks/apps/app-scope/asset-direct-metadata.apk");
+    expect(location.searchParams.get("X-Amz-Expires")).toBe("600");
+    expect(location.searchParams.get("response-content-type")).toBe("application/json");
+    expect(location.searchParams.get("response-content-disposition")).toContain(
+      "scope-app-1.0.12-12-metadata-file-android.json",
+    );
+    const row = await env.DB.prepare("SELECT download_count FROM build_assets WHERE id = ?")
+      .bind("asset-direct-metadata")
       .first() as { download_count: number } | null;
     expect(row?.download_count).toBe(1);
   });

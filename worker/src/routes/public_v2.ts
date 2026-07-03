@@ -19,6 +19,7 @@
 
 import type { Context } from "hono";
 import { requestOrigin } from "../lib/origin";
+import { presignR2DownloadUrl } from "../lib/r2_presign";
 
 interface ScopedResolution {
   release_id: string;
@@ -619,6 +620,21 @@ export async function handlePublicR2Download(c: Context<{ Bindings: Env }>) {
     }>();
   if (!asset) return c.json({ error: "asset not found" }, 404);
 
+  const contentDisposition = contentDispositionForAsset(asset);
+  const directUrl = await presignR2DownloadUrl(c.env, {
+    key,
+    filetype: asset.filetype,
+    contentDisposition,
+  }, Math.min(
+    Number(c.env.R2_PRESIGNED_DOWNLOAD_TTL_SECONDS ?? c.env.SIGNED_URL_TTL_SECONDS ?? "3600"),
+    Math.max(1, expires - Math.floor(Date.now() / 1000)),
+  ));
+  if (directUrl) {
+    const objectHead = await c.env.APK_BUCKET.head(key);
+    if (!objectHead) return c.json({ error: "object not found" }, 404);
+    return c.redirect(directUrl, 302);
+  }
+
   const object = await c.env.APK_BUCKET.get(key);
   if (!object) return c.json({ error: "object not found" }, 404);
 
@@ -628,7 +644,7 @@ export async function handlePublicR2Download(c: Context<{ Bindings: Env }>) {
   headers.set("cache-control", "private, max-age=0, no-store");
   headers.set("content-type", contentTypeForAsset(asset.filetype));
   headers.set("content-length", String(asset.size_bytes));
-  headers.set("content-disposition", contentDispositionForAsset(asset));
+  headers.set("content-disposition", contentDisposition);
   return new Response(object.body, { headers });
 }
 
