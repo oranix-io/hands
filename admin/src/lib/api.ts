@@ -280,6 +280,20 @@ export interface AppServerGrant {
   updated_at: number;
 }
 
+export interface AppDeployToken {
+  id: string;
+  app_id: string;
+  name: string;
+  token_prefix: string;
+  app_role: "publisher" | "viewer";
+  created_by: string | null;
+  created_by_actor: string;
+  created_at: number;
+  expires_at: number | null;
+  last_used_at: number | null;
+  revoked_at: number | null;
+}
+
 export interface Invite {
   id: string;
   org_id: string;
@@ -591,6 +605,38 @@ export const updateAppServerGrant = (
 export const removeAppServerGrant = (appId: string, serverId: string) =>
   request<{ ok: boolean }>(
     `/api/apps/${appId}/server-grants/${encodeURIComponent(serverId)}`,
+    {
+      method: "DELETE",
+      admin: true,
+    },
+  );
+
+export const listAppDeployTokens = (appId: string) =>
+  request<{ deploy_tokens: AppDeployToken[] }>(
+    `/api/apps/${appId}/deploy-tokens`,
+    { admin: true },
+  );
+
+export const createAppDeployToken = (
+  appId: string,
+  input: {
+    name: string;
+    app_role: AppDeployToken["app_role"];
+    expires_at?: number | null;
+  },
+) =>
+  request<{ token: string; deploy_token: AppDeployToken }>(
+    `/api/apps/${appId}/deploy-tokens`,
+    {
+      method: "POST",
+      admin: true,
+      body: JSON.stringify(input),
+    },
+  );
+
+export const revokeAppDeployToken = (appId: string, tokenId: string) =>
+  request<{ ok: boolean; id: string; revoked_at: number }>(
+    `/api/apps/${appId}/deploy-tokens/${encodeURIComponent(tokenId)}`,
     {
       method: "DELETE",
       admin: true,

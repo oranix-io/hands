@@ -266,6 +266,20 @@ function makeMockDb() {
       UNIQUE (app_id, server_id),
       UNIQUE (app_id, server_slug)
     );
+    CREATE TABLE app_deploy_tokens (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      token_prefix TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      app_role TEXT NOT NULL CHECK (app_role IN ('publisher', 'viewer')),
+      created_by TEXT REFERENCES raft_accounts(id) ON DELETE SET NULL,
+      created_by_actor TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      last_used_at INTEGER,
+      revoked_at INTEGER
+    );
     CREATE TABLE invites (
       id TEXT PRIMARY KEY,
       org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -1036,6 +1050,81 @@ describe("quiver Hono app — auth + dispatch", () => {
       org_id: "raft_server1",
       org_role: "viewer",
     });
+  });
+
+  it("loads app-scoped deploy tokens and updates last_used_at", async () => {
+    const env = makeMockEnv();
+    const now = Date.now();
+    const token = "qvdt_testprefix_testsecret";
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    await env.DB.prepare(
+      "INSERT INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind("deploy-app", "default", "deploy-app", "Deploy App", "android", now).run();
+    await env.DB.prepare(
+      `INSERT INTO app_deploy_tokens
+       (id, app_id, name, token_prefix, token_hash, app_role, created_by_actor, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      "dt-1",
+      "deploy-app",
+      "ci",
+      "qvdt_testprefix",
+      tokenHash,
+      "publisher",
+      "raft:owner@server",
+      now,
+      now + 60_000,
+    ).run();
+
+    const { loadDeployToken } = await import("../src/lib/deploy_tokens");
+    await expect(loadDeployToken(env as any, token)).resolves.toMatchObject({
+      id: "dt-1",
+      app_id: "deploy-app",
+      app_slug: "deploy-app",
+      app_role: "publisher",
+    });
+    const row = (await env.DB.prepare(
+      "SELECT last_used_at FROM app_deploy_tokens WHERE id = ?",
+    ).bind("dt-1").first()) as { last_used_at: number | null } | null;
+    expect(row?.last_used_at).toBeTypeOf("number");
+  });
+
+  it("allows deploy tokens only for their app and role", async () => {
+    const env = makeMockEnv();
+    const { ensureAppRole } = await import("../src/lib/permissions");
+    const ctx = {
+      env,
+      get: (key: string) =>
+        key === "admin_deploy_token"
+          ? {
+              id: "dt-1",
+              app_id: "app-1",
+              app_slug: "app-one",
+              name: "ci",
+              token_prefix: "qvdt_test",
+              app_role: "publisher",
+              created_by: null,
+              created_by_actor: "raft:owner@server",
+              created_at: 1,
+              expires_at: null,
+              last_used_at: null,
+              revoked_at: null,
+            }
+          : undefined,
+      json: (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), { status }),
+    };
+
+    await expect(ensureAppRole(ctx as any, "app-1", "publisher")).resolves.toMatchObject({
+      ok: true,
+      app_role: "publisher",
+    });
+    const wrongApp = await ensureAppRole(ctx as any, "app-2", "viewer");
+    expect(wrongApp.ok).toBe(false);
+    if (!wrongApp.ok) expect(wrongApp.response.status).toBe(403);
+    const tooHigh = await ensureAppRole(ctx as any, "app-1", "admin");
+    expect(tooHigh.ok).toBe(false);
+    if (!tooHigh.ok) expect(tooHigh.response.status).toBe(403);
   });
 });
 

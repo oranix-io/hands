@@ -1,0 +1,181 @@
+import type { Context } from "hono";
+import { currentActor, type AdminEnv } from "../middleware/auth";
+import { currentAccount, insertAuditLog } from "../lib/permissions";
+import {
+  generateDeployToken,
+  hashDeployToken,
+  isDeployTokenRole,
+  type DeployTokenRole,
+} from "../lib/deploy_tokens";
+
+type AdminContext = Context<AdminEnv & { Bindings: Env }>;
+
+type DeployTokenRow = {
+  id: string;
+  app_id: string;
+  name: string;
+  token_prefix: string;
+  app_role: DeployTokenRole;
+  created_by: string | null;
+  created_by_actor: string;
+  created_at: number;
+  expires_at: number | null;
+  last_used_at: number | null;
+  revoked_at: number | null;
+};
+
+function parseExpiresAt(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("expires_at must be a unix timestamp in milliseconds");
+  }
+  const min = Date.now() + 60_000;
+  if (value < min) throw new Error("expires_at must be at least 60 seconds in the future");
+  return Math.floor(value);
+}
+
+function toResponse(row: DeployTokenRow) {
+  return {
+    id: row.id,
+    app_id: row.app_id,
+    name: row.name,
+    token_prefix: row.token_prefix,
+    app_role: row.app_role,
+    created_by: row.created_by,
+    created_by_actor: row.created_by_actor,
+    created_at: row.created_at,
+    expires_at: row.expires_at,
+    last_used_at: row.last_used_at,
+    revoked_at: row.revoked_at,
+  };
+}
+
+export async function handleListAppDeployTokens(c: AdminContext) {
+  const appId = c.req.param("appId") ?? "";
+  const includeRevoked = c.req.query("include_revoked") === "1";
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, app_id, name, token_prefix, app_role, created_by,
+            created_by_actor, created_at, expires_at, last_used_at, revoked_at
+     FROM app_deploy_tokens
+     WHERE app_id = ?1
+       AND (?2 = 1 OR revoked_at IS NULL)
+     ORDER BY revoked_at IS NULL DESC, created_at DESC`,
+  )
+    .bind(appId, includeRevoked ? 1 : 0)
+    .all<DeployTokenRow>();
+  return c.json({ deploy_tokens: results.map(toResponse) });
+}
+
+export async function handleCreateAppDeployToken(c: AdminContext) {
+  const appId = c.req.param("appId") ?? "";
+  const body = (await c.req.json().catch(() => ({}))) as {
+    name?: unknown;
+    app_role?: unknown;
+    expires_at?: unknown;
+  };
+
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) return c.json({ error: "name is required" }, 400);
+  if (name.length > 80) return c.json({ error: "name must be 80 characters or fewer" }, 400);
+  if (!isDeployTokenRole(body.app_role)) {
+    return c.json({ error: "app_role must be publisher or viewer" }, 400);
+  }
+
+  let expiresAt: number | null;
+  try {
+    expiresAt = parseExpiresAt(body.expires_at);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+
+  const now = Date.now();
+  const id = crypto.randomUUID();
+  const { token, token_prefix } = generateDeployToken();
+  const tokenHash = await hashDeployToken(token);
+  const account = currentAccount(c);
+  const actor = currentActor(c);
+
+  await c.env.DB.prepare(
+    `INSERT INTO app_deploy_tokens
+     (id, app_id, name, token_prefix, token_hash, app_role, created_by,
+      created_by_actor, created_at, expires_at, last_used_at, revoked_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, NULL)`,
+  )
+    .bind(
+      id,
+      appId,
+      name,
+      token_prefix,
+      tokenHash,
+      body.app_role,
+      account?.id ?? null,
+      actor,
+      now,
+      expiresAt,
+    )
+    .run();
+
+  await insertAuditLog(c.env.DB, c, {
+    app_id: appId,
+    action: "deploy_token.create",
+    payload: {
+      id,
+      name,
+      token_prefix,
+      app_role: body.app_role,
+      expires_at: expiresAt,
+    },
+    created_at: now,
+  });
+
+  return c.json(
+    {
+      token,
+      deploy_token: {
+        id,
+        app_id: appId,
+        name,
+        token_prefix,
+        app_role: body.app_role,
+        created_by: account?.id ?? null,
+        created_by_actor: actor,
+        created_at: now,
+        expires_at: expiresAt,
+        last_used_at: null,
+        revoked_at: null,
+      },
+    },
+    201,
+  );
+}
+
+export async function handleRevokeAppDeployToken(c: AdminContext) {
+  const appId = c.req.param("appId") ?? "";
+  const tokenId = c.req.param("tokenId") ?? "";
+  const now = Date.now();
+  const existing = await c.env.DB.prepare(
+    "SELECT id, name, token_prefix FROM app_deploy_tokens WHERE id = ?1 AND app_id = ?2 LIMIT 1",
+  )
+    .bind(tokenId, appId)
+    .first<{ id: string; name: string; token_prefix: string }>();
+  if (!existing) return c.json({ error: "not found" }, 404);
+
+  await c.env.DB.prepare(
+    "UPDATE app_deploy_tokens SET revoked_at = ?1 WHERE id = ?2 AND app_id = ?3",
+  )
+    .bind(now, tokenId, appId)
+    .run();
+
+  await insertAuditLog(c.env.DB, c, {
+    app_id: appId,
+    action: "deploy_token.revoke",
+    payload: {
+      id: existing.id,
+      name: existing.name,
+      token_prefix: existing.token_prefix,
+    },
+    created_at: now,
+  });
+
+  return c.json({ ok: true, id: tokenId, revoked_at: now });
+}

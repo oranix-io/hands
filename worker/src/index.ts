@@ -40,6 +40,11 @@ import {
   handlePublicReleaseShare,
   handleRevokeReleaseShare,
 } from "./routes/shares";
+import {
+  handleCreateAppDeployToken,
+  handleListAppDeployTokens,
+  handleRevokeAppDeployToken,
+} from "./routes/deploy_tokens";
 import { handleUploadApk } from "./routes/upload";
 import {
   handleListOperations,
@@ -330,6 +335,7 @@ const admin = new Hono<{
   Bindings: Env;
   Variables: {
     admin_account?: import("./middleware/auth").AdminAccount;
+    admin_deploy_token?: import("./lib/deploy_tokens").AppDeployToken;
     admin_actor?: string;
     org_id?: string;
     org_role?: "owner" | "admin" | "member" | "viewer";
@@ -549,6 +555,9 @@ admin.get("/api/apps/:appId/server-grants", requireAppRole("viewer"), handleList
 admin.post("/api/apps/:appId/server-grants", requireAppRole("admin"), handleAddAppServerGrant);
 admin.patch("/api/apps/:appId/server-grants/:serverId", requireAppRole("admin"), handleUpdateAppServerGrant);
 admin.delete("/api/apps/:appId/server-grants/:serverId", requireAppRole("admin"), handleRemoveAppServerGrant);
+admin.get("/api/apps/:appId/deploy-tokens", requireAppRole("admin"), handleListAppDeployTokens);
+admin.post("/api/apps/:appId/deploy-tokens", requireAppRole("admin"), handleCreateAppDeployToken);
+admin.delete("/api/apps/:appId/deploy-tokens/:tokenId", requireAppRole("admin"), handleRevokeAppDeployToken);
 
 app.route("/", admin);
 

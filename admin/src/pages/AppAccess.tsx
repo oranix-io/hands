@@ -17,15 +17,19 @@ import {
   addAppMember,
   addAppServerGrant,
   createOrgInvite,
+  createAppDeployToken,
   getAuthMe,
   listApps,
   listAppMembers,
+  listAppDeployTokens,
   listAppServerGrants,
   listOrgMembers,
   removeAppMember,
   removeAppServerGrant,
+  revokeAppDeployToken,
   updateAppMember,
   type AppMember,
+  type AppDeployToken,
   type App,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
@@ -33,6 +37,7 @@ import { useToast } from "../components/Toast";
 export function AppAccess({ appId }: { appId: string }) {
   const [showAddServer, setShowAddServer] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [showAddDeployToken, setShowAddDeployToken] = useState(false);
   const me = useQuery({ queryKey: ["auth-me"], queryFn: () => getAuthMe() });
   const account = me.data?.account;
   const orgRole = account?.org_role ?? null;
@@ -97,6 +102,12 @@ export function AppAccess({ appId }: { appId: string }) {
         currentAccountId={account?.id ?? null}
         onAdd={() => setShowAddMember(true)}
       />
+      {canManage && (
+        <AppDeployTokenList
+          appId={appId}
+          onAdd={() => setShowAddDeployToken(true)}
+        />
+      )}
       {canManage && <InviteToAppForm appId={appId} />}
       {showAddServer && (
         <AddAppServerGrantDialog
@@ -110,6 +121,13 @@ export function AppAccess({ appId }: { appId: string }) {
           appId={appId}
           onClose={() => setShowAddMember(false)}
           onAdded={() => setShowAddMember(false)}
+        />
+      )}
+      {showAddDeployToken && (
+        <AddAppDeployTokenDialog
+          appId={appId}
+          onClose={() => setShowAddDeployToken(false)}
+          onAdded={() => setShowAddDeployToken(false)}
         />
       )}
     </div>
@@ -568,6 +586,291 @@ function AppMemberList({
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+function AppDeployTokenList({
+  appId,
+  onAdd,
+}: {
+  appId: string;
+  onAdd: () => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const tokens = useQuery({
+    queryKey: ["app-deploy-tokens", appId],
+    queryFn: () => listAppDeployTokens(appId),
+  });
+  const revoke = useMutation({
+    mutationFn: (tokenId: string) => revokeAppDeployToken(appId, tokenId),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: "Deploy token revoked" });
+      qc.invalidateQueries({ queryKey: ["app-deploy-tokens", appId] });
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Revoke failed",
+        description: (e as Error).message,
+      }),
+  });
+  const rows = tokens.data?.deploy_tokens ?? [];
+
+  return (
+    <div className="card !p-4 text-sm">
+      {tokens.isLoading && <p className="text-slate-500">Loading…</p>}
+      {tokens.error && (
+        <p className="text-red-600">Failed: {(tokens.error as Error).message}</p>
+      )}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-semibold">Deploy tokens</h3>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">
+            {rows.length} token{rows.length === 1 ? "" : "s"}
+          </span>
+          <button className="btn-secondary !py-1 !px-2 !text-xs" onClick={onAdd}>
+            + Add
+          </button>
+        </div>
+      </div>
+      {tokens.data && rows.length === 0 && (
+        <p className="text-slate-500 text-sm">
+          No deploy tokens yet.
+        </p>
+      )}
+      {tokens.data && rows.length > 0 && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-slate-500 text-left border-b border-slate-100">
+              <th className="font-normal py-1 pr-2">Name</th>
+              <th className="font-normal py-1 pr-2">Prefix</th>
+              <th className="font-normal py-1 pr-2">Role</th>
+              <th className="font-normal py-1 pr-2">Expires</th>
+              <th className="font-normal py-1 pr-2">Last used</th>
+              <th className="font-normal py-1">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((token) => (
+              <tr
+                key={token.id}
+                className="border-b border-slate-50 hover:bg-slate-50"
+              >
+                <td className="py-2 pr-2">
+                  <div className="font-medium">{token.name}</div>
+                  <div className="text-xs text-slate-500">
+                    by {token.created_by_actor}
+                  </div>
+                </td>
+                <td className="py-2 pr-2">
+                  <span className="font-mono text-xs text-slate-600">
+                    {token.token_prefix}
+                  </span>
+                </td>
+                <td className="py-2 pr-2">
+                  <span className="text-xs font-medium">{token.app_role}</span>
+                </td>
+                <td className="py-2 pr-2 text-xs text-slate-500">
+                  {token.expires_at
+                    ? new Date(token.expires_at).toISOString().slice(0, 10)
+                    : "Never"}
+                </td>
+                <td className="py-2 pr-2 text-xs text-slate-500">
+                  {token.last_used_at
+                    ? new Date(token.last_used_at).toISOString().slice(0, 10)
+                    : "—"}
+                </td>
+                <td className="py-2 text-xs">
+                  <button
+                    className="text-red-600 hover:underline"
+                    onClick={() => {
+                      if (confirm(`Revoke deploy token ${token.name}?`)) {
+                        revoke.mutate(token.id);
+                      }
+                    }}
+                    disabled={revoke.isPending}
+                  >
+                    Revoke
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="text-xs text-slate-500 mt-2">
+        Tokens are app-scoped bearer credentials for CI. The raw token is only
+        shown once after creation.
+      </p>
+    </div>
+  );
+}
+
+function AddAppDeployTokenDialog({
+  appId,
+  onClose,
+  onAdded,
+}: {
+  appId: string;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<AppDeployToken["app_role"]>("publisher");
+  const [expiry, setExpiry] = useState<"30d" | "90d" | "365d" | "never">("365d");
+  const [createdToken, setCreatedToken] = useState<string | null>(null);
+
+  const expiresAt = () => {
+    if (expiry === "never") return null;
+    const days = expiry === "30d" ? 30 : expiry === "90d" ? 90 : 365;
+    return Date.now() + days * 24 * 60 * 60 * 1000;
+  };
+
+  const create = useMutation({
+    mutationFn: () =>
+      createAppDeployToken(appId, {
+        name: name.trim(),
+        app_role: role,
+        expires_at: expiresAt(),
+      }),
+    onSuccess: (data) => {
+      toast.show({ kind: "success", title: "Deploy token created" });
+      qc.invalidateQueries({ queryKey: ["app-deploy-tokens", appId] });
+      setCreatedToken(data.token);
+    },
+    onError: (e) =>
+      toast.show({
+        kind: "error",
+        title: "Create failed",
+        description: (e as Error).message,
+      }),
+  });
+
+  const closeAfterCreate = () => {
+    setCreatedToken(null);
+    onAdded();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          createdToken ? closeAfterCreate() : onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") createdToken ? closeAfterCreate() : onClose();
+      }}
+    >
+      <div className="card max-w-lg w-full relative text-sm">
+        <button
+          type="button"
+          onClick={createdToken ? closeAfterCreate : onClose}
+          aria-label="Close"
+          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-100"
+        >
+          ×
+        </button>
+        <h2 className="text-lg font-bold mb-4 pr-8">Add deploy token</h2>
+        {createdToken ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Copy this token now. It will not be shown again.
+            </p>
+            <textarea
+              className="input font-mono text-xs min-h-[96px]"
+              value={createdToken}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  navigator.clipboard?.writeText(createdToken).catch(() => {});
+                  toast.show({ kind: "success", title: "Token copied" });
+                }}
+              >
+                Copy
+              </button>
+              <button type="button" className="btn-primary" onClick={closeAfterCreate}>
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate();
+            }}
+          >
+            <div>
+              <label className="label">Name</label>
+              <input
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="github-actions-main"
+                autoFocus
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Role</label>
+                <select
+                  className="input"
+                  value={role}
+                  onChange={(e) =>
+                    setRole(e.target.value as AppDeployToken["app_role"])
+                  }
+                >
+                  <option value="publisher">publisher</option>
+                  <option value="viewer">viewer</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Expires</label>
+                <select
+                  className="input"
+                  value={expiry}
+                  onChange={(e) =>
+                    setExpiry(e.target.value as "30d" | "90d" | "365d" | "never")
+                  }
+                >
+                  <option value="30d">30 days</option>
+                  <option value="90d">90 days</option>
+                  <option value="365d">1 year</option>
+                  <option value="never">Never</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500">
+              Publisher tokens can upload builds, create releases, and create
+              share pages for this app only.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" className="btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={!name.trim() || create.isPending}
+              >
+                {create.isPending ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

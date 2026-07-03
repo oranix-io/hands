@@ -7,7 +7,7 @@
 
 import type { Context } from "hono";
 import { currentActor, type AdminEnv } from "../middleware/auth";
-import { currentAccount } from "../lib/permissions";
+import { currentAccount, currentDeployToken } from "../lib/permissions";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
@@ -21,6 +21,30 @@ async function currentOrgId(c: AdminContext): Promise<string> {
 }
 
 export async function handleListApps(c: AdminContext) {
+  const deployToken = currentDeployToken(c);
+  if (deployToken) {
+    const row = await c.env.DB.prepare(
+      `SELECT id, org_id, slug, name, platform,
+              description, archived, archived_at, created_at
+       FROM apps
+       WHERE id = ?1
+       LIMIT 1`,
+    )
+      .bind(deployToken.app_id)
+      .first<{
+        id: string;
+        org_id: string | null;
+        slug: string;
+        name: string;
+        platform: string;
+        description: string | null;
+        archived: number;
+        archived_at: number | null;
+        created_at: number;
+      }>();
+    return c.json({ apps: row ? [row] : [] });
+  }
+
   const orgId = c.get("org_id");
   const account = currentAccount(c);
   const query = orgId && account

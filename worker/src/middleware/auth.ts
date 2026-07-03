@@ -14,6 +14,7 @@
 
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
+import { loadDeployToken, sha256Hex, type AppDeployToken } from "../lib/deploy_tokens";
 
 export const SESSION_COOKIE = "quiver_session";
 
@@ -39,19 +40,12 @@ export type AdminAccount = {
 export type AdminEnv = {
   Variables: {
     admin_account?: AdminAccount;
+    admin_deploy_token?: AppDeployToken;
     admin_actor?: string;
     org_id?: string;
     org_role?: "owner" | "admin" | "member" | "viewer";
   };
 };
-
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 export function isProductionEnv(env: Env): boolean {
   return String(env.ENVIRONMENT ?? "production") === "production";
@@ -78,6 +72,14 @@ export function currentActorInfo(c: Context<any>): {
       id: account.id,
       type: account.principal_type,
       display_name: accountActor(account),
+    };
+  }
+  const deployToken = c.get("admin_deploy_token") as AppDeployToken | undefined;
+  if (deployToken) {
+    return {
+      id: deployToken.id,
+      type: "agent",
+      display_name: `deploy-token:${deployToken.name}@${deployToken.app_slug}`,
     };
   }
   return {
@@ -140,6 +142,16 @@ export const authMiddleware: MiddlewareHandler<AdminEnv & { Bindings: Env }> =
       if (account.org_role) c.set("org_role", account.org_role);
       await next();
       return;
+    }
+
+    if (!cookieToken && bearerToken) {
+      const deployToken = await loadDeployToken(c.env, bearerToken);
+      if (deployToken) {
+        c.set("admin_deploy_token", deployToken);
+        c.set("admin_actor", `deploy-token:${deployToken.name}@${deployToken.app_slug}`);
+        await next();
+        return;
+      }
     }
 
     if (!isProductionEnv(c.env)) {

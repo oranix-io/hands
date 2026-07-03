@@ -1,5 +1,6 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { currentActorInfo, type AdminAccount, type AdminEnv } from "../middleware/auth";
+import type { AppDeployToken } from "./deploy_tokens";
 
 export type OrgRole = "owner" | "admin" | "member" | "viewer";
 export type AppRole = "admin" | "publisher" | "viewer";
@@ -45,6 +46,10 @@ function devTokenBypass(c: AdminContext) {
 
 export function currentAccount(c: AdminContext): AdminAccount | null {
   return c.get("admin_account") ?? null;
+}
+
+export function currentDeployToken(c: AdminContext): AppDeployToken | null {
+  return c.get("admin_deploy_token") ?? null;
 }
 
 export async function getOrgMemberRole(
@@ -153,6 +158,29 @@ export async function ensureOrgRole(c: AdminContext, orgId: string, minimum: Org
 
 export async function ensureAppRole(c: AdminContext, appId: string, minimum: AppRole) {
   if (devTokenBypass(c)) return { ok: true as const, app_role: "admin" as AppRole, org_role: "owner" as OrgRole };
+  const deployToken = currentDeployToken(c);
+  if (deployToken) {
+    if (deployToken.app_id !== appId || !isAppAtLeast(deployToken.app_role, minimum)) {
+      return {
+        ok: false as const,
+        response: c.json(
+          {
+            error: "forbidden",
+            required_role: minimum,
+            app_role: deployToken.app_id === appId ? deployToken.app_role : null,
+          },
+          403,
+        ),
+      };
+    }
+    return {
+      ok: true as const,
+      org_role: null,
+      app_role: deployToken.app_role,
+      server_app_role: null,
+      org_id: null,
+    };
+  }
   const account = currentAccount(c);
   if (!account) {
     return { ok: false as const, response: c.json({ error: "unauthorized" }, 401) };
@@ -192,6 +220,11 @@ export function requireCurrentOrgRole(minimum: OrgRole): MiddlewareHandler<RoleC
     const orgId = c.get("org_id");
     if (!orgId) {
       if (devTokenBypass(c)) {
+        await next();
+        return;
+      }
+      const deployToken = c.get("admin_deploy_token");
+      if (deployToken && minimum === "viewer") {
         await next();
         return;
       }
