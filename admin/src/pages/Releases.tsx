@@ -373,7 +373,7 @@ function ReleaseRow({
             Edit
           </button>
         )}
-        {(r.status === "active" || r.status === "superseded") && (
+        {(r.status === "active" || r.status === "superseded" || r.status === "cancelled") && (
           <>
             {r.status === "active" && (
               <>
@@ -397,7 +397,7 @@ function ReleaseRow({
               onClick={() => rollback.mutate()}
               disabled={rollback.isPending}
             >
-              {r.status === "superseded" ? "Restore as active" : "Roll back"}
+              {r.status === "active" ? "Roll back" : "Restore as active"}
             </button>
           </>
         )}
