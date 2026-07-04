@@ -117,7 +117,7 @@ function Header({ account }: { account: AuthAccount }) {
 
   return (
     <header className="bg-white border-b border-slate-200">
-      <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-6">
+      <div className="px-5 py-3 flex items-center justify-between gap-6">
         <div className="flex items-center gap-6">
           <Link
             to="/"
@@ -865,7 +865,7 @@ function AppShell() {
         <div className="md:hidden">
           <AppContextNav />
         </div>
-        <main className="max-w-5xl mx-auto px-6 py-6 w-full">
+        <main className="max-w-5xl px-8 py-6 w-full">
         <Routes>
           <Route index element={<AppDetailRoute />} />
           <Route path="publish" element={<LegacyPublishRedirect />} />
