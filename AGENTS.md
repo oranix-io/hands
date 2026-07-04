@@ -138,8 +138,28 @@ long-lived npm or Cloudflare credentials.
 
 - `Publish CLI` publishes `@oranix/quiver-cli` to npm through npm Trusted
   Publishing / GitHub OIDC.
-- `Deploy Quiver Server` deploys the Worker plus bundled admin/docs assets.
-  Choose a container rollout mode only when the APK parser container changed.
+- `Deploy Quiver Server` applies D1 migrations (`wrangler d1 migrations
+  apply quiver-db --remote`) and then deploys the Worker plus bundled
+  admin/docs assets. Choose a container rollout mode only when the APK
+  parser container changed.
+
+## Release Policy (mobile app releases through Quiver)
+
+**CI never completes a real release.** CI builds, signs, generates a raw
+changelog, and creates a **draft** release. A human or agent reviews the
+draft, writes the final bilingual changelog, and publishes explicitly.
+Follow `docs/release-runbook.md` (`quiver releases show / update /
+publish`).
+
+## Docs Layout
+
+- `docs/public/*` is the canonical user-facing documentation, served at
+  `/docs` on the production origin. Update it in the same PR as behavior
+  changes.
+- Top-level `docs/{admin-user-guide,cli-reference,public-api-reference}.md`
+  are retired pointer stubs — do not resurrect them.
+- `docs/publish-architecture.md`, `docs/publish-tasks.md`, and
+  `docs/account-org-invite.md` are frozen historical design docs.
 
 ## First-Day Checklist
 
