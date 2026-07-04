@@ -20,6 +20,8 @@ type ShareRow = {
 
 type SharePageRow = {
   password_hash: string | null;
+  icon_r2_key: string | null;
+  package_id: string | null;
   share_id: string;
   expires_at: number;
   app_slug: string;
@@ -445,6 +447,14 @@ async function findActiveShare(db: D1Database, token: string): Promise<SharePage
        rs.password_hash AS password_hash,
        a.slug AS app_slug,
        a.name AS app_name,
+       a.icon_r2_key AS icon_r2_key,
+       COALESCE(
+         json_extract(b.parsed_metadata_json, '$.package_id'),
+         json_extract(b.parsed_metadata_json, '$.package_name'),
+         json_extract(b.build_metadata_json, '$.package_id'),
+         json_extract(b.build_metadata_json, '$.package_name'),
+         json_extract(b.build_metadata_json, '$.android.package_id')
+       ) AS package_id,
        ch.slug AS channel_slug,
        r.id AS release_id,
        r.status AS release_status,
@@ -606,6 +616,8 @@ function renderSharePage(
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f5f2; color: #1e1f22; }
     main { width: min(560px, calc(100vw - 32px)); padding: 32px 0; }
     h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.15; letter-spacing: 0; }
+    .apphead { display: flex; align-items: center; gap: 16px; }
+    .apphead .appicon { border-radius: 12px; flex: none; }
     p { margin: 0; color: #5b616e; line-height: 1.5; }
     dl { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; margin: 28px 0; }
     dt { color: #707782; }
@@ -631,10 +643,15 @@ function renderSharePage(
 </head>
 <body>
   <main>
-    <h1>${escapeHtml(row.app_name || row.app_slug)}</h1>
-    <p>${escapeHtml(row.version_name)} · build ${row.version_code} · ${escapeHtml(row.channel_slug)}</p>
+    <div class="apphead">
+      ${row.icon_r2_key ? `<img class="appicon" src="/public/apps/${escapeAttribute(row.app_slug)}/icon" alt="" width="56" height="56">` : ""}
+      <div>
+        <h1>${escapeHtml(row.app_name || row.app_slug)}</h1>
+        <p>${escapeHtml(row.version_name)} · build ${row.version_code} · ${escapeHtml(row.channel_slug)}</p>
+      </div>
+    </div>
     <dl>
-      <dt>Package</dt><dd>${escapeHtml(row.app_slug)}</dd>
+      <dt>Package</dt><dd>${escapeHtml(row.package_id || row.app_slug)}</dd>
       <dt>Version</dt><dd>${escapeHtml(row.version_name)} (${row.version_code})</dd>
       <dt>Artifact</dt><dd>${escapeHtml(row.filetype.toUpperCase())} · ${formatBytes(row.size_bytes)}</dd>
       <dt>Platform</dt><dd>${escapeHtml([row.platform, row.arch, row.variant].filter(Boolean).join(" / "))}</dd>

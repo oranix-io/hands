@@ -24,7 +24,15 @@ import {
   handleAuthMe,
   handleRaftCallback,
 } from "./routes/auth";
-import { handleListApps, handleCreateApp, handleGetApp, handleArchiveApp, handleUpdateApp } from "./routes/apps";
+import {
+  handleListApps,
+  handleCreateApp,
+  handleGetApp,
+  handleArchiveApp,
+  handleUpdateApp,
+  handleUploadAppIcon,
+  handlePublicAppIcon,
+} from "./routes/apps";
 import {
   handlePublicListChannels,
 } from "./routes/public";
@@ -428,6 +436,7 @@ app.get("/share/:token/download", handlePublicReleaseShareDownload);
 app.get("/share/:token", handlePublicReleaseShare);
 app.post("/share/:token/unlock", handlePublicReleaseShareUnlock);
 app.post("/public/v2/apps/:slug/feedback", handlePublicFeedbackSubmit);
+app.get("/public/apps/:slug/icon", handlePublicAppIcon);
 app.get("/api/invites/:token", handleGetInvite);
 
 function isWorkerRoute(pathname: string): boolean {
@@ -537,6 +546,7 @@ admin.post("/api/apps/:appId/releases/:releaseId/rollback", requireAppRole("publ
 admin.post("/api/apps/:appId/releases/:releaseId/bump-rollout", requireAppRole("publisher"), handleBumpRollout);
 admin.post("/api/apps/:appId/releases/:releaseId/force-update", requireAppRole("publisher"), handleForceUpdate);
 admin.get("/api/apps/:appId/shares", requireAppRole("viewer"), handleListAppShares);
+admin.put("/api/apps/:appId/icon", requireAppRole("publisher"), handleUploadAppIcon);
 admin.get("/api/apps/:appId/feedback", requireAppRole("viewer"), handleListFeedback);
 admin.get("/api/apps/:appId/feedback/:ticketId", requireAppRole("viewer"), handleGetFeedback);
 admin.patch("/api/apps/:appId/feedback/:ticketId", requireAppRole("publisher"), handleUpdateFeedback);

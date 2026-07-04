@@ -115,161 +115,112 @@ function Header({ account }: { account: AuthAccount }) {
     };
   }, [showAccountMenu]);
 
+  const railItem = ({ isActive }: { isActive: boolean }) =>
+    `flex w-full flex-col items-center gap-0.5 rounded-md px-1 py-2 text-[11px] leading-none ${
+      isActive
+        ? "bg-slate-100 font-medium text-slate-950"
+        : "text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+    }`;
+
   return (
-    <header className="bg-white border-b border-slate-200">
-      <div className="px-5 py-3 flex items-center justify-between gap-6">
-        <div className="flex items-center gap-6">
-          <Link
-            to="/"
-            className="inline-flex h-10 items-center gap-2 text-xl font-medium tracking-tight leading-none"
-            aria-label="Quiver"
-          >
-            <QuiverMark className="h-8 w-8 flex-none" />
-            <span>Quiver</span>
-          </Link>
-          <nav className="flex items-center gap-2">
-            <NavLink
-              to="/apps"
-              end
-              className={({ isActive }) =>
-                `inline-flex h-10 items-center rounded-md px-3 text-sm leading-none ${
-                  isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-                }`
+    <header className="flex w-16 flex-none flex-col items-center border-r border-slate-200 bg-white py-3">
+      <Link to="/" aria-label="Quiver" className="mb-4">
+        <QuiverMark className="h-9 w-9" />
+      </Link>
+      <nav className="flex w-full flex-col items-stretch gap-1 px-2">
+        <NavLink to="/apps" end={false} className={railItem}>
+          <span aria-hidden="true" className="text-base leading-none">▦</span>
+          Apps
+        </NavLink>
+        <div className="relative w-full">
+          <NavLink
+            to={orgHref}
+            onClick={(e) => {
+              if (orgs.data && orgs.data.orgs.length > 1) {
+                e.preventDefault();
+                setShowOrgSwitcher((s) => !s);
               }
-            >
-              Apps
-            </NavLink>
-            <div className="relative">
-              <NavLink
-                to={orgHref}
-                onClick={(e) => {
-                  if (orgs.data && orgs.data.orgs.length > 1) {
-                    e.preventDefault();
-                    setShowOrgSwitcher((s) => !s);
-                  }
-                }}
-                className={({ isActive }) =>
-                  `inline-flex h-10 items-center rounded-md px-3 text-sm leading-none ${
-                    isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-                  }`
-                }
-                aria-label={
-                  account.org_id
-                    ? `Org ${account.server_slug ?? account.server_id}, role ${account.org_role ?? "none"}`
-                    : "Org settings"
-                }
-              >
-                <span className="inline-flex items-center gap-1 leading-none">
-                  Org
-                  {account.org_role && (
-                    <span
-                      className="inline-flex items-center rounded px-1 text-xs leading-none"
-                      style={{
-                        color:
-                          account.org_role === "owner"
-                            ? "#a855f7"
-                            : account.org_role === "admin"
-                              ? "#3b82f6"
-                              : "#6b7280",
-                      }}
-                    >
-                      {account.org_role}
-                    </span>
-                  )}
-                  {orgs.data && orgs.data.orgs.length > 1 && (
-                    <span
-                      className="text-xs text-slate-400"
-                      title={`Member of ${orgs.data.orgs.length} organizations`}
-                    >
-                      ▾
-                    </span>
-                  )}
-                </span>
-              </NavLink>
-              {showOrgSwitcher &&
-                orgs.data &&
-                orgs.data.orgs.length > 1 && (
-                  <OrgSwitcher
-                    currentOrgId={account.org_id ?? null}
-                    buttonLabel={`Switch organization (${
-                      orgs.data.orgs.length
-                    } members of)`}
-                    onClose={() => setShowOrgSwitcher(false)}
-                    onSwitch={switchOrg}
-                  />
-                )}
-            </div>
-          </nav>
-        </div>
-        <div ref={accountMenuRef} className="relative text-sm">
-          <button
-            type="button"
-            className="inline-flex h-10 items-center gap-3 rounded-md px-2 hover:bg-slate-100"
-            onClick={() => setShowAccountMenu((open) => !open)}
-            aria-haspopup="menu"
-            aria-expanded={showAccountMenu}
+            }}
+            className={railItem}
+            aria-label={
+              account.org_id
+                ? `Org ${account.server_slug ?? account.server_id}, role ${account.org_role ?? "none"}`
+                : "Org settings"
+            }
           >
-            <span className="text-right leading-tight">
-              <span className="font-medium flex items-center gap-1 justify-end">
-                {account.display_name}
-                {account.principal_type === "agent" && (
-                  <span
-                    className="badge-purple text-xs"
-                    title="Raft agent principal"
-                  >
-                    agent
-                  </span>
-                )}
-              </span>
-              <span className="block text-xs text-slate-500">
-                {account.server_slug || account.server_id}
-              </span>
-            </span>
-            {account.avatar_url ? (
-              <img
-                src={account.avatar_url}
-                alt=""
-                className="h-8 w-8 rounded-full border border-slate-200"
+            <span aria-hidden="true" className="text-base leading-none">◫</span>
+            Org
+          </NavLink>
+          {showOrgSwitcher && orgs.data && orgs.data.orgs.length > 1 && (
+            <div className="absolute left-full top-0 z-40 ml-2">
+              <OrgSwitcher
+                currentOrgId={account.org_id ?? null}
+                buttonLabel={`Switch organization (${orgs.data.orgs.length} members of)`}
+                onClose={() => setShowOrgSwitcher(false)}
+                onSwitch={switchOrg}
               />
-            ) : (
-              <span className="h-8 w-8 rounded-full border border-slate-200 bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600">
-                {account.display_name.slice(0, 1).toUpperCase()}
-              </span>
-            )}
-          </button>
-          {showAccountMenu && (
-            <div className="absolute right-0 top-full z-30 mt-2 w-64 rounded-md border border-slate-200 bg-white p-2 shadow-lg">
-              <div className="px-2 py-2 border-b border-slate-100">
-                <div className="font-medium text-slate-900">
-                  {account.display_name}
-                </div>
-                <div className="text-xs text-slate-500">
-                  {account.server_slug || account.server_id}
-                </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {account.principal_type === "agent" ? "Raft agent" : "Raft user"}
-                </div>
-              </div>
-              <Link
-                to="/settings"
-                role="menuitem"
-                className="mt-2 flex w-full items-center rounded-md px-2 py-2 text-left text-sm text-slate-700 no-underline hover:bg-slate-100"
-                onClick={() => setShowAccountMenu(false)}
-              >
-                Settings
-              </Link>
-              <button
-                type="button"
-                role="menuitem"
-                className="mt-1 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                onClick={onLogout}
-              >
-                <span>Logout</span>
-                <span aria-hidden="true">↗</span>
-              </button>
             </div>
           )}
         </div>
+      </nav>
+      <div ref={accountMenuRef} className="relative mt-auto flex w-full flex-col items-center px-2">
+        <button
+          type="button"
+          className="rounded-full outline-none hover:ring-2 hover:ring-slate-200"
+          onClick={() => setShowAccountMenu((open) => !open)}
+          aria-haspopup="menu"
+          aria-expanded={showAccountMenu}
+          title={`${account.display_name} · ${account.server_slug || account.server_id}`}
+        >
+          {account.avatar_url ? (
+            <img
+              src={account.avatar_url}
+              alt=""
+              className="h-9 w-9 rounded-full border border-slate-200"
+            />
+          ) : (
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-600">
+              {account.display_name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+        </button>
+        {showAccountMenu && (
+          <div className="absolute bottom-0 left-full z-40 ml-2 w-64 rounded-md border border-slate-200 bg-white p-2 shadow-lg">
+            <div className="px-2 py-2 border-b border-slate-100">
+              <div className="font-medium text-slate-900 flex items-center gap-1">
+                {account.display_name}
+                {account.principal_type === "agent" && (
+                  <span className="badge-purple text-xs" title="Raft agent principal">
+                    agent
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-slate-500">
+                {account.server_slug || account.server_id}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {account.principal_type === "agent" ? "Raft agent" : "Raft user"}
+              </div>
+            </div>
+            <Link
+              to="/settings"
+              role="menuitem"
+              className="mt-2 flex w-full items-center rounded-md px-2 py-2 text-left text-sm text-slate-700 no-underline hover:bg-slate-100"
+              onClick={() => setShowAccountMenu(false)}
+            >
+              Settings
+            </Link>
+            <button
+              type="button"
+              role="menuitem"
+              className="mt-1 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              onClick={onLogout}
+            >
+              <span>Logout</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -675,8 +626,9 @@ function LandingFeature({ title, body }: { title: string; body: string }) {
 
 function AuthenticatedApp({ account }: { account: AuthAccount }) {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex">
       <Header account={account} />
+      <div className="min-w-0 flex-1 flex flex-col">
       <Routes>
         <Route path="/" element={<Navigate to="/apps" replace />} />
         <Route path="/apps" element={<AppsListWithNav />} />
@@ -731,6 +683,7 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
           </a>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
@@ -865,7 +818,7 @@ function AppShell() {
         <div className="md:hidden">
           <AppContextNav />
         </div>
-        <main className="max-w-5xl px-8 py-6 w-full">
+        <main className="w-full px-8 py-6">
         <Routes>
           <Route index element={<AppDetailRoute />} />
           <Route path="publish" element={<LegacyPublishRedirect />} />

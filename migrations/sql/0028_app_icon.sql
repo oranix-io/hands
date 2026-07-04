@@ -1,0 +1,1 @@
+ALTER TABLE apps ADD COLUMN icon_r2_key TEXT;

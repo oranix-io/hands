@@ -264,3 +264,48 @@ export async function handleUpdateApp(c: AdminContext) {
 
   return c.json({ ok: true });
 }
+
+const APP_ICON_MAX_BYTES = 1024 * 1024;
+
+/** PUT /api/apps/:appId/icon — upload a PNG/WebP app icon (<=1MB). */
+export async function handleUploadAppIcon(c: AdminContext) {
+  const appId = c.req.param("appId");
+  const app = await c.env.DB.prepare("SELECT id FROM apps WHERE id = ?1")
+    .bind(appId)
+    .first<{ id: string }>();
+  if (!app) return c.json({ error: "app not found" }, 404);
+
+  const contentType = c.req.header("content-type") ?? "";
+  if (!/^image\/(png|webp|jpeg)$/.test(contentType)) {
+    return c.json({ error: "content-type must be image/png, image/webp, or image/jpeg" }, 400);
+  }
+  const bytes = await c.req.arrayBuffer();
+  if (bytes.byteLength === 0) return c.json({ error: "empty body" }, 400);
+  if (bytes.byteLength > APP_ICON_MAX_BYTES) {
+    return c.json({ error: "icon too large (max 1MB)" }, 400);
+  }
+  const key = `apps/${appId}/icon`;
+  await c.env.APK_BUCKET.put(key, bytes, {
+    httpMetadata: { contentType },
+  });
+  await c.env.DB.prepare("UPDATE apps SET icon_r2_key = ?1 WHERE id = ?2")
+    .bind(key, appId)
+    .run();
+  return c.json({ ok: true, icon_r2_key: key });
+}
+
+/** GET /public/apps/:slug/icon — public, cacheable app icon. */
+export async function handlePublicAppIcon(c: Context<{ Bindings: Env }>) {
+  const slug = c.req.param("slug");
+  const app = await c.env.DB.prepare(
+    "SELECT icon_r2_key FROM apps WHERE slug = ?1",
+  )
+    .bind(slug)
+    .first<{ icon_r2_key: string | null }>();
+  if (!app?.icon_r2_key) return c.json({ error: "no icon" }, 404);
+  const object = await c.env.APK_BUCKET.get(app.icon_r2_key);
+  if (!object) return c.json({ error: "no icon" }, 404);
+  const headers = new Headers({ "cache-control": "public, max-age=300" });
+  object.writeHttpMetadata?.(headers);
+  return new Response(object.body, { headers });
+}

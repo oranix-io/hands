@@ -52,7 +52,7 @@ function makeMockDb() {
     CREATE TABLE apps (
       id TEXT PRIMARY KEY, org_id TEXT, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
       platform TEXT NOT NULL, description TEXT, archived INTEGER NOT NULL DEFAULT 0,
-      archived_at INTEGER, created_at INTEGER NOT NULL
+      archived_at INTEGER, created_at INTEGER NOT NULL, icon_r2_key TEXT
     );
     CREATE TABLE channels (
       id TEXT PRIMARY KEY, app_id TEXT NOT NULL, slug TEXT NOT NULL,
