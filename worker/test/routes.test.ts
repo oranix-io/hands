@@ -2510,6 +2510,50 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(rows.results[0].revoked_at).toBeNull();
   });
 
+  it("defaults release shares to seven days and updates share expiry", async () => {
+    const env = makeEnv();
+    const { handleCreateReleaseShare, handleUpdateReleaseShare } = await import("../src/routes/shares");
+    await seedRelease(env, "rel-share", "build-share", [["full", "all"]], {
+      versionCode: 11,
+      versionName: "1.0.11",
+    });
+
+    const createStart = Date.now();
+    const created = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, {}),
+    );
+    const createEnd = Date.now();
+
+    expect(created.status).toBe(201);
+    const createdBody = await responseJson<any>(created);
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    expect(createdBody.expires_at).toBeGreaterThanOrEqual(createStart + sevenDaysMs);
+    expect(createdBody.expires_at).toBeLessThanOrEqual(createEnd + sevenDaysMs);
+
+    const expiresAt = Date.now() + 14 * 24 * 60 * 60 * 1000;
+    const updated = await handleUpdateReleaseShare(
+      makeShareAdminContext(
+        env,
+        { appId: "app-scope", releaseId: "rel-share", shareId: createdBody.id },
+        { expires_at: expiresAt },
+      ),
+    );
+
+    expect(updated.status).toBe(200);
+    const updatedBody = await responseJson<any>(updated);
+    expect(updatedBody).toMatchObject({
+      id: createdBody.id,
+      release_id: "rel-share",
+      expires_at: expiresAt,
+      revoked_at: null,
+    });
+
+    const row = await env.DB.prepare("SELECT expires_at FROM release_shares WHERE id = ?")
+      .bind(createdBody.id)
+      .first() as { expires_at: number } | null;
+    expect(row?.expires_at).toBe(expiresAt);
+  });
+
   it("public release share page renders metadata and a signed download URL", async () => {
     const env = makeEnv();
     const { handleCreateReleaseShare, handlePublicReleaseShare } = await import("../src/routes/shares");
@@ -2616,6 +2660,35 @@ describe("quiver public API v2 — scope resolution", () => {
 
     const response = await handlePublicReleaseShare(makeSharePublicContext(env, token));
     expect(response.status).toBe(404);
+  });
+
+  it("does not update revoked release shares", async () => {
+    const env = makeEnv();
+    const { handleCreateReleaseShare, handleRevokeReleaseShare, handleUpdateReleaseShare } = await import("../src/routes/shares");
+    await seedRelease(env, "rel-share", "build-share", [["full", "all"]], {
+      versionCode: 11,
+    });
+    const created = await handleCreateReleaseShare(
+      makeShareAdminContext(env, { appId: "app-scope", releaseId: "rel-share" }, { ttl_seconds: 600 }),
+    );
+    const createdBody = await responseJson<any>(created);
+
+    await handleRevokeReleaseShare(
+      makeShareAdminContext(env, {
+        appId: "app-scope",
+        releaseId: "rel-share",
+        shareId: createdBody.id,
+      }),
+    );
+    const updated = await handleUpdateReleaseShare(
+      makeShareAdminContext(
+        env,
+        { appId: "app-scope", releaseId: "rel-share", shareId: createdBody.id },
+        { ttl_seconds: 600 },
+      ),
+    );
+
+    expect(updated.status).toBe(409);
   });
 
   it("create release share rejects invalid TTL and cancelled releases", async () => {

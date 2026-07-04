@@ -167,13 +167,15 @@ const ReleaseShare = z
 const CreateReleaseShareRequest = z
   .object({
     ttl_seconds: z.number().int().min(60).max(2_592_000).optional().openapi({
-      description: "Time-to-live in seconds. Defaults to 24 hours.",
+      description: "Time-to-live in seconds. Defaults to 7 days.",
     }),
     expires_at: z.number().int().optional().openapi({
       description: "Absolute expiry as unix timestamp in milliseconds.",
     }),
   })
   .openapi("CreateReleaseShareRequest");
+
+const UpdateReleaseShareRequest = CreateReleaseShareRequest.openapi("UpdateReleaseShareRequest");
 
 const CreateReleaseShareResponse = z
   .object({
@@ -184,6 +186,15 @@ const CreateReleaseShareResponse = z
     revoked_at: z.number().int().nullable(),
   })
   .openapi("CreateReleaseShareResponse");
+
+const UpdateReleaseShareResponse = z
+  .object({
+    id: z.string(),
+    release_id: z.string(),
+    expires_at: z.number().int(),
+    revoked_at: z.number().int().nullable(),
+  })
+  .openapi("UpdateReleaseShareResponse");
 
 const AppRole = z.enum(["viewer", "publisher", "admin"]);
 
@@ -451,6 +462,32 @@ docs.openAPIRegistry.registerPath(createRoute({
     401: error("Missing or invalid authentication."),
     403: error("Authenticated account or token does not have the required role."),
     404: error("Share was not found."),
+  },
+}));
+
+docs.openAPIRegistry.registerPath(createRoute({
+  method: "patch",
+  path: "/api/apps/{appId}/releases/{releaseId}/shares/{shareId}",
+  tags: ["Release shares"],
+  summary: "Renew or change a release share expiration",
+  security: auth,
+  request: {
+    params: AppReleaseShareParams,
+    body: {
+      content: json(UpdateReleaseShareRequest),
+      required: false,
+    },
+  },
+  responses: {
+    200: {
+      description: "Updated share.",
+      content: json(UpdateReleaseShareResponse),
+    },
+    400: error("Invalid request."),
+    401: error("Missing or invalid authentication."),
+    403: error("Authenticated account or token does not have the required role."),
+    404: error("Share was not found."),
+    409: error("Share cannot be updated, for example because it is revoked."),
   },
 }));
 

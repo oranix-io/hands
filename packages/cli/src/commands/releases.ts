@@ -19,6 +19,8 @@ interface ReleaseShare {
   revoked_at: number | null;
 }
 
+const DEFAULT_SHARE_TTL_SECONDS = "604800";
+
 export function registerReleaseCommands(program: Command): void {
   const releases = program
     .command("releases")
@@ -27,7 +29,7 @@ export function registerReleaseCommands(program: Command): void {
   releases
     .command("share <appIdOrSlug> <releaseId>")
     .description("Create a revocable public share page for a release.")
-    .option("--ttl-seconds <seconds>", "Share lifetime in seconds.", "86400")
+    .option("--ttl-seconds <seconds>", "Share lifetime in seconds.", DEFAULT_SHARE_TTL_SECONDS)
     .option("--expires-at <millis>", "Absolute expiration as Unix milliseconds.")
     .option("--json", "Output JSON.", false)
     .action(
@@ -41,7 +43,7 @@ export function registerReleaseCommands(program: Command): void {
         if (opts.expiresAt) {
           body.expires_at = parsePositiveNumber(opts.expiresAt, "--expires-at");
         } else {
-          body.ttl_seconds = parsePositiveNumber(opts.ttlSeconds ?? "86400", "--ttl-seconds");
+          body.ttl_seconds = parsePositiveNumber(opts.ttlSeconds ?? DEFAULT_SHARE_TTL_SECONDS, "--ttl-seconds");
         }
         const share = await apiRequest<ReleaseShare>(
           `/api/apps/${appId}/releases/${releaseId}/shares`,
@@ -83,6 +85,39 @@ export function registerReleaseCommands(program: Command): void {
           const state = share.revoked_at ? "revoked" : Date.now() >= share.expires_at ? "expired" : "active";
           console.log(`${share.id}  ${state}  expires=${new Date(share.expires_at).toISOString()}`);
         }
+      },
+    );
+
+  releases
+    .command("update-share <appIdOrSlug> <releaseId> <shareId>")
+    .description("Renew or change a public release share expiration.")
+    .option("--ttl-seconds <seconds>", "New lifetime in seconds from now.", DEFAULT_SHARE_TTL_SECONDS)
+    .option("--expires-at <millis>", "Absolute expiration as Unix milliseconds.")
+    .option("--json", "Output JSON.", false)
+    .action(
+      async (
+        appIdOrSlug: string,
+        releaseId: string,
+        shareId: string,
+        opts: { ttlSeconds?: string; expiresAt?: string; json?: boolean },
+      ) => {
+        const appId = await resolveAppId(appIdOrSlug);
+        const body: { ttl_seconds?: number; expires_at?: number } = {};
+        if (opts.expiresAt) {
+          body.expires_at = parsePositiveNumber(opts.expiresAt, "--expires-at");
+        } else {
+          body.ttl_seconds = parsePositiveNumber(opts.ttlSeconds ?? DEFAULT_SHARE_TTL_SECONDS, "--ttl-seconds");
+        }
+        const share = await apiRequest<ReleaseShare>(
+          `/api/apps/${appId}/releases/${releaseId}/shares/${shareId}`,
+          { method: "PATCH", body },
+        );
+        if (opts.json) {
+          console.log(JSON.stringify(share, null, 2));
+          return;
+        }
+        console.log(`Updated release share ${share.id}`);
+        console.log(`  expires_at: ${new Date(share.expires_at).toISOString()}`);
       },
     );
 

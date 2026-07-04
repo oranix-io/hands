@@ -45,7 +45,7 @@ type ShareStats = {
   unique_download_count: number;
 };
 
-const DEFAULT_SHARE_TTL_SECONDS = 24 * 60 * 60;
+const DEFAULT_SHARE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_SHARE_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export async function handleCreateReleaseShare(c: AdminContext) {
@@ -175,6 +175,66 @@ export async function handleRevokeReleaseShare(c: AdminContext) {
   ]);
 
   return c.json({ ok: true, id: shareId, revoked_at: now });
+}
+
+export async function handleUpdateReleaseShare(c: AdminContext) {
+  const appId = c.req.param("appId");
+  const releaseId = c.req.param("releaseId");
+  const shareId = c.req.param("shareId");
+  const body = await c.req.json().catch(() => ({})) as {
+    ttl_seconds?: number;
+    expires_at?: number;
+  };
+  const now = Date.now();
+
+  const existing = await c.env.DB.prepare(
+    `SELECT rs.id, rs.expires_at, rs.revoked_at
+     FROM release_shares rs
+     JOIN releases r ON r.id = rs.release_id
+     WHERE r.app_id = ?1 AND r.id = ?2 AND rs.id = ?3`,
+  )
+    .bind(appId, releaseId, shareId)
+    .first<{ id: string; expires_at: number; revoked_at: number | null }>();
+  if (!existing) return c.json({ error: "share not found" }, 404);
+  if (existing.revoked_at) {
+    return c.json({ error: "cannot update revoked share" }, 409);
+  }
+
+  let expiresAt: number;
+  try {
+    const ttlSeconds = normalizeShareTtl(body.ttl_seconds);
+    expiresAt = normalizeExpiresAt(body.expires_at, now, ttlSeconds);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  }
+
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE release_shares SET expires_at = ?1 WHERE id = ?2")
+      .bind(expiresAt, shareId),
+    c.env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, payload, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+    ).bind(
+      crypto.randomUUID(),
+      appId,
+      "release_share.update",
+      currentActor(c),
+      JSON.stringify({
+        id: shareId,
+        release_id: releaseId,
+        previous_expires_at: existing.expires_at,
+        expires_at: expiresAt,
+      }),
+      now,
+    ),
+  ]);
+
+  return c.json({
+    id: shareId,
+    release_id: releaseId,
+    expires_at: expiresAt,
+    revoked_at: null,
+  });
 }
 
 export async function handlePublicReleaseShare(c: Context<{ Bindings: Env }>) {

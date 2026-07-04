@@ -39,6 +39,7 @@ import {
   handlePublicReleaseShareDownload,
   handlePublicReleaseShare,
   handleRevokeReleaseShare,
+  handleUpdateReleaseShare,
 } from "./routes/shares";
 import {
   handleCreateAppDeployToken,
@@ -525,6 +526,7 @@ admin.post("/api/apps/:appId/releases/:releaseId/bump-rollout", requireAppRole("
 admin.post("/api/apps/:appId/releases/:releaseId/force-update", requireAppRole("publisher"), handleForceUpdate);
 admin.get("/api/apps/:appId/releases/:releaseId/shares", requireAppRole("viewer"), handleListReleaseShares);
 admin.post("/api/apps/:appId/releases/:releaseId/shares", requireAppRole("publisher"), handleCreateReleaseShare);
+admin.patch("/api/apps/:appId/releases/:releaseId/shares/:shareId", requireAppRole("publisher"), handleUpdateReleaseShare);
 admin.delete("/api/apps/:appId/releases/:releaseId/shares/:shareId", requireAppRole("publisher"), handleRevokeReleaseShare);
 
 // Multipart APK upload → R2 (admin only, validates + audits)

@@ -54,7 +54,7 @@ Android clients should send the channel they are configured to use. Debug builds
 
 ## Public Share Pages
 
-Release share pages provide a temporary public download page for a release. A share page can show basic view and download stats. Revoke a share when it should no longer be accessible.
+Release share pages provide a temporary public download page for a release. New share pages expire after 7 days by default. A share page can show basic view and download stats. Renew or change the expiration when a manual review window needs more time; revoke a share when it should no longer be accessible.
 
 Use share pages for human review and manual testing. Use the public update API for in-app update checks.
 
