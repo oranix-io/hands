@@ -305,7 +305,7 @@ export async function handlePublicV2Latest(c: Context<{ Bindings: Env }>) {
       version: build.version_name,
       version_code: build.version_code,
       release_type: "stable",
-      changelog: build.changelog,
+      changelog: resolveChangelog(build.changelog, requestedLang(c)),
       force_update: Boolean(build.should_force_update),
       released_at: build.completed_at ?? build.created_at,
     },
@@ -467,6 +467,45 @@ export function rolloutIncludes(
   if (cohortCount <= 0) return false;
   if (!deviceId) return false;
   return rolloutBucket(releaseId, deviceId) < cohortCount;
+}
+
+/**
+ * Changelog may be plain text (legacy, treated as en) or a JSON object of
+ * BCP-47-ish keys ({"en": "...", "zh-CN": "..."}). Resolve to the closest
+ * language, falling back en -> first available.
+ */
+export function resolveChangelog(raw: string | null, lang: string | null): string | null {
+  if (!raw) return raw;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{")) return raw;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return raw;
+  }
+  const entries = Object.entries(parsed).filter(
+    (e): e is [string, string] => typeof e[1] === "string" && e[1].length > 0,
+  );
+  if (entries.length === 0) return null;
+  const lower = (lang ?? "").toLowerCase();
+  const exact = entries.find(([k]) => k.toLowerCase() === lower);
+  if (exact) return exact[1];
+  const prefix = lower.split("-")[0];
+  if (prefix) {
+    const partial = entries.find(([k]) => k.toLowerCase().split("-")[0] === prefix);
+    if (partial) return partial[1];
+  }
+  const en = entries.find(([k]) => k.toLowerCase().split("-")[0] === "en");
+  return (en ?? entries[0]!)[1];
+}
+
+function requestedLang(c: Context<{ Bindings: Env }>): string | null {
+  const explicit = c.req.query("lang") ?? c.req.header("X-Quiver-Lang");
+  if (explicit) return explicit;
+  const accept = c.req.header("accept-language");
+  if (!accept) return null;
+  return accept.split(",")[0]?.trim().split(";")[0] ?? null;
 }
 
 function splitPlatformArch(value: string | null): {
