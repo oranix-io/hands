@@ -56,42 +56,61 @@ export function registerReleaseCommands(program: Command): void {
   releases
     .command("update <appIdOrSlug> <releaseId>")
     .description("Update a draft/active release; use to write the reviewed changelog before publish.")
-    .option("--changelog <text>", "Plain changelog text (single language).")
-    .option("--changelog-file <path>", "Read plain changelog from file.")
-    .option("--changelog-en <text>", "English changelog (bilingual mode).")
-    .option("--changelog-en-file <path>", "English changelog from file.")
-    .option("--changelog-zh <text>", "Chinese changelog (bilingual mode).")
-    .option("--changelog-zh-file <path>", "Chinese changelog from file.")
+    .option(
+      "--changelog <text>",
+      "Changelog text. Repeatable with lang=text for multiple languages.",
+      (value: string, prev: string[] = []) => [...prev, value],
+    )
+    .option(
+      "--changelog-file <path>",
+      "Changelog file. Repeatable with lang=path, e.g. --changelog-file zh=zh.md --changelog-file en=en.md.",
+      (value: string, prev: string[] = []) => [...prev, value],
+    )
     .option("--json", "Output JSON.", false)
     .action(
       async (
         appIdOrSlug: string,
         releaseId: string,
         opts: {
-          changelog?: string;
-          changelogFile?: string;
-          changelogEn?: string;
-          changelogEnFile?: string;
-          changelogZh?: string;
-          changelogZhFile?: string;
+          changelog?: string[];
+          changelogFile?: string[];
           json?: boolean;
         },
       ) => {
         const appId = await resolveAppId(appIdOrSlug);
-        const en = opts.changelogEnFile ? readFileSync(opts.changelogEnFile, "utf8") : opts.changelogEn;
-        const zh = opts.changelogZhFile ? readFileSync(opts.changelogZhFile, "utf8") : opts.changelogZh;
-        const plain = opts.changelogFile ? readFileSync(opts.changelogFile, "utf8") : opts.changelog;
+        // Each entry is either "text/path" (single-language plain changelog)
+        // or "lang=text/path". Language keys are normalized: zh -> zh-CN.
+        const langAliases: Record<string, string> = { zh: "zh-CN", cn: "zh-CN" };
+        const byLang: Record<string, string> = {};
+        let plain: string | undefined;
+        const consume = (entry: string, fromFile: boolean) => {
+          const eq = entry.indexOf("=");
+          if (eq > 0 && eq <= 10) {
+            const langRaw = entry.slice(0, eq).trim().toLowerCase();
+            const lang = langAliases[langRaw] ?? langRaw;
+            const value = entry.slice(eq + 1);
+            byLang[lang] = (fromFile ? readFileSync(value, "utf8") : value).trim();
+          } else {
+            plain = (fromFile ? readFileSync(entry, "utf8") : entry).trim();
+          }
+        };
+        for (const entry of opts.changelog ?? []) consume(entry, false);
+        for (const entry of opts.changelogFile ?? []) consume(entry, true);
+
         let changelog: string | undefined;
-        if (en || zh) {
-          const payload: Record<string, string> = {};
-          if (en) payload["en"] = en.trim();
-          if (zh) payload["zh-CN"] = zh.trim();
-          changelog = JSON.stringify(payload);
+        const langs = Object.keys(byLang);
+        if (langs.length > 0) {
+          if (plain !== undefined) {
+            throw new Error("mix of plain and lang= changelog entries; pick one style");
+          }
+          changelog = JSON.stringify(byLang);
         } else if (plain !== undefined) {
-          changelog = plain.trim();
+          changelog = plain;
         }
         if (changelog === undefined) {
-          throw new Error("nothing to update: pass --changelog(-file) or --changelog-en/--changelog-zh");
+          throw new Error(
+            "nothing to update: pass --changelog(-file) [lang=]value, e.g. --changelog-file zh=zh.md --changelog-file en=en.md",
+          );
         }
         const updated = await apiRequest<Record<string, unknown>>(
           `/api/apps/${appId}/releases/${releaseId}`,
@@ -101,7 +120,9 @@ export function registerReleaseCommands(program: Command): void {
           console.log(JSON.stringify(updated, null, 2));
           return;
         }
-        console.log(`Updated release ${releaseId} changelog${en || zh ? " (bilingual)" : ""}.`);
+        console.log(
+          `Updated release ${releaseId} changelog${langs.length ? ` (${langs.join(", ")})` : ""}.`,
+        );
       },
     );
 

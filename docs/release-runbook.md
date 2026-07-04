@@ -22,10 +22,10 @@ publishes explicitly.
 # inspect the draft
 quiver releases show raft-android <releaseId>
 
-# write the reviewed changelog in both languages
+# write the reviewed changelog in both languages (repeatable lang=file)
 quiver releases update raft-android <releaseId> \
-  --changelog-zh-file changelog.zh.md \
-  --changelog-en-file changelog.en.md
+  --changelog-file zh=changelog.zh.md \
+  --changelog-file en=changelog.en.md
 ```
 
 Storage format: plain text (legacy, served as-is) or a JSON object

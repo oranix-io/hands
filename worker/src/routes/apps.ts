@@ -25,7 +25,7 @@ export async function handleListApps(c: AdminContext) {
   if (deployToken) {
     const row = await c.env.DB.prepare(
       `SELECT id, org_id, slug, name, platform,
-              description, archived, archived_at, created_at
+              description, archived, archived_at, created_at, public_history
        FROM apps
        WHERE id = ?1
        LIMIT 1`,
@@ -41,6 +41,7 @@ export async function handleListApps(c: AdminContext) {
         archived: number;
         archived_at: number | null;
         created_at: number;
+        public_history: number;
       }>();
     return c.json({ apps: row ? [row] : [] });
   }
@@ -50,7 +51,7 @@ export async function handleListApps(c: AdminContext) {
   const query = orgId && account
     ? {
         sql: `SELECT a.id, a.org_id, a.slug, a.name, a.platform,
-                     a.description, a.archived, a.archived_at, a.created_at
+                     a.description, a.archived, a.archived_at, a.created_at, a.public_history
               FROM apps a
               WHERE a.org_id = ?1
                  OR EXISTS (
@@ -68,7 +69,7 @@ export async function handleListApps(c: AdminContext) {
     : orgId
     ? {
         sql: `SELECT id, org_id, slug, name, platform,
-                     description, archived, archived_at, created_at
+                     description, archived, archived_at, created_at, public_history
               FROM apps
               WHERE org_id = ?1
               ORDER BY archived ASC, created_at DESC`,
@@ -76,7 +77,7 @@ export async function handleListApps(c: AdminContext) {
       }
     : {
         sql: `SELECT id, org_id, slug, name, platform,
-                     description, archived, archived_at, created_at
+                     description, archived, archived_at, created_at, public_history
               FROM apps
               ORDER BY archived ASC, created_at DESC`,
         params: [],
@@ -204,6 +205,7 @@ export async function handleUpdateApp(c: AdminContext) {
     name?: string;
     description?: string | null;
     default_channel_id?: string | null;
+    public_history?: boolean;
   };
   // Confirm app exists.
   const existing = await c.env.DB.prepare(
@@ -223,6 +225,10 @@ export async function handleUpdateApp(c: AdminContext) {
   if (body.description !== undefined) {
     updates.push("description = ?");
     binds.push(body.description ?? null);
+  }
+  if (body.public_history !== undefined) {
+    updates.push("public_history = ?");
+    binds.push(body.public_history ? 1 : 0);
   }
   if (body.default_channel_id !== undefined) {
     if (body.default_channel_id === null) {
