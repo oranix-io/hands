@@ -198,16 +198,6 @@ function Header({ account }: { account: AuthAccount }) {
                   />
                 )}
             </div>
-            <NavLink
-              to="/settings"
-              className={({ isActive }) =>
-                `inline-flex h-10 items-center rounded-md px-3 text-sm leading-none ${
-                  isActive ? "bg-slate-100 font-medium" : "hover:bg-slate-100"
-                }`
-              }
-            >
-              Settings
-            </NavLink>
           </nav>
         </div>
         <div ref={accountMenuRef} className="relative text-sm">
@@ -259,10 +249,18 @@ function Header({ account }: { account: AuthAccount }) {
                   {account.principal_type === "agent" ? "Raft agent" : "Raft user"}
                 </div>
               </div>
+              <Link
+                to="/settings"
+                role="menuitem"
+                className="mt-2 flex w-full items-center rounded-md px-2 py-2 text-left text-sm text-slate-700 no-underline hover:bg-slate-100"
+                onClick={() => setShowAccountMenu(false)}
+              >
+                Settings
+              </Link>
               <button
                 type="button"
                 role="menuitem"
-                className="mt-2 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                className="mt-1 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                 onClick={onLogout}
               >
                 <span>Logout</span>
