@@ -291,23 +291,26 @@ function AppContextNav() {
 
   return (
     <div className="bg-white border-b border-slate-200 -mt-px">
-      <div className="max-w-5xl mx-auto px-4 pt-6 pb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="text-2xl font-bold leading-tight">
-          {app?.name ?? "…"}
-        </h1>
-        {app?.platform && (
-          <span className="badge-blue align-middle">{app.platform}</span>
-        )}
-        {app?.slug && (
-          <span className="text-sm text-slate-500 font-mono">{app.slug}</span>
-        )}
-        {Boolean(app?.archived) && (
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-            archived
-          </span>
-        )}
-      </div>
-      <div className="max-w-5xl mx-auto px-4 pt-2 pb-3 flex items-center gap-1 overflow-x-auto">
+      <div className="max-w-5xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex items-center gap-2 mr-3 min-w-0">
+          <h1 className="text-base font-semibold leading-none truncate">
+            {app?.name ?? "…"}
+          </h1>
+          {app?.platform && (
+            <span className="badge-blue">{app.platform}</span>
+          )}
+          {app?.slug && (
+            <span className="hidden sm:inline text-xs text-slate-500 font-mono">
+              {app.slug}
+            </span>
+          )}
+          {Boolean(app?.archived) && (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+              archived
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1 overflow-x-auto">
         <NavLink
           to={base}
           end
@@ -357,6 +360,7 @@ function AppContextNav() {
         >
           Settings
         </NavLink>
+        </div>
       </div>
     </div>
   );
