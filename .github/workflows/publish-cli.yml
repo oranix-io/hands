@@ -12,6 +12,10 @@ on:
         required: true
         type: boolean
         default: false
+      otp:
+        description: "Optional npm one-time password. Prefer an automation token for unattended publishes."
+        required: false
+        type: string
   push:
     tags:
       - "cli-v*"
@@ -74,6 +78,7 @@ jobs:
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_OTP: ${{ inputs.otp }}
         shell: bash
         run: |
           set -euo pipefail
@@ -81,7 +86,11 @@ jobs:
             echo "Missing GitHub secret NPM_TOKEN for npm publish." >&2
             exit 1
           fi
-          npm publish --access public
+          publish_args=(--access public)
+          if [[ -n "${NPM_OTP:-}" ]]; then
+            publish_args+=(--otp "${NPM_OTP}")
+          fi
+          npm publish "${publish_args[@]}"
 
       - name: Summary
         shell: bash

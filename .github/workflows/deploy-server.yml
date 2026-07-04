@@ -46,6 +46,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Worker types
+        working-directory: worker
+        run: pnpm exec wrangler types
+
       - name: Run checks
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_checks }}
         run: |
