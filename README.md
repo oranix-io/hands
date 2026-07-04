@@ -82,6 +82,21 @@ pnpm --filter @oranix/quiver-admin dev
 docker build -t apk-parser container/
 ```
 
+## Release automation
+
+GitHub Actions owns production publishing so local machines do not need long-lived npm or Cloudflare credentials.
+
+Required repository secrets:
+
+- `NPM_TOKEN` — npm automation token with publish access to `@oranix/quiver-cli`.
+- `CLOUDFLARE_API_TOKEN` — Cloudflare API token allowed to deploy the Quiver Worker and its assets.
+- `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account id for the Worker deploy.
+
+Workflows:
+
+- `Publish CLI` publishes `@oranix/quiver-cli` to npm. Trigger it manually with the package version from `packages/cli/package.json`, or push a tag like `cli-v0.1.2`.
+- `Deploy Quiver Server` deploys the Worker plus bundled admin/docs assets. Trigger it manually, or push a tag like `server-v2026.07.04`. The default container rollout is `none`; choose `immediate` or `gradual` only when the APK parser container image changed.
+
 ## Status
 
 🚧 Initial scaffold. See `docs/architecture.md` (TODO) for design notes.

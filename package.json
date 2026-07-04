@@ -16,8 +16,8 @@
     "lint:fix": "pnpm -r lint:fix",
     "dev:worker": "pnpm --filter @oranix/quiver-worker dev",
     "dev:admin": "pnpm --filter @oranix/quiver-admin dev",
-    "deploy:worker": "pnpm --filter @oranix/quiver-worker deploy",
-    "deploy:admin": "pnpm --filter @oranix/quiver-admin deploy",
+    "deploy:worker": "pnpm --filter @oranix/quiver-worker run deploy",
+    "deploy:admin": "pnpm --filter @oranix/quiver-admin run deploy",
     "db:migrate:local": "pnpm --filter @oranix/quiver-worker db:migrate:local",
     "db:migrate:remote": "pnpm --filter @oranix/quiver-worker db:migrate:remote"
   },

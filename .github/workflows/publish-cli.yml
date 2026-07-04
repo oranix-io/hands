@@ -1,0 +1,97 @@
+name: Publish CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "CLI package version to publish. Defaults to packages/cli/package.json."
+        required: false
+        type: string
+      dry_run:
+        description: "Run npm publish --dry-run only."
+        required: true
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "cli-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./packages/cli/package.json').version")"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            requested="${GITHUB_REF_NAME#cli-v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            requested="${{ inputs.version }}"
+          else
+            requested="${package_version}"
+          fi
+          if [[ "${requested}" != "${package_version}" ]]; then
+            echo "Requested version ${requested} does not match packages/cli/package.json ${package_version}" >&2
+            exit 1
+          fi
+          echo "value=${package_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build CLI
+        run: pnpm --filter @oranix/quiver-cli build
+
+      - name: Pack check
+        working-directory: packages/cli
+        run: npm pack --dry-run
+
+      - name: Publish dry run
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        working-directory: packages/cli
+        run: npm publish --access public --dry-run
+
+      - name: Publish to npm
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        working-directory: packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "Missing GitHub secret NPM_TOKEN for npm publish." >&2
+            exit 1
+          fi
+          npm publish --access public
+
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo "### CLI publish"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Package | \`@oranix/quiver-cli\` |"
+            echo "| Version | \`${{ steps.version.outputs.value }}\` |"
+            echo "| Dry run | \`${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
