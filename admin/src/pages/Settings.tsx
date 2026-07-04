@@ -47,7 +47,7 @@ export function Settings() {
           <p className="text-xs text-slate-500 pt-3 border-t border-slate-100">
             Login is via Login with Raft. The Worker owns the OAuth callback
             and session cookie. To change role, ask an org owner / admin in
-            the Org settings page (under construction).
+            the Org settings page.
           </p>
         </div>
       )}

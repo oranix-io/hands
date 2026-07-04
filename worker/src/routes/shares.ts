@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import qrcode from "qrcode-generator";
 import { requestOrigin } from "../lib/origin";
 import { currentActor, type AdminEnv } from "../middleware/auth";
 import { generateSignedR2Url } from "./public_v2";
@@ -249,8 +250,10 @@ export async function handlePublicReleaseShare(c: Context<{ Bindings: Env }>) {
 
   await recordShareEvent(c, row.share_id, "view");
   const stats = await loadShareStats(c.env.DB, row.share_id);
-  const downloadUrl = new URL(`/share/${token}/download`, publicRequestOrigin(c)).toString();
-  return htmlResponse(renderSharePage(row, stats, downloadUrl));
+  const origin = publicRequestOrigin(c);
+  const downloadUrl = new URL(`/share/${token}/download`, origin).toString();
+  const shareUrl = new URL(`/share/${token}`, origin).toString();
+  return htmlResponse(renderSharePage(row, stats, downloadUrl, shareUrl));
 }
 
 export async function handlePublicReleaseShareDownload(c: Context<{ Bindings: Env }>) {
@@ -422,9 +425,15 @@ function htmlResponse(html: string, status = 200): Response {
   });
 }
 
-function renderSharePage(row: SharePageRow, stats: ShareStats, downloadUrl: string): string {
+function renderSharePage(
+  row: SharePageRow,
+  stats: ShareStats,
+  downloadUrl: string,
+  shareUrl: string,
+): string {
   const title = `${row.app_slug} ${row.version_name} (${row.version_code})`;
   const expiresIso = new Date(row.expires_at).toISOString();
+  const qrSvg = renderShareQrSvg(shareUrl);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -441,6 +450,11 @@ function renderSharePage(row: SharePageRow, stats: ShareStats, downloadUrl: stri
     dt { color: #707782; }
     dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
     a.download { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 6px; background: #176f5d; color: white; text-decoration: none; font-weight: 700; }
+    .get-it { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .qr { display: none; }
+    .qr svg { display: block; width: 128px; height: 128px; border-radius: 8px; background: white; padding: 6px; box-sizing: border-box; }
+    .qr span { display: block; margin-top: 6px; color: #707782; font-size: 12px; text-align: center; }
+    @media (pointer: fine) and (min-width: 480px) { .qr { display: block; } }
     .notes { margin-top: 22px; white-space: pre-wrap; color: #3b3f45; }
     .stats { display: flex; flex-wrap: wrap; gap: 8px 16px; }
     .stat strong { display: block; color: #1e1f22; font-size: 18px; }
@@ -473,7 +487,10 @@ function renderSharePage(row: SharePageRow, stats: ShareStats, downloadUrl: stri
         <span class="stat"><strong>${stats.download_count}</strong><span>downloads</span></span>
       </dd>
     </dl>
-    <a class="download" href="${escapeAttribute(downloadUrl)}">Download APK</a>
+    <div class="get-it">
+      <a class="download" href="${escapeAttribute(downloadUrl)}">Download APK</a>
+      <div class="qr">${qrSvg}<span>Scan to open on your phone</span></div>
+    </div>
     ${row.changelog ? `<div class="notes">${escapeHtml(row.changelog)}</div>` : ""}
   </main>
   <script>
@@ -494,6 +511,14 @@ function renderSharePage(row: SharePageRow, stats: ShareStats, downloadUrl: stri
   </script>
 </body>
 </html>`;
+}
+
+function renderShareQrSvg(url: string): string {
+  // type 0 = auto-size, error correction M; pure JS so it runs in Workers.
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
 }
 
 function renderErrorPage(message: string): string {

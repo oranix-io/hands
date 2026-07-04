@@ -22,6 +22,7 @@
     "aws4fetch": "1.0.20",
     "hono": "^4.11.1",
     "jose": "^5.9.6",
+    "qrcode-generator": "^2.0.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
