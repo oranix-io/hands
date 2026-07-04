@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import qrcode from "qrcode-generator";
 import { requestOrigin } from "../lib/origin";
 import { currentActor, type AdminEnv } from "../middleware/auth";
-import { generateSignedR2Url } from "./public_v2";
+import { generateSignedR2Url, resolveChangelog } from "./public_v2";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
@@ -328,7 +328,9 @@ export async function handlePublicReleaseShare(c: Context<{ Bindings: Env }>) {
   const origin = publicRequestOrigin(c);
   const downloadUrl = new URL(`/share/${token}/download`, origin).toString();
   const shareUrl = new URL(`/share/${token}`, origin).toString();
-  return htmlResponse(renderSharePage(row, stats, downloadUrl, shareUrl));
+  const lang = (c.req.header("accept-language") ?? "").split(",")[0]?.trim().split(";")[0] ?? null;
+  const localized = { ...row, changelog: resolveChangelog(row.changelog, lang) };
+  return htmlResponse(renderSharePage(localized, stats, downloadUrl, shareUrl));
 }
 
 export async function handlePublicReleaseShareDownload(c: Context<{ Bindings: Env }>) {

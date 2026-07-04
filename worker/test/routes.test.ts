@@ -2284,6 +2284,20 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(body.asset).toBeUndefined();
   });
 
+  it("resolveChangelog picks languages with sane fallbacks", async () => {
+    const { resolveChangelog } = await import("../src/routes/public_v2");
+    expect(resolveChangelog(null, "zh-CN")).toBe(null);
+    expect(resolveChangelog("plain text notes", "zh-CN")).toBe("plain text notes");
+    const bilingual = JSON.stringify({ en: "english notes", "zh-CN": "中文说明" });
+    expect(resolveChangelog(bilingual, "zh-CN")).toBe("中文说明");
+    expect(resolveChangelog(bilingual, "zh")).toBe("中文说明");
+    expect(resolveChangelog(bilingual, "en-US")).toBe("english notes");
+    expect(resolveChangelog(bilingual, "fr")).toBe("english notes");
+    expect(resolveChangelog(bilingual, null)).toBe("english notes");
+    expect(resolveChangelog(JSON.stringify({ "zh-CN": "只有中文" }), "fr")).toBe("只有中文");
+    expect(resolveChangelog("{not json", "en")).toBe("{not json");
+  });
+
   it("rollout helpers are deterministic and clamp edge counts", async () => {
     const { fnv1a32, rolloutBucket, rolloutIncludes } = await import(
       "../src/routes/public_v2"
