@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/oranix-io/quiver"
+    "url": "git+https://github.com/oranix-io/quiver.git"
   },
   "type": "module",
   "main": "dist/index.js",
