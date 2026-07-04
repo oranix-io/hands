@@ -1,5 +1,11 @@
 # Quiver Account / Organization / Team / Invite Architecture
 
+> **Status: historical design document (frozen).** Written during the
+> 2026-06 build-out; several sections describe plans that shipped
+> differently. For current behavior see `docs/public/` (served at
+> `/docs`), `docs/release-runbook.md`, and the code. Kept for design
+> rationale and history. (Banner added 2026-07-04.)
+
 Status: **draft v1, awaiting review** (task #6, @Pi-Worker2)
 Author: @Pi-Worker2, 2026-06-28
 Scope: long-lived schema and admin UX for organizations, teams, memberships, invites, and role-based access control.

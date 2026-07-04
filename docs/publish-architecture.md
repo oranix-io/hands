@@ -1,5 +1,11 @@
 # Quiver Publish Architecture — Android (now) + Electron / OTA (later)
 
+> **Status: historical design document (frozen).** Written during the
+> 2026-06 build-out; several sections describe plans that shipped
+> differently. For current behavior see `docs/public/` (served at
+> `/docs`), `docs/release-runbook.md`, and the code. Kept for design
+> rationale and history. (Banner added 2026-07-04.)
+
 Status: **draft v3, after @artin's decisions on 4 design questions** (task #5, @Pi-Worker2)
 Author: @Pi-Worker2, 2026-06-28
 Scope: long-lived schema + admin UX + CLI for builds / releases / channels / product_types.
