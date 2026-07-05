@@ -103,6 +103,11 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
     files.push(file);
   }
 
+  // Crash tickets get a grouping signature from their exception class + top
+  // app frame (populated by the SDK). Non-crash tickets have no signature.
+  const signature =
+    kind === "crash" ? crashSignature(metadata) : null;
+
   const now = Date.now();
   const ticketId = crypto.randomUUID();
 
@@ -133,8 +138,8 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
       `INSERT INTO feedback_tickets
        (id, app_id, kind, status, message, contact, version_name, version_code,
         channel, device_id, device_model, os_version, arch, locale,
-        metadata_json, client_ip_hash, created_at, updated_at)
-       VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)`,
+        metadata_json, client_ip_hash, signature, created_at, updated_at)
+       VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)`,
     ).bind(
       ticketId,
       app.id,
@@ -151,6 +156,7 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
       meta("locale", 40),
       JSON.stringify(metadata),
       clientIpHash,
+      signature,
       now,
       now,
     ),
@@ -163,6 +169,18 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
     ),
   ];
   await c.env.DB.batch(statements);
+
+  // Crash tickets: deobfuscate the stack in the background using the
+  // proguard-mapping asset stored for this version_code.
+  if (kind === "crash" && attachmentRows.length > 0) {
+    const logKey = attachmentRows[0]!.r2Key;
+    const run = () => retraceCrashTicket(c.env, app.id, ticketId, versionCode, logKey);
+    try {
+      c.executionCtx.waitUntil(run());
+    } catch {
+      run().catch(() => {});
+    }
+  }
 
   if (app.org_id) {
     await emitWebhookEvent(c.env.DB, {
@@ -184,6 +202,107 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
   }
 
   return c.json({ id: ticketId, status: "open", attachments: attachmentRows.length }, 201);
+}
+
+/** Signature = "<ExceptionClass>@<top app frame>", trimmed and bounded. */
+function crashSignature(metadata: Record<string, unknown>): string | null {
+  const exc = String(metadata["crash_exception_class"] ?? metadata["exception_class"] ?? "").trim();
+  const frame = String(metadata["crash_top_frame"] ?? metadata["top_frame"] ?? "").trim();
+  if (!exc && !frame) return null;
+  // Strip source line numbers from the frame so the same crash groups across
+  // builds: "a.b.C.m(File.kt:42)" -> "a.b.C.m".
+  const normFrame = frame.replace(/\([^)]*\)/, "").trim();
+  return `${exc || "UnknownException"}@${normFrame}`.slice(0, 300);
+}
+
+/**
+ * Best-effort deobfuscation: find the proguard-mapping build asset for the
+ * crash's version_code, fetch the crash log, run the container retrace tool,
+ * and append the result as an internal comment.
+ */
+export async function retraceCrashTicket(
+  env: Env,
+  appId: string,
+  ticketId: string,
+  versionCode: number | null,
+  logR2Key: string,
+): Promise<void> {
+  try {
+    if (versionCode === null) return;
+    const mapping = await env.DB.prepare(
+      `SELECT ba.r2_key FROM build_assets ba
+       JOIN builds b ON b.id = ba.build_id
+       WHERE b.app_id = ?1 AND b.version_code = ?2
+         AND ba.artifact_kind = 'proguard-mapping'
+       ORDER BY ba.created_at DESC LIMIT 1`,
+    )
+      .bind(appId, versionCode)
+      .first<{ r2_key: string }>();
+    if (!mapping) return;
+
+    const [mappingObj, logObj] = await Promise.all([
+      env.APK_BUCKET.get(mapping.r2_key),
+      env.APK_BUCKET.get(logR2Key),
+    ]);
+    if (!mappingObj || !logObj) return;
+    const [mappingText, logText] = await Promise.all([
+      mappingObj.text(),
+      logObj.text(),
+    ]);
+
+    const { getRandom } = await import("@cloudflare/containers");
+    const container = await getRandom(env.APK_PARSER, 1);
+    const res = await container.fetch(
+      new Request("http://container/retrace", {
+        method: "POST",
+        body: JSON.stringify({ mapping: mappingText, trace: logText }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    if (!res.ok) return;
+    const { retraced } = (await res.json()) as { retraced?: string };
+    if (!retraced || !retraced.trim()) return;
+
+    const body =
+      "Deobfuscated stack trace (auto-retraced from build mapping):\n\n" +
+      retraced.trim().slice(0, 20_000);
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO feedback_comments (id, ticket_id, author_actor, body, internal, created_at)
+         VALUES (?1, ?2, 'quiver-retrace', ?3, 1, ?4)`,
+      ).bind(crypto.randomUUID(), ticketId, body, Date.now()),
+      env.DB.prepare("UPDATE feedback_tickets SET updated_at = ?1 WHERE id = ?2").bind(
+        Date.now(),
+        ticketId,
+      ),
+    ]);
+  } catch (err) {
+    console.error(
+      `[retrace] failed for ticket ${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+export async function handleListCrashGroups(c: AdminContext) {
+  const appId = c.req.param("appId");
+  const { results } = await c.env.DB.prepare(
+    `SELECT
+       COALESCE(signature, '(unsignatured)') AS signature,
+       COUNT(*) AS count,
+       COUNT(DISTINCT device_id) AS device_count,
+       MIN(created_at) AS first_seen,
+       MAX(created_at) AS last_seen,
+       GROUP_CONCAT(DISTINCT version_name) AS versions,
+       SUM(CASE WHEN status IN ('open','in_progress') THEN 1 ELSE 0 END) AS open_count
+     FROM feedback_tickets
+     WHERE app_id = ?1 AND kind = 'crash'
+     GROUP BY COALESCE(signature, '(unsignatured)')
+     ORDER BY count DESC, last_seen DESC
+     LIMIT 200`,
+  )
+    .bind(appId)
+    .all();
+  return c.json({ groups: results });
 }
 
 export async function handleListFeedback(c: AdminContext) {

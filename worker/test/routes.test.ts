@@ -217,6 +217,7 @@ function makeMockDb() {
       metadata_json TEXT NOT NULL DEFAULT '{}',
       client_ip_hash TEXT,
       assignee TEXT,
+      signature TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -2891,6 +2892,60 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(clearResp.status).toBe(200);
     const open = await handlePublicReleaseShare(makeSharePublicContext(env, token));
     expect(await open.text()).toContain("Download APK");
+  });
+
+  it("feedback: crash tickets get a signature and group by it", async () => {
+    const env = makeEnv();
+    env.APK_BUCKET = { put: async () => {}, get: async () => null };
+    const { handlePublicFeedbackSubmit, handleListCrashGroups } = await import(
+      "../src/routes/feedback"
+    );
+
+    const submitCrash = async (topFrame: string, device: string, version: string) => {
+      const form = new FormData();
+      form.set("message", "crash");
+      form.set("kind", "crash");
+      form.set(
+        "metadata",
+        JSON.stringify({
+          version_name: version,
+          version_code: 1000101,
+          device_id: device,
+          crash_exception_class: "java.lang.NullPointerException",
+          crash_top_frame: topFrame,
+        }),
+      );
+      const ctx = {
+        env,
+        req: {
+          param: (n: string) => (n === "slug" ? "scope-app" : ""),
+          header: () => undefined,
+          formData: async () => form,
+          raw: { cf: { clientIp: `10.0.0.${device.length}` } },
+        },
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+      } as any;
+      return handlePublicFeedbackSubmit(ctx);
+    };
+
+    // Two crashes share a frame (same signature), one differs.
+    expect((await submitCrash("build.raft.app.Home.onCreate(Home.kt:10)", "devA", "1.0.1")).status).toBe(201);
+    expect((await submitCrash("build.raft.app.Home.onCreate(Home.kt:22)", "devB", "1.0.2")).status).toBe(201);
+    expect((await submitCrash("build.raft.app.Feed.load(Feed.kt:5)", "devC", "1.0.1")).status).toBe(201);
+
+    const groupsCtx = {
+      env,
+      req: { param: (n: string) => (n === "appId" ? "app-scope" : "") },
+      json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+    } as any;
+    const res = await handleListCrashGroups(groupsCtx);
+    const body = await responseJson<any>(res);
+    // Home.onCreate collapses line numbers → one group of 2; Feed.load → 1.
+    expect(body.groups.length).toBe(2);
+    const home = body.groups.find((g: any) => g.signature.includes("Home.onCreate"));
+    expect(home.count).toBe(2);
+    expect(home.device_count).toBe(2);
+    expect(home.open_count).toBe(2);
   });
 
   it("feedback: public submit stores ticket + attachment, admin can triage", async () => {
