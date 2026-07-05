@@ -73,6 +73,7 @@ val ticketId = QuiverFeedback(
     versionName = BuildConfig.VERSION_NAME,
     versionCode = BuildConfig.VERSION_CODE.toLong(),
     channel = BuildConfig.QUIVER_CHANNEL,
+    clientKey = BuildConfig.QUIVER_CLIENT_KEY,   // app Settings → Client key
 ).submit(
     message = "Feed doesn't refresh after login.",
     kind = "bug",                       // "feedback" | "bug" | "crash"
@@ -102,6 +103,7 @@ class App : Application() {
             versionName = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE.toLong(),
             channel = BuildConfig.QUIVER_CHANNEL,
+            clientKey = BuildConfig.QUIVER_CLIENT_KEY,
             // optional: attach app-specific context (recent logs, etc.)
             extraContext = { myDiagnostics.recentText() },
         )
@@ -119,3 +121,6 @@ retraces crash reports for that `versionCode` automatically.
 - All network calls are suspend functions; call them off the main thread.
 - The device id is a random UUID in SharedPreferences, not a hardware id; it
   resets on reinstall/clear-data, which is fine for rollout cohorting.
+- The client key (`qk_…`) authenticates feedback/crash submissions. It ships
+  inside the APK (Sentry-DSN model — app identifier, not a user secret); get
+  it from the app's Settings tab and put it in `BuildConfig`.

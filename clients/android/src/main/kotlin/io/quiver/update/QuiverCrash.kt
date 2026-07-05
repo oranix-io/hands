@@ -45,6 +45,7 @@ object QuiverCrash {
         versionName: String? = null,
         versionCode: Long? = null,
         channel: String? = null,
+        clientKey: String? = null,
         copyToClipboard: Boolean = true,
         uploadOnLaunch: Boolean = true,
         extraContext: (() -> String)? = null,
@@ -80,7 +81,7 @@ object QuiverCrash {
         if (uploadOnLaunch) {
             thread(name = "quiver-crash-upload", isDaemon = true) {
                 runCatching {
-                    uploadPending(appContext, baseUrl, appSlug, versionName, versionCode, channel)
+                    uploadPending(appContext, baseUrl, appSlug, versionName, versionCode, channel, clientKey)
                 }
                     .onFailure { Log.w(TAG, "Crash upload pass failed", it) }
             }
@@ -99,6 +100,7 @@ object QuiverCrash {
         versionName: String? = null,
         versionCode: Long? = null,
         channel: String? = null,
+        clientKey: String? = null,
     ) {
         val dir = crashDir(context) ?: return
         val sidecars =
@@ -112,6 +114,7 @@ object QuiverCrash {
                 versionName = versionName,
                 versionCode = versionCode,
                 channel = channel,
+                clientKey = clientKey,
             )
         for (sidecar in sidecars) {
             val logFile = File(sidecar.absolutePath.removeSuffix(".meta.json") + ".txt")

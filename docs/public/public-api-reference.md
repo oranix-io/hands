@@ -91,7 +91,14 @@ independent of the client's installed version. Accepts the same `lang` and
 ```http
 POST /public/v2/apps/:appSlug/feedback
 Content-Type: multipart/form-data
+X-Quiver-Client-Key: qk_...
 ```
+
+Requires the app's **client key** (Sentry-DSN model: it identifies the app,
+it is not a user secret). Pass it in the `X-Quiver-Client-Key` header (or a
+`client_key` query parameter); missing or mismatched keys get `401`. Admins
+find and rotate the key in the app's Settings tab or via
+`GET /api/apps/:id/client-key` / `POST /api/apps/:id/rotate-client-key`.
 
 | Field | Required | Description |
 |---|---|---|
@@ -165,6 +172,7 @@ Recommended client flow:
 | `400` | Missing or invalid request parameters. |
 | `404` | App, channel, release, or compatible artifact was not found. |
 | `410` | Signed download URL expired. |
+| `401` | Missing/invalid client key (feedback submissions). |
 | `429` | Rate limited (feedback submissions). |
 | `500` | Server error. Retry later or contact the Quiver operator. |
 
