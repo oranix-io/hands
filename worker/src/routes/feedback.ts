@@ -191,6 +191,18 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
     }
   }
 
+  // Native crashes: symbolicate frames against the native-symbols asset.
+  const nativeFrames = parseNativeFrames(metadata["crash_native_frames"]);
+  if (kind === "crash" && nativeFrames.length > 0) {
+    const run = () =>
+      symbolicateNativeCrashTicket(c.env, app.id, ticketId, versionCode, nativeFrames);
+    try {
+      c.executionCtx.waitUntil(run());
+    } catch {
+      run().catch(() => {});
+    }
+  }
+
   // Crash alerting: fire webhooks when a signature is first seen or when it
   // spikes (10/50/100 tickets within an hour — fires once per tier as the
   // count crosses it, so no extra state table is needed).
@@ -343,6 +355,135 @@ export async function retraceCrashTicket(
   } catch (err) {
     console.error(
       `[retrace] failed for ticket ${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+export interface NativeFrame {
+  index: number;
+  offset: string;
+  soname: string;
+  build_id?: string;
+}
+
+/**
+ * SDK contract (symbolication matrix): metadata.crash_native_frames is a
+ * JSON array (or already-parsed array) of
+ * { index, offset, soname, build_id? }. Bounded and shape-checked here so a
+ * hostile client can't feed junk to the container.
+ */
+export function parseNativeFrames(raw: unknown): NativeFrame[] {
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+  const frames: NativeFrame[] = [];
+  for (const entry of value.slice(0, 256)) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const offset = String(e["offset"] ?? "").trim();
+    const soname = String(e["soname"] ?? "").trim();
+    if (!/^(0x)?[0-9a-fA-F]{1,16}$/.test(offset) || !soname) continue;
+    const frame: NativeFrame = {
+      index: Number.isFinite(Number(e["index"])) ? Number(e["index"]) : frames.length,
+      offset,
+      soname: soname.slice(0, 200),
+    };
+    const buildId = String(e["build_id"] ?? "").trim().toLowerCase();
+    if (/^[0-9a-f]{8,64}$/.test(buildId)) frame.build_id = buildId;
+    frames.push(frame);
+  }
+  return frames;
+}
+
+/**
+ * Resolve native frames against the build's native-symbols archive via the
+ * container's llvm-symbolizer endpoint and append the result as an internal
+ * comment — same UX as the Java/R8 retrace flow. Missing artifact leaves an
+ * operator-actionable comment naming the asset kind (matrix decision #6).
+ */
+export async function symbolicateNativeCrashTicket(
+  env: Env,
+  appId: string,
+  ticketId: string,
+  versionCode: number | null,
+  frames: NativeFrame[],
+): Promise<void> {
+  try {
+    if (versionCode === null || frames.length === 0) return;
+    const appendComment = async (body: string) => {
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO feedback_comments (id, ticket_id, author_actor, body, internal, created_at)
+           VALUES (?1, ?2, 'quiver-symbolicate', ?3, 1, ?4)`,
+        ).bind(crypto.randomUUID(), ticketId, body, Date.now()),
+        env.DB.prepare("UPDATE feedback_tickets SET updated_at = ?1 WHERE id = ?2").bind(
+          Date.now(),
+          ticketId,
+        ),
+      ]);
+    };
+
+    const symbols = await env.DB.prepare(
+      `SELECT ba.r2_key FROM build_assets ba
+       JOIN builds b ON b.id = ba.build_id
+       WHERE b.app_id = ?1 AND b.version_code = ?2
+         AND ba.artifact_kind = 'native-symbols'
+       ORDER BY ba.created_at DESC LIMIT 1`,
+    )
+      .bind(appId, versionCode)
+      .first<{ r2_key: string }>();
+    if (!symbols) {
+      const ids = [...new Set(frames.map((f) => f.build_id).filter(Boolean))].join(", ");
+      await appendComment(
+        `Native crash could not be symbolicated: no 'native-symbols' build asset ` +
+          `for version_code ${versionCode}${ids ? ` (crash BuildId: ${ids})` : ""}. ` +
+          `Publish the build with its unstripped .so archive (quiver builds publish-android --symbols).`,
+      );
+      return;
+    }
+
+    const zipObj = await env.APK_BUCKET.get(symbols.r2_key);
+    if (!zipObj) return;
+    const zipBytes = await zipObj.arrayBuffer();
+
+    const { getRandom } = await import("@cloudflare/containers");
+    const container = await getRandom(env.APK_PARSER, 1);
+    const res = await container.fetch(
+      new Request("http://container/symbolicate-native", {
+        method: "POST",
+        body: zipBytes,
+        headers: {
+          "content-type": "application/zip",
+          "X-Quiver-Frames": JSON.stringify(frames),
+        },
+      }),
+    );
+    if (!res.ok) return;
+    const parsed = (await res.json()) as {
+      frames?: Array<{ index: number; resolved?: string; error?: string }>;
+    };
+    const resolved = parsed.frames ?? [];
+    if (resolved.length === 0) return;
+
+    const byIndex = new Map(resolved.map((f) => [f.index, f]));
+    const lines = frames.map((f) => {
+      const r = byIndex.get(f.index);
+      const outcome = r?.resolved ?? (r?.error ? `?? (${r.error})` : "??");
+      return `#${String(f.index).padStart(2, "0")} ${f.offset} ${f.soname} — ${outcome}`;
+    });
+    await appendComment(
+      "Symbolicated native stack (auto-resolved from native-symbols):\n\n" +
+        lines.join("\n").slice(0, 20_000),
+    );
+  } catch (err) {
+    console.error(
+      `[symbolicate] failed for ticket ${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }

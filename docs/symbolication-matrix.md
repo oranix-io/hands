@@ -12,7 +12,7 @@ lane exists.
 | Lane | Client uploads | Build asset | Server pipeline | Status |
 |---|---|---|---|---|
 | Android Java/R8 | stack text (kind=crash ticket, `crash_*` signature fields) | `proguard-mapping` (mapping.txt) | container `retrace` → internal ticket comment | ✅ |
-| Android native (NDK) | tombstone-style dump: abort message, signal, per-frame `#NN pc <offset> <soname> (BuildId: …)` | `native-symbols` (zip of unstripped `.so`) | container: `symbolic` (rust) resolves offset→symbol per frame, matched by BuildId (`llvm-symbolizer` as fallback) | 🔨 next |
+| Android native (NDK) | `metadata.crash_native_frames`: `[{ index, offset, soname, build_id }]` (plus the human-readable dump as attachment) | `native-symbols` (zip of unstripped `.so`) | ✅ container `/symbolicate-native`: unzip → BuildId verify (`readelf -n`) → `llvm-symbolizer` per frame → internal ticket comment (missing asset ⇒ actionable comment). `symbolic` upgrade slot reserved. | server ✅ · SDK capture 🔨 |
 | iOS | crash record with a **binary images section** (image UUID + load address + slide) and frame addresses — `backtrace_symbols` text alone is NOT symbolicatable | `dsym` (zip of dSYM bundles) | container: `symbolic` by image UUID + address-slide; no mac/atos dependency | 📐 (SDK prerequisite: images section) |
 | Electron / Crashpad | minidump | Breakpad `.sym` files | `minidump-stackwalk` (rust-minidump) | ⏸ no electron lane yet |
 
