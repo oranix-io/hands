@@ -32,6 +32,8 @@ import {
   handleUpdateApp,
   handleUploadAppIcon,
   handlePublicAppIcon,
+  handleGetClientKey,
+  handleRotateClientKey,
 } from "./routes/apps";
 import {
   handlePublicListChannels,
@@ -558,6 +560,8 @@ admin.post("/api/apps/:appId/releases/:releaseId/bump-rollout", requireAppRole("
 admin.post("/api/apps/:appId/releases/:releaseId/force-update", requireAppRole("publisher"), handleForceUpdate);
 admin.get("/api/apps/:appId/shares", requireAppRole("viewer"), handleListAppShares);
 admin.put("/api/apps/:appId/icon", requireAppRole("publisher"), handleUploadAppIcon);
+admin.get("/api/apps/:appId/client-key", requireAppRole("admin"), handleGetClientKey);
+admin.post("/api/apps/:appId/rotate-client-key", requireAppRole("admin"), handleRotateClientKey);
 admin.get("/api/apps/:appId/feedback/crash-groups", requireAppRole("viewer"), handleListCrashGroups);
 admin.get("/api/apps/:appId/feedback", requireAppRole("viewer"), handleListFeedback);
 admin.get("/api/apps/:appId/feedback/:ticketId", requireAppRole("viewer"), handleGetFeedback);

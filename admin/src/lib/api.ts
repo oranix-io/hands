@@ -1182,3 +1182,15 @@ export interface CrashGroup {
 
 export const listCrashGroups = (appId: string) =>
   request<{ groups: CrashGroup[] }>(`/api/apps/${appId}/feedback/crash-groups`, { admin: true });
+
+export const getAppClientKey = (appId: string) =>
+  request<{ app_id: string; client_key: string | null }>(
+    `/api/apps/${appId}/client-key`,
+    { admin: true },
+  );
+
+export const rotateAppClientKey = (appId: string) =>
+  request<{ app_id: string; client_key: string; rotated_at: number }>(
+    `/api/apps/${appId}/rotate-client-key`,
+    { method: "POST", body: "{}", admin: true },
+  );

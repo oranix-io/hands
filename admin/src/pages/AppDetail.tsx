@@ -15,6 +15,8 @@ import {
   uploadAppIcon,
   publicAppIconUrl,
   updateAppPublicHistory,
+  getAppClientKey,
+  rotateAppClientKey,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { Operations } from "./Operations";
@@ -166,6 +168,75 @@ export function AppChannels({ appId }: { appId: string }) {
           />
         )}
       </section>
+    </div>
+  );
+}
+
+function ClientKeyPanel({ appId }: { appId: string }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [revealed, setRevealed] = useState(false);
+  const keyQuery = useQuery({
+    queryKey: ["client-key", appId],
+    queryFn: () => getAppClientKey(appId),
+  });
+  const rotate = useMutation({
+    mutationFn: () => rotateAppClientKey(appId),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: "Client key rotated — update client configs" });
+      qc.invalidateQueries({ queryKey: ["client-key", appId] });
+    },
+    onError: (e) =>
+      toast.show({ kind: "error", title: "Rotate failed", description: (e as Error).message }),
+  });
+  const key = keyQuery.data?.client_key ?? null;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium">Client key</div>
+        <div className="text-xs text-slate-500">
+          Required on feedback/crash submissions (X-Quiver-Client-Key). Embedded in
+          client builds; rotate if leaked.
+        </div>
+        {key && revealed && (
+          <div className="mt-1 font-mono text-xs break-all">{key}</div>
+        )}
+        {!key && !keyQuery.isLoading && (
+          <div className="mt-1 text-xs text-amber-700">
+            No key set — submissions are currently unauthenticated. Rotate to generate one.
+          </div>
+        )}
+      </div>
+      {key && (
+        <>
+          <button
+            className="btn-secondary !py-1 !px-2 !text-xs"
+            onClick={() => setRevealed((v) => !v)}
+          >
+            {revealed ? "Hide" : "Reveal"}
+          </button>
+          <button
+            className="btn-secondary !py-1 !px-2 !text-xs"
+            onClick={() => {
+              navigator.clipboard?.writeText(key);
+              toast.show({ kind: "success", title: "Client key copied" });
+            }}
+          >
+            Copy
+          </button>
+        </>
+      )}
+      <button
+        className="btn-secondary !py-1 !px-2 !text-xs"
+        disabled={rotate.isPending}
+        onClick={() => {
+          if (window.confirm("Rotate the client key? Older client builds stop reporting until they carry the new key.")) {
+            rotate.mutate();
+          }
+        }}
+      >
+        {rotate.isPending ? "…" : key ? "Rotate" : "Generate"}
+      </button>
     </div>
   );
 }
@@ -323,6 +394,9 @@ export function AppSettings({ appId }: { appId: string }) {
 
         {/* Public version history */}
         <PublicHistoryToggle appId={appId} app={app} />
+
+        {/* Client key (feedback/crash reporting auth) */}
+        <ClientKeyPanel appId={appId} />
 
         {/* Default release channel picker */}
         <DefaultChannelPicker appId={appId} app={app} isOrgAdmin={isOrgAdmin} />

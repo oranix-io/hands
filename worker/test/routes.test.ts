@@ -52,7 +52,7 @@ function makeMockDb() {
     CREATE TABLE apps (
       id TEXT PRIMARY KEY, org_id TEXT, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
       platform TEXT NOT NULL, description TEXT, archived INTEGER NOT NULL DEFAULT 0,
-      archived_at INTEGER, created_at INTEGER NOT NULL, icon_r2_key TEXT, public_history INTEGER NOT NULL DEFAULT 0
+      archived_at INTEGER, created_at INTEGER NOT NULL, icon_r2_key TEXT, public_history INTEGER NOT NULL DEFAULT 0, client_key TEXT
     );
     CREATE TABLE channels (
       id TEXT PRIMARY KEY, app_id TEXT NOT NULL, slug TEXT NOT NULL,
@@ -1791,8 +1791,8 @@ describe("quiver public API v2 — scope resolution", () => {
   function makeEnv() {
     const env = makeMockEnv();
     env.DB.prepare(
-      "INSERT OR IGNORE INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ).bind("app-scope", "default", "scope-app", "Scope App", "android", 1).run();
+      "INSERT OR IGNORE INTO apps (id, org_id, slug, name, platform, client_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind("app-scope", "default", "scope-app", "Scope App", "android", "qk_test", 1).run();
     env.DB.prepare(
       `INSERT INTO channels (id, app_id, slug, name, enabled_product_types_json, metadata_json, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -2955,7 +2955,8 @@ describe("quiver public API v2 — scope resolution", () => {
         env,
         req: {
           param: (n: string) => (n === "slug" ? "scope-app" : ""),
-          header: () => undefined,
+          header: (n: string) => (n === "X-Quiver-Client-Key" ? "qk_test" : undefined),
+          query: () => undefined,
           formData: async () => form,
           raw: { cf: { clientIp: `10.0.0.${device.length}` } },
         },
@@ -2982,6 +2983,42 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(home.count).toBe(2);
     expect(home.device_count).toBe(2);
     expect(home.open_count).toBe(2);
+  });
+
+  it("feedback: client key is always required", async () => {
+    const env = makeEnv();
+    const { handlePublicFeedbackSubmit } = await import("../src/routes/feedback");
+    env.APK_BUCKET = { put: async () => {}, get: async () => null };
+
+    const submit = (headers: Record<string, string | undefined>) => {
+      const form = new FormData();
+      form.set("message", "key gate test");
+      return handlePublicFeedbackSubmit({
+        env,
+        req: {
+          param: (name: string) => (name === "slug" ? "scope-app" : ""),
+          header: (name: string) => headers[name],
+          query: () => undefined,
+          formData: async () => form,
+          raw: { cf: { clientIp: "203.0.113.7" } },
+        },
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+      } as any);
+    };
+
+    // missing/wrong -> 401, correct -> 201
+    expect((await submit({})).status).toBe(401);
+    expect((await submit({ "X-Quiver-Client-Key": "qk_wrong" })).status).toBe(401);
+    expect((await submit({ "X-Quiver-Client-Key": "qk_test" })).status).toBe(201);
+
+    // app without a key rejects everything (legacy rows until admin generates one)
+    await env.DB.prepare("UPDATE apps SET client_key = NULL WHERE id = ?1")
+      .bind("app-scope")
+      .run();
+    expect((await submit({ "X-Quiver-Client-Key": "qk_test" })).status).toBe(401);
+    await env.DB.prepare("UPDATE apps SET client_key = ?1 WHERE id = ?2")
+      .bind("qk_test", "app-scope")
+      .run();
   });
 
   it("feedback: public submit stores ticket + attachment, admin can triage", async () => {
@@ -3032,7 +3069,8 @@ describe("quiver public API v2 — scope resolution", () => {
       env,
       req: {
         param: (name: string) => (name === "slug" ? "scope-app" : ""),
-        header: () => undefined,
+        header: (name: string) => (name === "X-Quiver-Client-Key" ? "qk_test" : undefined),
+        query: () => undefined,
         formData: async () => form,
         raw: { cf: { clientIp: "203.0.113.9" } },
       },

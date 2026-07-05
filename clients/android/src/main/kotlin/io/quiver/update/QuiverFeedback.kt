@@ -32,6 +32,7 @@ class QuiverFeedback(
     private val versionName: String? = null,
     private val versionCode: Long? = null,
     private val channel: String? = null,
+    private val clientKey: String? = null,
     private val httpClient: OkHttpClient = defaultClient(),
 ) {
     /**
@@ -84,11 +85,14 @@ class QuiverFeedback(
             .addPathSegment(appSlug)
             .addPathSegment("feedback")
             .build()
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(url)
             .header("accept", "application/json")
             .post(bodyBuilder.build())
-            .build()
+        if (!clientKey.isNullOrBlank()) {
+            requestBuilder.header("X-Quiver-Client-Key", clientKey)
+        }
+        val request = requestBuilder.build()
 
         httpClient.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()

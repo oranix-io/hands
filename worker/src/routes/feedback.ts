@@ -25,11 +25,20 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
   const slug = c.req.param("slug");
   if (!slug) return c.json({ error: "slug required" }, 400);
   const app = await c.env.DB.prepare(
-    "SELECT id, org_id, slug FROM apps WHERE slug = ?1 AND archived = 0",
+    "SELECT id, org_id, slug, client_key FROM apps WHERE slug = ?1 AND archived = 0",
   )
     .bind(slug)
-    .first<{ id: string; org_id: string | null; slug: string }>();
+    .first<{ id: string; org_id: string | null; slug: string; client_key: string | null }>();
   if (!app) return c.json({ error: `app '${slug}' not found` }, 404);
+
+  // Client-key gate (Sentry-DSN model): always required. Apps predating the
+  // key column have none until an admin generates one — their submissions
+  // are rejected rather than silently open.
+  const presented =
+    c.req.header("X-Quiver-Client-Key") ?? c.req.query("client_key") ?? "";
+  if (!app.client_key || presented !== app.client_key) {
+    return c.json({ error: "invalid or missing client key" }, 401);
+  }
 
   let form: FormData;
   try {

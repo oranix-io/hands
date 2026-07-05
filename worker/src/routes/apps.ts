@@ -116,8 +116,8 @@ export async function handleCreateApp(c: AdminContext) {
   // (Phase 2.3 app-creation wizard path; small enough to inline here.)
   await c.env.DB.batch([
     c.env.DB.prepare(
-      "INSERT INTO apps (id, org_id, slug, name, platform, description, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-    ).bind(id, orgId, body.slug, body.name, body.platform, body.description ?? null, now),
+      "INSERT INTO apps (id, org_id, slug, name, platform, description, created_at, client_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    ).bind(id, orgId, body.slug, body.name, body.platform, body.description ?? null, now, generateClientKey()),
     // product_types
     c.env.DB.prepare(
       `INSERT INTO product_types (id, app_id, name, display_name, description, supported_platforms_json, default_assets_json, parser_kind, schema_json, created_at, updated_at) VALUES (?, ?, 'android-apk', 'Android APK', 'Android application package', '[]', '[{"platform":"android","filetype":"apk"}]', 'apk-aapt', '{"requires_native_codes":true}', ?, ?)`,
@@ -314,4 +314,43 @@ export async function handlePublicAppIcon(c: Context<{ Bindings: Env }>) {
   const headers = new Headers({ "cache-control": "public, max-age=300" });
   object.writeHttpMetadata?.(headers);
   return new Response(object.body, { headers });
+}
+
+/** qk_-prefixed random client key (Sentry-DSN-style shared credential). */
+export function generateClientKey(): string {
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `qk_${hex}`;
+}
+
+/** POST /api/apps/:appId/rotate-client-key (admin). */
+export async function handleRotateClientKey(c: AdminContext) {
+  const appId = c.req.param("appId");
+  const app = await c.env.DB.prepare("SELECT id FROM apps WHERE id = ?1")
+    .bind(appId)
+    .first<{ id: string }>();
+  if (!app) return c.json({ error: "app not found" }, 404);
+  const key = generateClientKey();
+  const now = Date.now();
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE apps SET client_key = ?1 WHERE id = ?2").bind(key, appId),
+    c.env.DB.prepare(
+      `INSERT INTO audit_logs (id, app_id, action, actor, payload, created_at)
+       VALUES (?1, ?2, 'app.client_key_rotated', ?3, '{}', ?4)`,
+    ).bind(crypto.randomUUID(), appId, currentActor(c), now),
+  ]);
+  return c.json({ app_id: appId, client_key: key, rotated_at: now });
+}
+
+/** GET /api/apps/:appId/client-key (admin) — view the current key. */
+export async function handleGetClientKey(c: AdminContext) {
+  const appId = c.req.param("appId");
+  const app = await c.env.DB.prepare("SELECT client_key FROM apps WHERE id = ?1")
+    .bind(appId)
+    .first<{ client_key: string | null }>();
+  if (!app) return c.json({ error: "app not found" }, 404);
+  return c.json({ app_id: appId, client_key: app.client_key });
 }

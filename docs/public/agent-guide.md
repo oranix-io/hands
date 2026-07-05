@@ -99,7 +99,18 @@ curl -X POST https://quiver.oranix.io/api/apps \
 ```
 
 New apps are seeded with default channels (`main`, `preview`, `nightly`) and
-product types.
+product types, and get a **client key** (`qk_…`) that clients must send as
+`X-Quiver-Client-Key` on feedback/crash submissions:
+
+```bash
+curl -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
+  https://quiver.oranix.io/api/apps/<appId>/client-key          # read
+curl -X POST -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
+  https://quiver.oranix.io/api/apps/<appId>/rotate-client-key   # (re)generate
+```
+
+Rotation invalidates the old key immediately — client builds must be updated
+with the new one.
 
 ## Rules for agents
 
