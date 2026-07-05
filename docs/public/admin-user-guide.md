@@ -81,6 +81,13 @@ The Feedback tab is a lightweight ticket system for reports submitted from the a
 - Triage with statuses (`open → in_progress → resolved/closed`), an assignee (Assign to me / edit / unassign), and a comment trail.
 - A `feedback:new` webhook fires on submission for org webhook subscribers.
 
+Crash tickets (`kind=crash`, submitted automatically by the SDK's crash
+reporter) get a grouping **signature** (exception class + top app frame) and a
+**Crash groups** view that aggregates by signature with occurrence and device
+counts. When a build's ProGuard/R8 `mapping.txt` was uploaded as a
+`proguard-mapping` asset for that version, Quiver auto-deobfuscates the stack
+in the container and posts the retraced trace as a ticket comment.
+
 ## Version history
 
 Settings → **Public version history** exposes `/apps/<slug>/history`: a public page listing published versions with localized changelogs and per-version downloads. It is off by default; when disabled the page returns 404.

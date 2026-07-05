@@ -1165,3 +1165,16 @@ export const uploadAppIcon = async (appId: string, file: File) => {
 };
 
 export const publicAppIconUrl = (slug: string) => `${API_BASE}/public/apps/${slug}/icon`;
+
+export interface CrashGroup {
+  signature: string;
+  count: number;
+  device_count: number;
+  first_seen: number;
+  last_seen: number;
+  versions: string | null;
+  open_count: number;
+}
+
+export const listCrashGroups = (appId: string) =>
+  request<{ groups: CrashGroup[] }>(`/api/apps/${appId}/feedback/crash-groups`, { admin: true });

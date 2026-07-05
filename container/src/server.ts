@@ -22,6 +22,8 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { writeFile, unlink, mkdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -32,7 +34,54 @@ import {
 
 const app = new Hono();
 
+const execFileAsync = promisify(execFile);
+
+const RETRACE_BIN = "/opt/android-sdk/cmdline-tools/latest/bin/retrace";
+
 app.get("/health", (c) => c.json({ ok: true, service: "multi-parser" }));
+
+/**
+ * POST /retrace — body = { mapping, trace }. Deobfuscates an R8/ProGuard
+ * stack trace against the given mapping using the Android SDK retrace tool.
+ * Returns { retraced }.
+ */
+app.post("/retrace", async (c) => {
+  let body: { mapping?: string; trace?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const mapping = typeof body.mapping === "string" ? body.mapping : "";
+  const trace = typeof body.trace === "string" ? body.trace : "";
+  if (!mapping.trim() || !trace.trim()) {
+    return c.json({ error: "mapping and trace are required" }, 400);
+  }
+  if (mapping.length > 200 * 1024 * 1024) {
+    return c.json({ error: "mapping too large" }, 413);
+  }
+  const dir = join(tmpdir(), `retrace-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const mappingPath = join(dir, "mapping.txt");
+  const tracePath = join(dir, "trace.txt");
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(mappingPath, mapping);
+    await writeFile(tracePath, trace);
+    const { stdout } = await execFileAsync(
+      RETRACE_BIN,
+      [mappingPath, tracePath],
+      { maxBuffer: 32 * 1024 * 1024 },
+    );
+    return c.json({ retraced: stdout });
+  } catch (err) {
+    return c.json(
+      { error: `retrace failed: ${err instanceof Error ? err.message : String(err)}` },
+      500,
+    );
+  } finally {
+    await Promise.allSettled([unlink(mappingPath), unlink(tracePath)]);
+  }
+});
 
 app.post("/parse", async (c) => {
   const ab = await c.req.arrayBuffer();
