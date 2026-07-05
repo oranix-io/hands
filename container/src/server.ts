@@ -21,7 +21,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { writeFile, unlink, mkdir } from "node:fs/promises";
+import { writeFile, unlink, mkdir, rm, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
@@ -80,6 +80,118 @@ app.post("/retrace", async (c) => {
     );
   } finally {
     await Promise.allSettled([unlink(mappingPath), unlink(tracePath)]);
+  }
+});
+
+/**
+ * POST /symbolicate-native — body = raw native-symbols zip (unstripped .so
+ * files), X-Quiver-Frames header = JSON array of
+ * { index, offset, soname, build_id? } (offset hex like "0x1a2b" or bare
+ * hex). Extracts the zip, matches each frame's soname (verifying the ELF
+ * BuildId when provided), and resolves offsets with llvm-symbolizer.
+ * Returns { frames: [{ index, resolved | error }] }.
+ */
+app.post("/symbolicate-native", async (c) => {
+  const framesHeader = c.req.header("X-Quiver-Frames") ?? "[]";
+  let frames: Array<{ index: number; offset: string; soname: string; build_id?: string }>;
+  try {
+    frames = JSON.parse(framesHeader);
+    if (!Array.isArray(frames)) throw new Error("not an array");
+  } catch {
+    return c.json({ error: "X-Quiver-Frames must be a JSON array" }, 400);
+  }
+  if (frames.length === 0 || frames.length > 256) {
+    return c.json({ error: "frames must contain 1-256 entries" }, 400);
+  }
+  const ab = await c.req.arrayBuffer();
+  if (ab.byteLength === 0) return c.json({ error: "empty symbols zip" }, 400);
+  if (ab.byteLength > 500 * 1024 * 1024) return c.json({ error: "symbols zip too large" }, 413);
+
+  const dir = join(tmpdir(), `natsym-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const zipPath = join(dir, "symbols.zip");
+  const outDir = join(dir, "symbols");
+  try {
+    await mkdir(outDir, { recursive: true });
+    await writeFile(zipPath, Buffer.from(ab));
+    await execFileAsync("unzip", ["-o", "-q", zipPath, "-d", outDir], {
+      maxBuffer: 8 * 1024 * 1024,
+    });
+
+    // Index extracted .so files by basename (archives often nest abi dirs).
+    const soByName = new Map<string, string>();
+    const walk = async (d: string): Promise<void> => {
+      for (const entry of await readdir(d, { withFileTypes: true })) {
+        const full = join(d, entry.name);
+        if (entry.isDirectory()) await walk(full);
+        else if (entry.name.endsWith(".so") && !soByName.has(entry.name)) soByName.set(entry.name, full);
+      }
+    };
+    await walk(outDir);
+
+    const buildIdCache = new Map<string, string>();
+    const elfBuildId = async (soPath: string): Promise<string> => {
+      const cached = buildIdCache.get(soPath);
+      if (cached !== undefined) return cached;
+      let id = "";
+      try {
+        const { stdout } = await execFileAsync("readelf", ["-n", soPath], {
+          maxBuffer: 4 * 1024 * 1024,
+        });
+        id = /Build ID:\s*([0-9a-f]+)/i.exec(stdout)?.[1]?.toLowerCase() ?? "";
+      } catch {
+        // leave empty — treated as unverifiable
+      }
+      buildIdCache.set(soPath, id);
+      return id;
+    };
+
+    const results: Array<{ index: number; resolved?: string; error?: string }> = [];
+    for (const frame of frames) {
+      const soname = String(frame.soname ?? "").split("/").pop() ?? "";
+      const soPath = soname ? soByName.get(soname) : undefined;
+      if (!soPath) {
+        results.push({ index: frame.index, error: `no ${soname || "(missing soname)"} in symbols archive` });
+        continue;
+      }
+      if (frame.build_id) {
+        const actual = await elfBuildId(soPath);
+        if (actual && actual !== String(frame.build_id).toLowerCase()) {
+          results.push({
+            index: frame.index,
+            error: `BuildId mismatch: crash ${frame.build_id}, archive ${actual}`,
+          });
+          continue;
+        }
+      }
+      const offset = String(frame.offset ?? "").startsWith("0x")
+        ? String(frame.offset)
+        : `0x${frame.offset}`;
+      try {
+        const { stdout } = await execFileAsync(
+          "llvm-symbolizer",
+          ["--obj=" + soPath, "--output-style=GNU", "--demangle", "--functions=linkage", offset],
+          { maxBuffer: 4 * 1024 * 1024 },
+        );
+        const lines = stdout.trim().split("\n").filter(Boolean);
+        results.push({
+          index: frame.index,
+          resolved: lines.length > 0 ? `${lines[0]}${lines[1] ? ` (${lines[1]})` : ""}` : "??",
+        });
+      } catch (err) {
+        results.push({
+          index: frame.index,
+          error: `symbolizer failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+    return c.json({ frames: results });
+  } catch (err) {
+    return c.json(
+      { error: `symbolicate failed: ${err instanceof Error ? err.message : String(err)}` },
+      500,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 });
 

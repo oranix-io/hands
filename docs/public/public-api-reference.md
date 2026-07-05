@@ -105,7 +105,7 @@ find and rotate the key in the app's Settings tab or via
 | `message` | Yes | Feedback text (max 10,000 chars). |
 | `kind` | No | `feedback` (default), `bug`, or `crash`. |
 | `contact` | No | Reply-to handle (email, Raft name, …). |
-| `metadata` | No | JSON string: `version_name`, `version_code`, `channel`, `device_id`, `device_model`, `os_version`, `arch`, `locale`, plus custom keys. |
+| `metadata` | No | JSON string: `version_name`, `version_code`, `channel`, `device_id`, `device_model`, `os_version`, `arch`, `locale`, plus custom keys. Crash tickets add `crash_exception_class` / `crash_top_frame` (grouping signature) and, for native crashes, `crash_native_frames` — an array of `{ index, offset, soname, build_id }` that the server symbolicates against the build's `native-symbols` asset. |
 | `attachments` | No | Up to 3 files, 10 MB each (screenshots, logs). |
 
 Returns `201` with `{ "id": "<ticket id>", "status": "open" }`. Rate limit:

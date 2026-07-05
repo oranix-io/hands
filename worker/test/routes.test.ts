@@ -3245,6 +3245,42 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(home.open_count).toBe(2);
   });
 
+  it("parseNativeFrames bounds and shape-checks SDK input", async () => {
+    const { parseNativeFrames } = await import("../src/routes/feedback");
+    const frames = parseNativeFrames(JSON.stringify([
+      { index: 0, offset: "0x1a2b", soname: "libraft.so", build_id: "E0276A1082493B6A57BD" },
+      { index: 1, offset: "nonsense", soname: "libraft.so" },
+      { index: 2, offset: "beef", soname: "" },
+      "garbage",
+      { index: 3, offset: "cafe", soname: "libc.so", build_id: "zz" },
+    ]));
+    expect(frames).toEqual([
+      { index: 0, offset: "0x1a2b", soname: "libraft.so", build_id: "e0276a1082493b6a57bd" },
+      { index: 3, offset: "cafe", soname: "libc.so" },
+    ]);
+    expect(parseNativeFrames("not json")).toEqual([]);
+    expect(parseNativeFrames(42)).toEqual([]);
+  });
+
+  it("symbolicateNativeCrashTicket leaves an actionable comment when symbols are missing", async () => {
+    const env = makeEnv();
+    const { symbolicateNativeCrashTicket } = await import("../src/routes/feedback");
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets (id, app_id, kind, status, message, metadata_json, created_at, updated_at)
+       VALUES (?1, ?2, 'crash', 'open', 'native crash', '{}', ?3, ?4)`,
+    ).bind("tick-nat", "app-scope", 1, 1).run();
+    await symbolicateNativeCrashTicket(env as any, "app-scope", "tick-nat", 1000200, [
+      { index: 0, offset: "0x1a2b", soname: "libraft.so", build_id: "abcd1234" },
+    ]);
+    const comment = (await env.DB.prepare(
+      "SELECT author_actor, body FROM feedback_comments WHERE ticket_id = ?1",
+    ).bind("tick-nat").all()).results[0] as { author_actor: string; body: string };
+    expect(comment.author_actor).toBe("quiver-symbolicate");
+    expect(comment.body).toContain("native-symbols");
+    expect(comment.body).toContain("1000200");
+    expect(comment.body).toContain("abcd1234");
+  });
+
   it("changelogToHtml renders bullets safely", async () => {
     const { changelogToHtml } = await import("../src/routes/public_v2");
     const html = changelogToHtml("- one **bold**\n- two <script>x</script>\n\nplain `c`");

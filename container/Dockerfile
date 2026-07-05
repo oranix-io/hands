@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     wget \
     unzip \
+    llvm \
+    binutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Download Android command-line tools + accept licenses + install build-tools
