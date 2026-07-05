@@ -62,6 +62,7 @@ import {
   handleAddFeedbackComment,
   handleDownloadFeedbackAttachment,
   handleListCrashGroups,
+  handleFeedbackStats,
 } from "./routes/feedback";
 import {
   handlePublicAppHistory,
@@ -563,6 +564,7 @@ admin.put("/api/apps/:appId/icon", requireAppRole("publisher"), handleUploadAppI
 admin.get("/api/apps/:appId/client-key", requireAppRole("admin"), handleGetClientKey);
 admin.post("/api/apps/:appId/rotate-client-key", requireAppRole("admin"), handleRotateClientKey);
 admin.get("/api/apps/:appId/feedback/crash-groups", requireAppRole("viewer"), handleListCrashGroups);
+admin.get("/api/apps/:appId/feedback/stats", requireAppRole("viewer"), handleFeedbackStats);
 admin.get("/api/apps/:appId/feedback", requireAppRole("viewer"), handleListFeedback);
 admin.get("/api/apps/:appId/feedback/:ticketId", requireAppRole("viewer"), handleGetFeedback);
 admin.patch("/api/apps/:appId/feedback/:ticketId", requireAppRole("publisher"), handleUpdateFeedback);

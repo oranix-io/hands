@@ -369,6 +369,36 @@ export async function handleListCrashGroups(c: AdminContext) {
   return c.json({ groups: results });
 }
 
+/** Daily ticket counts (30 days, by kind) + crash counts by version. */
+export async function handleFeedbackStats(c: AdminContext) {
+  const appId = c.req.param("appId");
+  const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const [daily, byVersion] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS day,
+              kind, COUNT(*) AS n
+       FROM feedback_tickets
+       WHERE app_id = ?1 AND created_at >= ?2
+       GROUP BY day, kind
+       ORDER BY day ASC`,
+    )
+      .bind(appId, since)
+      .all<{ day: string; kind: string; n: number }>(),
+    c.env.DB.prepare(
+      `SELECT COALESCE(version_name, 'unknown') AS version_name,
+              version_code, COUNT(*) AS n
+       FROM feedback_tickets
+       WHERE app_id = ?1 AND kind = 'crash'
+       GROUP BY COALESCE(version_name, 'unknown'), version_code
+       ORDER BY COALESCE(version_code, 0) DESC
+       LIMIT 12`,
+    )
+      .bind(appId)
+      .all<{ version_name: string; version_code: number | null; n: number }>(),
+  ]);
+  return c.json({ daily: daily.results, crashes_by_version: byVersion.results });
+}
+
 export async function handleListFeedback(c: AdminContext) {
   const appId = c.req.param("appId");
   const status = c.req.query("status");
