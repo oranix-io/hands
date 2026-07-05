@@ -16,6 +16,7 @@ import {
   updateFeedbackTicket,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { FeedbackTrends } from "../components/FeedbackTrends";
 
 const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 
@@ -51,6 +52,7 @@ export function AppFeedback({ appId }: { appId: string }) {
 
   return (
     <div className="space-y-4">
+      <FeedbackTrends appId={appId} />
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-lg font-semibold">Feedback</h2>

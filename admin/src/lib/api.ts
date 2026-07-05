@@ -1186,6 +1186,14 @@ export interface CrashGroup {
   open_count: number;
 }
 
+export interface FeedbackStats {
+  daily: Array<{ day: string; kind: string; n: number }>;
+  crashes_by_version: Array<{ version_name: string; version_code: number | null; n: number }>;
+}
+
+export const getFeedbackStats = (appId: string) =>
+  request<FeedbackStats>(`/api/apps/${appId}/feedback/stats`, { admin: true });
+
 export const listCrashGroups = (appId: string) =>
   request<{ groups: CrashGroup[] }>(`/api/apps/${appId}/feedback/crash-groups`, { admin: true });
 

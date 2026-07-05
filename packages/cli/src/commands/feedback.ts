@@ -4,7 +4,7 @@
  * update/comment).
  */
 import type { Command } from "commander";
-import { apiRequest } from "../lib/api";
+import { apiRequest } from "../lib/api.js";
 
 interface TicketRow {
   id: string;
