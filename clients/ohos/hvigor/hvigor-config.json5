@@ -1,0 +1,20 @@
+{
+  "modelVersion": "6.1.0",
+  "dependencies": {},
+  "execution": {
+    "analyze": "normal",
+    "daemon": true,
+    "incremental": true,
+    "parallel": true,
+    "typeCheck": false,
+    "optimizationStrategy": "performance"
+  },
+  "logging": {},
+  "debugging": {},
+  "nodeOptions": {
+    "maxOldSpaceSize": 4096
+  },
+  "properties": {
+    "hvigor.enableMemoryCache": true
+  }
+}
