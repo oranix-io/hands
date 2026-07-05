@@ -5,7 +5,7 @@
  */
 import type { Context } from "hono";
 import { requestOrigin } from "../lib/origin";
-import { generateSignedR2Url, resolveChangelog } from "./public_v2";
+import { generateSignedR2Url, resolveChangelog, changelogToHtml } from "./public_v2";
 
 type HistoryRow = {
   release_id: string;
@@ -131,7 +131,7 @@ function renderHistoryPage(
         </a>
       </div>
       <div class="date" data-ts="${row.released_at}"></div>
-      ${changelog ? `<pre class="notes">${esc(changelog)}</pre>` : ""}
+      ${changelog ? `<div class="notes">${changelogToHtml(changelog)}</div>` : ""}
     </li>`;
     })
     .join("\n");
@@ -157,7 +157,11 @@ function renderHistoryPage(
     .badge { background: #d8f3e8; color: #176f5d; border-radius: 4px; padding: 2px 6px; font-size: 12px; font-weight: 600; margin-left: 8px; }
     .dl { color: #176f5d; font-weight: 600; text-decoration: none; white-space: nowrap; }
     .date { color: #9aa0a9; font-size: 12px; margin-top: 4px; }
-    .notes { margin: 10px 0 0; white-space: pre-wrap; font-family: inherit; font-size: 14px; color: #3b3f45; }
+    .notes { margin: 10px 0 0; font-family: inherit; font-size: 14px; color: #3b3f45; }
+    .notes ul { margin: 6px 0; padding-left: 20px; }
+    .notes li { margin: 3px 0; }
+    .notes p { margin: 6px 0; }
+    .notes code { background: rgba(125,125,125,0.15); border-radius: 4px; padding: 1px 4px; font-size: 0.92em; }
     @media (prefers-color-scheme: dark) {
       body { background: #17191c; color: #f5f5f2; }
       .release { background: #1f2226; border-color: #33373d; }

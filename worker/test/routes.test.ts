@@ -2985,6 +2985,14 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(home.open_count).toBe(2);
   });
 
+  it("changelogToHtml renders bullets safely", async () => {
+    const { changelogToHtml } = await import("../src/routes/public_v2");
+    const html = changelogToHtml("- one **bold**\n- two <script>x</script>\n\nplain `c`");
+    expect(html).toBe(
+      "<ul><li>one <strong>bold</strong></li><li>two &lt;script&gt;x&lt;/script&gt;</li></ul><p>plain <code>c</code></p>",
+    );
+  });
+
   it("apps: purge requires archived + slug confirm, deletes R2 + row", async () => {
     const env = makeEnv();
     const deleted: string[] = [];
