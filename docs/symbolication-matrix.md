@@ -30,13 +30,19 @@ lane exists.
    the ELF BuildId (Android) / Mach-O UUID (iOS) from the crash record
    against the artifact before symbolicating; version_code only narrows the
    candidate set.
-4. **Android native capture: minimal tombstone parser, not Breakpad.**
-   Breakpad/Crashpad in-process brings a large NDK dependency into a Kotlin
-   SDK for marginal gain; Android already writes tombstones and
-   `ndk-stack`-format dumps. v1: capture the signal in-process (same
-   store-then-send shape as `QuiverCrash`), format frames as
-   `pc <offset> <soname> (BuildId)`. Crashpad reconsidered only if we need
-   out-of-process capture guarantees.
+4. **Android native capture: minimal async-signal-safe handler, not
+   Breakpad.** Breakpad/Crashpad in-process brings a large NDK dependency
+   into a Kotlin SDK for marginal gain. v1 (same store-then-send shape and
+   the same handler discipline as the iOS SDK): the fatal-signal handler
+   writes only a minimal, preallocated append-only record (signal number,
+   fault address, raw frame pointers/offsets via a signal-safe unwinder) —
+   no allocation, no JSON, no HTTP, no path assembly; all
+   `pc <offset> <soname> (BuildId)` formatting and the upload happen on the
+   NEXT launch. System tombstones/debuggerd output are NOT a data source:
+   app processes cannot read /data/tombstones on release devices
+   (`ApplicationExitInfo` traces are the only sanctioned peek, API 30+ and
+   NDK-crash coverage is spotty). Crashpad reconsidered only if we need
+   out-of-process minidump quality.
 5. **iOS SDK prerequisite before any server work:** extend the crash record
    with the loaded-images table (`dyld` image list: UUID, address, path) so
    offsets are computable. Until then, dSYM upload is accepted but unused.
