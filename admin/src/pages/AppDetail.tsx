@@ -172,6 +172,49 @@ export function AppChannels({ appId }: { appId: string }) {
   );
 }
 
+function AppNamePanel({ appId, app }: { appId: string; app: App }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [name, setName] = useState(app.name);
+  const rename = useMutation({
+    mutationFn: () => updateApp(appId, { name: name.trim() }),
+    onSuccess: () => {
+      toast.show({ kind: "success", title: "App renamed" });
+      qc.invalidateQueries({ queryKey: ["apps"] });
+    },
+    onError: (e) =>
+      toast.show({ kind: "error", title: "Rename failed", description: (e as Error).message }),
+  });
+  const dirty = name.trim().length > 0 && name.trim() !== app.name;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium">App name</div>
+        <div className="text-xs text-slate-500">
+          Display name shown in the console and on share pages. The slug (
+          <span className="font-mono">{app.slug}</span>) is permanent — SDKs
+          and CI reference it.
+        </div>
+      </div>
+      <input
+        className="input !h-8 w-56 !text-sm"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && dirty && !rename.isPending) rename.mutate();
+        }}
+      />
+      <button
+        className="btn-secondary !py-1 !px-2 !text-xs"
+        disabled={!dirty || rename.isPending}
+        onClick={() => rename.mutate()}
+      >
+        {rename.isPending ? "…" : "Save"}
+      </button>
+    </div>
+  );
+}
+
 function ClientKeyPanel({ appId }: { appId: string }) {
   const toast = useToast();
   const qc = useQueryClient();
@@ -388,6 +431,9 @@ export function AppSettings({ appId }: { appId: string }) {
 
       <div className="card !p-4 text-sm space-y-3">
         <h2 className="text-base font-semibold">Settings</h2>
+
+        {/* App name (slug is immutable) */}
+        <AppNamePanel appId={appId} app={app} />
 
         {/* App icon */}
         <AppIconUploader appId={appId} slug={app.slug} />
