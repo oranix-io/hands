@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import qrcode from "qrcode-generator";
 import { requestOrigin } from "../lib/origin";
 import { currentActor, type AdminEnv } from "../middleware/auth";
-import { generateSignedR2Url, resolveChangelog } from "./public_v2";
+import { generateSignedR2Url, resolveChangelog , changelogToHtml } from "./public_v2";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
@@ -648,7 +648,11 @@ function renderSharePage(
     .qr svg { display: block; width: 128px; height: 128px; border-radius: 8px; background: white; padding: 6px; box-sizing: border-box; }
     .qr span { display: block; margin-top: 6px; color: #707782; font-size: 12px; text-align: center; }
     @media (pointer: fine) and (min-width: 480px) { .qr { display: block; } }
-    .notes { margin-top: 22px; white-space: pre-wrap; color: #3b3f45; }
+    .notes { margin-top: 22px; color: #3b3f45; text-align: left; }
+    .notes ul { margin: 8px 0; padding-left: 20px; }
+    .notes li { margin: 4px 0; }
+    .notes p { margin: 8px 0; }
+    .notes code { background: rgba(125,125,125,0.15); border-radius: 4px; padding: 1px 4px; font-size: 0.92em; }
     .stats { display: flex; flex-wrap: wrap; gap: 8px 16px; }
     .stat strong { display: block; color: #1e1f22; font-size: 18px; }
     .stat span { display: block; color: #707782; font-size: 12px; font-weight: 500; }
@@ -689,7 +693,7 @@ function renderSharePage(
       <a class="download" href="${escapeAttribute(downloadUrl)}">Download APK</a>
       <div class="qr">${qrSvg}<span>Scan to open on your phone</span></div>
     </div>
-    ${row.changelog ? `<div class="notes">${escapeHtml(row.changelog)}</div>` : ""}
+    ${row.changelog ? `<div class="notes">${changelogToHtml(row.changelog)}</div>` : ""}
   </main>
   <script>
     (() => {

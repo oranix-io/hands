@@ -515,6 +515,46 @@ export function rolloutIncludes(
  * BCP-47-ish keys ({"en": "...", "zh-CN": "..."}). Resolve to the closest
  * language, falling back en -> first available.
  */
+/**
+ * Minimal, safe markdown for changelogs on public pages: escapes HTML first,
+ * then supports "- " bullet lists, **bold**, `code`, and paragraphs. No raw
+ * HTML, images, or links pass through.
+ */
+export function changelogToHtml(raw: string): string {
+  const escape = (t: string) =>
+    t
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  const inline = (t: string) =>
+    escape(t)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  const lines = raw.split(/\r?\n/);
+  const out: string[] = [];
+  let list: string[] = [];
+  const flushList = () => {
+    if (list.length > 0) {
+      out.push(`<ul>${list.map((li) => `<li>${li}</li>`).join("")}</ul>`);
+      list = [];
+    }
+  };
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      list.push(inline(trimmed.slice(2)));
+    } else if (trimmed.length === 0) {
+      flushList();
+    } else {
+      flushList();
+      out.push(`<p>${inline(trimmed)}</p>`);
+    }
+  }
+  flushList();
+  return out.join("");
+}
+
 export function resolveChangelog(raw: string | null, lang: string | null): string | null {
   if (!raw) return raw;
   const trimmed = raw.trim();
