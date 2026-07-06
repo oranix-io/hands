@@ -10,16 +10,87 @@
 import type { Context } from "hono";
 import { currentActor, type AdminEnv } from "../middleware/auth";
 import { emitWebhookEvent } from "./webhooks";
+import { presignR2UploadUrl } from "../lib/r2_presign";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
-const MAX_ATTACHMENTS = 3;
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENTS = 9;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // inline multipart cap (through the Worker)
+const MAX_PRESIGNED_BYTES = 200 * 1024 * 1024; // direct-to-R2 cap
+const PRESIGN_TTL_SECONDS = 900;
 const MAX_MESSAGE_CHARS = 10_000;
 const RATE_LIMIT_PER_HOUR = 10;
 
 const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 const TICKET_KINDS = ["feedback", "bug", "crash"] as const;
+
+/**
+ * Presigned direct-to-R2 upload for large feedback attachments. Client-key
+ * gated (same as submit). Body: { files: [{ filename, content_type, size }] }.
+ * Returns per-file { attachment_id, r2_key, upload_url, expires_at }; the
+ * client PUTs bytes to upload_url, then submits the ticket referencing the
+ * r2_keys via the `presigned` form field.
+ */
+export async function handlePresignFeedbackAttachments(c: Context<{ Bindings: Env }>) {
+  const slug = c.req.param("slug");
+  if (!slug) return c.json({ error: "slug required" }, 400);
+  const app = await c.env.DB.prepare(
+    "SELECT id, client_key FROM apps WHERE slug = ?1 AND archived = 0",
+  )
+    .bind(slug)
+    .first<{ id: string; client_key: string | null }>();
+  if (!app) return c.json({ error: `app '${slug}' not found` }, 404);
+  const presented =
+    c.req.header("X-Quiver-Client-Key") ?? c.req.query("client_key") ?? "";
+  if (!app.client_key || presented !== app.client_key) {
+    return c.json({ error: "invalid or missing client key" }, 401);
+  }
+
+  let body: { files?: Array<{ filename?: string; content_type?: string; size?: number }> };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "JSON body required" }, 400);
+  }
+  const files = Array.isArray(body.files) ? body.files : [];
+  if (files.length === 0 || files.length > MAX_ATTACHMENTS) {
+    return c.json({ error: `files must contain 1-${MAX_ATTACHMENTS} entries` }, 400);
+  }
+
+  const now = Date.now();
+  const out: Array<{
+    attachment_id: string;
+    r2_key: string;
+    upload_url: string;
+    expires_at: number;
+  }> = [];
+  for (const [index, file] of files.entries()) {
+    const size = typeof file.size === "number" ? file.size : 0;
+    if (size <= 0 || size > MAX_PRESIGNED_BYTES) {
+      return c.json(
+        { error: `file ${index} size must be 1-${MAX_PRESIGNED_BYTES} bytes` },
+        400,
+      );
+    }
+    const safeName =
+      String(file.filename ?? "").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120) ||
+      `attachment-${index}`;
+    const contentType = String(file.content_type ?? "application/octet-stream").slice(0, 100);
+    const attachmentId = crypto.randomUUID();
+    const r2Key = `feedback/${app.id}/presigned/${attachmentId}-${safeName}`;
+    const uploadUrl = await presignR2UploadUrl(c.env, r2Key, contentType, PRESIGN_TTL_SECONDS);
+    if (!uploadUrl) {
+      return c.json({ error: "direct upload is not configured on this server" }, 501);
+    }
+    out.push({
+      attachment_id: attachmentId,
+      r2_key: r2Key,
+      upload_url: uploadUrl,
+      expires_at: now + PRESIGN_TTL_SECONDS * 1000,
+    });
+  }
+  return c.json({ uploads: out });
+}
 
 export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) {
   const slug = c.req.param("slug");
@@ -140,6 +211,44 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
       contentType: file.type || null,
       sizeBytes: file.size,
     });
+  }
+
+  // Presigned attachments: already PUT directly to R2 by the client. We only
+  // record them (namespace-guarded, existence-verified), never re-upload.
+  const presignedRaw = form.get("presigned");
+  if (typeof presignedRaw === "string" && presignedRaw.trim()) {
+    let presigned: Array<{ r2_key?: string; filename?: string; content_type?: string; size?: number }>;
+    try {
+      const parsed = JSON.parse(presignedRaw);
+      presigned = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return c.json({ error: "presigned must be a JSON array" }, 400);
+    }
+    for (const item of presigned) {
+      if (attachmentRows.length >= MAX_ATTACHMENTS) {
+        return c.json({ error: `too many attachments (max ${MAX_ATTACHMENTS})` }, 400);
+      }
+      const r2Key = String(item.r2_key ?? "");
+      // Namespace guard: only this app's presigned prefix.
+      if (!r2Key.startsWith(`feedback/${app.id}/presigned/`)) {
+        return c.json({ error: "invalid presigned r2_key" }, 400);
+      }
+      const head = await c.env.APK_BUCKET.head(r2Key);
+      if (!head) {
+        return c.json({ error: `presigned upload not found: ${r2Key}` }, 400);
+      }
+      const filename =
+        String(item.filename ?? "").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120) ||
+        r2Key.split("/").pop() ||
+        "attachment";
+      attachmentRows.push({
+        id: crypto.randomUUID(),
+        r2Key,
+        filename,
+        contentType: (item.content_type ? String(item.content_type).slice(0, 100) : null),
+        sizeBytes: head.size ?? (typeof item.size === "number" ? item.size : 0),
+      });
+    }
   }
 
   const statements = [
