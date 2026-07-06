@@ -497,7 +497,9 @@ async function findActiveShare(db: D1Database, token: string): Promise<SharePage
      WHERE rs.token_hash = ?1
        AND rs.revoked_at IS NULL
        AND rs.expires_at > ?2
-       AND r.status = 'active'
+       -- Serve active AND draft releases: draft-first testing needs a
+       -- shareable download before publish. Cancelled/superseded stay blocked.
+       AND r.status IN ('active', 'draft')
        AND ba.artifact_kind = 'installable'
      ORDER BY ba.filetype = 'apk' DESC, ba.created_at ASC
      LIMIT 1`,
@@ -636,6 +638,7 @@ function renderSharePage(
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f5f2; color: #1e1f22; }
     main { width: min(560px, calc(100vw - 32px)); padding: 32px 0; }
     h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.15; letter-spacing: 0; }
+    .draft-tag { font-size: 12px; font-weight: 600; vertical-align: middle; padding: 2px 8px; border-radius: 999px; background: #f59e0b; color: #fff; letter-spacing: .02em; }
     .apphead { display: flex; align-items: center; gap: 16px; }
     .apphead .appicon { border-radius: 12px; flex: none; }
     p { margin: 0; color: #5b616e; line-height: 1.5; }
@@ -670,7 +673,11 @@ function renderSharePage(
     <div class="apphead">
       ${row.icon_r2_key ? `<img class="appicon" src="/share/${escapeAttribute(encodeURIComponent(shareToken))}/icon" alt="" width="56" height="56">` : ""}
       <div>
-        <h1>${escapeHtml(row.app_name || row.app_slug)}</h1>
+        <h1>${escapeHtml(row.app_name || row.app_slug)}${
+          row.release_status === "draft"
+            ? ' <span class="draft-tag">Pre-release</span>'
+            : ""
+        }</h1>
         <p>${escapeHtml(row.version_name)} · build ${row.version_code} · ${escapeHtml(row.channel_slug)}</p>
       </div>
     </div>
