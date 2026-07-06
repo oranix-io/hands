@@ -64,6 +64,7 @@ import {
   handleDownloadFeedbackAttachment,
   handleListCrashGroups,
   handleFeedbackStats,
+  handlePresignFeedbackAttachments,
 } from "./routes/feedback";
 import { handleDeviceRegister, handleDeviceAnalytics, handleDeviceDetail } from "./routes/analytics";
 import {
@@ -454,6 +455,7 @@ app.post("/share/:token/unlock", handlePublicReleaseShareUnlock);
 app.get("/share/:token/icon", handlePublicReleaseShareIcon);
 app.post("/public/v2/apps/:slug/feedback", handlePublicFeedbackSubmit);
 app.post("/public/v2/apps/:slug/devices", handleDeviceRegister);
+app.post("/public/v2/apps/:slug/feedback/presign", handlePresignFeedbackAttachments);
 app.get("/public/apps/:slug/icon", handlePublicAppIcon);
 app.get("/apps/:slug/history", handlePublicAppHistory);
 app.get("/apps/:slug/history/:releaseId/download", handlePublicAppHistoryDownload);

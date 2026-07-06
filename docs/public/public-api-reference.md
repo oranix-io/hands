@@ -110,7 +110,8 @@ find and rotate the key in the app's Settings tab or via
 | `kind` | No | `feedback` (default), `bug`, or `crash`. |
 | `contact` | No | Reply-to handle (email, Raft name, …). |
 | `metadata` | No | JSON string: `version_name`, `version_code`, `channel`, `device_id`, `device_model`, `os_version`, `arch`, `locale`, plus custom keys. Crash tickets add `crash_exception_class` / `crash_top_frame` (grouping signature) and, for native crashes, `crash_native_frames` — an array of `{ index, offset, soname, build_id }` that the server symbolicates against the build's `native-symbols` asset. |
-| `attachments` | No | Up to 3 files, 10 MB each (screenshots, logs). |
+| `attachments` | No | Inline files (multipart), up to 10 MB each, ≤9 total. |
+| `presigned` | No | JSON array of `{ r2_key, filename, content_type, size }` for files already uploaded via the presign flow (below). |
 
 Returns `201` with `{ "id": "<ticket id>", "status": "open" }`. Rate limit:
 10 submissions per hour per app + client IP. Tickets appear in the admin
@@ -134,6 +135,28 @@ object (`version_name`, `version_code`, `channel`, `platform`, `arch`,
 `os_version`, `device_model`, `locale`). The server upserts one row per
 `(app, device id)` — no PII; the device id is a random per-install UUID.
 Requires the app **client key** (same as feedback). Returns `202`.
+
+## Presigned attachment upload (large files)
+
+For attachments too large for an inline multipart submit (up to **200 MB**),
+request a direct-to-R2 upload URL, PUT the bytes to it, then submit the
+ticket referencing the uploaded object.
+
+```http
+POST /public/v2/apps/:appSlug/feedback/presign
+Content-Type: application/json
+X-Quiver-Client-Key: qk_...
+```
+
+Body: `{ "files": [{ "filename": "...", "content_type": "...", "size": <bytes> }] }`
+(≤9 files). Returns `{ "uploads": [{ attachment_id, r2_key, upload_url, expires_at }] }`.
+
+1. `PUT` each file's bytes to its `upload_url` with the same `Content-Type`.
+2. Submit feedback with a `presigned` form field = JSON array of
+   `{ r2_key, filename, content_type, size }` for the uploaded files.
+
+Returns `501` if direct upload isn't configured on the server. Total
+attachments (inline + presigned) may not exceed 9.
 
 ## Share Pages
 

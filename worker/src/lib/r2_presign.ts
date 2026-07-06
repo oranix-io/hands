@@ -46,6 +46,39 @@ export async function presignR2DownloadUrl(
   return request.url;
 }
 
+/**
+ * Presign a direct-to-R2 PUT so large attachments upload straight to the
+ * bucket, bypassing the Worker's request-size limits. The client must PUT
+ * with the same Content-Type it declared. Returns null if R2 S3 creds are
+ * unconfigured.
+ */
+export async function presignR2UploadUrl(
+  env: Env,
+  key: string,
+  contentType: string,
+  ttlSeconds: number,
+): Promise<string | null> {
+  if (!canPresignR2Download(env)) return null;
+  const expires = String(Math.max(1, Math.min(Math.floor(ttlSeconds), 3600)));
+  const url = new URL(
+    `${r2Endpoint(env)}/${encodeURIComponent(env.R2_BUCKET_NAME!)}/${key.split("/").map(encodeURIComponent).join("/")}`,
+  );
+  url.searchParams.set("X-Amz-Expires", expires);
+  const aws = new AwsClient({
+    accessKeyId: env.R2_S3_ACCESS_KEY_ID!,
+    secretAccessKey: env.R2_S3_SECRET_ACCESS_KEY!,
+    service: "s3",
+    region: "auto",
+    retries: 0,
+  });
+  const request = await aws.sign(url.toString(), {
+    method: "PUT",
+    headers: { "content-type": contentType || "application/octet-stream" },
+    aws: { signQuery: true, service: "s3", region: "auto" },
+  });
+  return request.url;
+}
+
 function r2Endpoint(env: Env): string {
   const configured = env.R2_S3_ENDPOINT?.replace(/\/+$/, "");
   if (configured) return configured;

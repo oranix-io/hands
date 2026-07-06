@@ -3443,6 +3443,49 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(body.by_platform[0].devices).toBe(3);
   });
 
+  it("feedback: presigned attachments are namespace-guarded and existence-checked", async () => {
+    const env = makeEnv();
+    const stored = new Map<string, number>();
+    stored.set("feedback/app-scope/presigned/good-file.bin", 1024);
+    env.APK_BUCKET = {
+      put: async () => {},
+      get: async () => null,
+      head: async (key: string) =>
+        stored.has(key) ? { size: stored.get(key)! } : null,
+    };
+    const { handlePublicFeedbackSubmit } = await import("../src/routes/feedback");
+
+    const submit = (presigned: unknown) => {
+      const form = new FormData();
+      form.set("message", "big upload");
+      form.set("presigned", JSON.stringify(presigned));
+      return handlePublicFeedbackSubmit({
+        env,
+        executionCtx: { waitUntil: () => {} },
+        req: {
+          param: (n: string) => (n === "slug" ? "scope-app" : ""),
+          header: (n: string) => (n === "X-Quiver-Client-Key" ? "qk_test" : undefined),
+          query: () => undefined,
+          formData: async () => form,
+          raw: { cf: { clientIp: "203.0.113.50" } },
+        },
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+      } as any);
+    };
+
+    // wrong namespace -> 400
+    expect((await submit([{ r2_key: "feedback/other-app/presigned/x.bin" }])).status).toBe(400);
+    // missing object -> 400
+    expect((await submit([{ r2_key: "feedback/app-scope/presigned/missing.bin" }])).status).toBe(400);
+    // valid presigned object -> 201, recorded with the real size from head
+    const ok = await submit([
+      { r2_key: "feedback/app-scope/presigned/good-file.bin", filename: "good-file.bin", content_type: "application/octet-stream", size: 999 },
+    ]);
+    expect(ok.status).toBe(201);
+    const body = await responseJson<any>(ok);
+    expect(body.attachments).toBe(1);
+  });
+
   it("feedback: client key is always required", async () => {
     const env = makeEnv();
     const { handlePublicFeedbackSubmit } = await import("../src/routes/feedback");
