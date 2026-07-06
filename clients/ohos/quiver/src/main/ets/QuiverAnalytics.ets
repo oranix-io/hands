@@ -17,7 +17,7 @@ const REQUEST_TIMEOUT_MS: number = 15000;
  * Device registration ping for active-device / version-distribution
  * analytics. Throttled to once per 24h per install (timestamp in the same
  * preferences store as the device id). No PII — random device id + build/OS
- * metadata only. Fired automatically by Quiver.start().
+ * metadata only. Fired automatically by Quiver.install().
  */
 export class QuiverAnalytics {
   static async reportDevice(context: common.UIAbilityContext, force: boolean = false): Promise<boolean> {

@@ -96,7 +96,7 @@ and auto-deobfuscated when the build's `mapping.txt` was uploaded.
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        QuiverCrash.install(
+        Quiver.install(
             context = this,
             baseUrl = BuildConfig.QUIVER_BASE_URL,
             appSlug = BuildConfig.QUIVER_APP_SLUG,
@@ -118,11 +118,11 @@ retraces crash reports for that `versionCode` automatically.
 
 ## Device analytics
 
-`QuiverCrash.install(...)` already sends a lightweight launch ping (throttled
+`Quiver.install(...)` already sends a lightweight launch ping (throttled
 to ≤1/day/install) that powers the console's active-device and
 version-distribution views — no separate call needed. No PII: only the
 random per-install device id and build/OS metadata. Pass
-`reportDeviceAnalytics = false` to `install` to opt out.
+`reportDeviceAnalytics = false` to `Quiver.install` to opt out.
 
 ## Notes
 

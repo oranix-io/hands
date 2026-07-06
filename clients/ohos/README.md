@@ -24,7 +24,7 @@ if it leaks).
 ```ts
 import { Quiver } from '@oranix/quiver';
 
-Quiver.start({
+Quiver.install({
   baseUrl: 'https://quiver.example.com',
   appSlug: 'my-app',
   channel: 'main',          // Quiver release-channel routing field

@@ -7,7 +7,7 @@ feedback endpoint. Objective-C, no dependencies, iOS 14.1+.
 ## Install (CocoaPods, via git)
 
 ```ruby
-pod 'Quiver', :git => 'https://github.com/oranix-io/quiver.git', :tag => 'ios-v0.1.2'
+pod 'Quiver', :git => 'https://github.com/oranix-io/quiver.git', :tag => 'ios-v0.1.3'
 ```
 
 ## Configure & start
@@ -20,7 +20,7 @@ bundle; rotate it from the console if it leaks).
 ```swift
 import Quiver
 
-QuiverReport.start(with: QuiverReportConfig(
+Quiver.install(with: QuiverConfig(
     baseUrl: "https://quiver.example.com",
     appSlug: "my-app",
     channel: "main",          // Quiver release-channel routing field
@@ -28,13 +28,13 @@ QuiverReport.start(with: QuiverReportConfig(
 ))
 ```
 
-`start(with:)` installs the crash handlers and uploads any pending crash
+`install(with:)` installs the crash handlers and uploads any pending crash
 reports a few seconds after launch. Call it as early as possible (app init).
 
 ## Feedback
 
 ```swift
-QuiverReport.submitFeedback(
+Quiver.submitFeedback(
     "Feed doesn't refresh after login.",
     kind: "bug",                      // "feedback" | "bug" | "crash"
     attachmentPaths: [logFilePath],   // up to 3 files, 10 MB each

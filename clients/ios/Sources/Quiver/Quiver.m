@@ -1,4 +1,4 @@
-#import "QuiverReport.h"
+#import "Quiver.h"
 
 #import "QuiverCrashReporter.h"
 #import "QuiverDeviceId.h"
@@ -11,14 +11,14 @@ static NSTimeInterval const QuiverPendingUploadDelay = 3.0;
 static NSTimeInterval const QuiverDevicePingInterval = 24 * 60 * 60;
 static NSString *const QuiverLastPingDefaultsKey = @"quiver_last_device_ping_at";
 
-@interface QuiverReportConfig ()
+@interface QuiverConfig ()
 @property (nonatomic, copy, readwrite) NSString *baseUrl;
 @property (nonatomic, copy, readwrite) NSString *appSlug;
 @property (nonatomic, copy, readwrite) NSString *channel;
 @property (nonatomic, copy, readwrite) NSString *clientKey;
 @end
 
-@implementation QuiverReportConfig
+@implementation QuiverConfig
 
 - (instancetype)initWithBaseUrl:(NSString *)baseUrl
                         appSlug:(NSString *)appSlug
@@ -41,7 +41,7 @@ static NSString *const QuiverLastPingDefaultsKey = @"quiver_last_device_ping_at"
                           appSlug:(NSString *)appSlug
                           channel:(NSString *)channel
                         clientKey:(NSString *)clientKey {
-    return [[QuiverReportConfig alloc] initWithBaseUrl:baseUrl
+    return [[QuiverConfig alloc] initWithBaseUrl:baseUrl
                                                appSlug:appSlug
                                                channel:channel
                                              clientKey:clientKey];
@@ -49,19 +49,19 @@ static NSString *const QuiverLastPingDefaultsKey = @"quiver_last_device_ping_at"
 
 @end
 
-static QuiverReportConfig *gQuiverReportConfig = nil;
+static QuiverConfig *gQuiverConfig = nil;
 
-@implementation QuiverReport
+@implementation Quiver
 
-+ (void)startWithConfig:(QuiverReportConfig *)config {
-    gQuiverReportConfig = config;
++ (void)installWithConfig:(QuiverConfig *)config {
+    gQuiverConfig = config;
     [QuiverCrashReporter install];
     [QuiverCrashReporter uploadPendingAfterDelay:QuiverPendingUploadDelay];
     [self reportDevice];
 }
 
 + (void)reportDevice {
-    QuiverReportConfig *config = gQuiverReportConfig;
+    QuiverConfig *config = gQuiverConfig;
     if (!config) return;
 
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
@@ -113,8 +113,8 @@ static QuiverReportConfig *gQuiverReportConfig = nil;
     [task resume];
 }
 
-+ (QuiverReportConfig *)config {
-    return gQuiverReportConfig;
++ (QuiverConfig *)config {
+    return gQuiverConfig;
 }
 
 + (void)submitFeedback:(NSString *)message
