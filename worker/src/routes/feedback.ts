@@ -550,9 +550,19 @@ export async function handleListFeedback(c: AdminContext) {
     binds.push(status);
     where += ` AND status = ?${binds.length}`;
   }
-  if (kind && (TICKET_KINDS as readonly string[]).includes(kind)) {
-    binds.push(kind);
-    where += ` AND kind = ?${binds.length}`;
+  if (kind) {
+    const kinds = kind
+      .split(",")
+      .filter((k) => (TICKET_KINDS as readonly string[]).includes(k));
+    if (kinds.length > 0) {
+      const inList = kinds
+        .map((k) => {
+          binds.push(k);
+          return `?${binds.length}`;
+        })
+        .join(", ");
+      where += ` AND kind IN (${inList})`;
+    }
   }
   const deviceId = c.req.query("device_id");
   if (deviceId) {
