@@ -87,10 +87,13 @@ object QuiverCrash {
                 runCatching {
                     uploadPending(appContext, baseUrl, appSlug, versionName, versionCode, channel, clientKey)
                     if (captureNativeCrashes) {
+                        // Dedicated background thread — blocking here is fine.
                         runCatching {
-                            QuiverNativeCrash.uploadPending(
-                                appContext, baseUrl, appSlug, versionName, versionCode, channel, clientKey,
-                            )
+                            kotlinx.coroutines.runBlocking {
+                                QuiverNativeCrash.uploadPending(
+                                    appContext, baseUrl, appSlug, versionName, versionCode, channel, clientKey,
+                                )
+                            }
                         }
                     }
                 }
