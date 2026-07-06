@@ -6,7 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// parameters — nothing is compiled into the SDK; the host app owns its
 /// slug, channel, and client key (Sentry-DSN model: the key identifies the
 /// app and ships in the app bundle, it is not a user secret).
-@interface QuiverReportConfig : NSObject
+@interface QuiverConfig : NSObject
 
 @property (nonatomic, copy, readonly) NSString *baseUrl;
 @property (nonatomic, copy, readonly) NSString *appSlug;
@@ -31,21 +31,21 @@ NS_ASSUME_NONNULL_BEGIN
 /// Entry point: feedback tickets and store-then-send crash reporting for
 /// iOS, posting to a Quiver server's public feedback endpoint.
 ///
-///   [QuiverReport startWithConfig:
-///       [QuiverReportConfig configWithBaseUrl:@"https://quiver.example.com"
+///   [Quiver installWithConfig:
+///       [QuiverConfig configWithBaseUrl:@"https://quiver.example.com"
 ///                                     appSlug:@"my-app"
 ///                                     channel:@"main"
 ///                                   clientKey:@"qk_…"]];
 ///
-/// startWithConfig: installs the crash handlers (uncaught NSExceptions and
+/// installWithConfig: installs the crash handlers (uncaught NSExceptions and
 /// fatal signals, written to disk at crash time) and schedules the upload of
 /// pending crash reports a few seconds after launch.
-@interface QuiverReport : NSObject
+@interface Quiver : NSObject
 
-+ (void)startWithConfig:(QuiverReportConfig *)config;
++ (void)installWithConfig:(QuiverConfig *)config;
 
-/// The active config, or nil before startWithConfig:.
-+ (nullable QuiverReportConfig *)config;
+/// The active config, or nil before installWithConfig:.
++ (nullable QuiverConfig *)config;
 
 /// Submit a feedback / bug / crash ticket. kind is "feedback", "bug", or
 /// "crash". Completion runs on an arbitrary queue with the created ticket
@@ -61,7 +61,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Lightweight launch ping for active-device / version-distribution
 /// analytics. Throttled to once per 24h per install; safe to call every
-/// launch. startWithConfig: already calls this — call it directly only to
+/// launch. installWithConfig: already calls this — call it directly only to
 /// force an extra ping. No PII: device id + build/OS metadata only.
 + (void)reportDevice;
 

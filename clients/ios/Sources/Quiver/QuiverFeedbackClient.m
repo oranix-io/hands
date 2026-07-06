@@ -1,13 +1,13 @@
 #import "QuiverFeedbackClient.h"
 
-#import "QuiverReport.h"
+#import "Quiver.h"
 
 #import <UIKit/UIKit.h>
 #import <sys/utsname.h>
 
 #import "QuiverDeviceId.h"
 
-static NSString *const QuiverErrorDomain = @"QuiverReport";
+static NSString *const QuiverErrorDomain = @"Quiver";
 static NSTimeInterval const QuiverRequestTimeout = 30.0;
 
 static NSString *QuiverHardwareModel(void) {
@@ -47,7 +47,7 @@ static void QuiverAppendFormField(NSMutableData *body, NSString *boundary, NSStr
     NSMutableDictionary<NSString *, id> *metadata = [NSMutableDictionary dictionary];
     metadata[@"version_name"] = info[@"CFBundleShortVersionString"] ?: @"";
     metadata[@"version_code"] = @([(info[@"CFBundleVersion"] ?: @"0") longLongValue]);
-    metadata[@"channel"] = (QuiverReport.config.channel ?: @"");
+    metadata[@"channel"] = (Quiver.config.channel ?: @"");
     metadata[@"device_id"] = [QuiverDeviceId deviceId];
     metadata[@"device_model"] = QuiverHardwareModel();
     metadata[@"os_version"] = [NSString stringWithFormat:@"%@ %@", device.systemName ?: @"iOS", device.systemVersion ?: @""];
@@ -93,11 +93,11 @@ static void QuiverAppendFormField(NSMutableData *body, NSString *boundary, NSStr
     }
     [body appendData:[[NSString stringWithFormat:@"--%@--\r\n", boundary] dataUsingEncoding:NSUTF8StringEncoding]];
 
-    QuiverReportConfig *config = QuiverReport.config;
+    QuiverConfig *config = Quiver.config;
     if (!config) {
         completion(nil, [NSError errorWithDomain:QuiverErrorDomain
                                             code:0
-                                        userInfo:@{NSLocalizedDescriptionKey : @"QuiverReport not started"}]);
+                                        userInfo:@{NSLocalizedDescriptionKey : @"Quiver not started"}]);
         return;
     }
     NSString *urlText = [NSString stringWithFormat:@"%@/public/v2/apps/%@/feedback",
@@ -108,7 +108,7 @@ static void QuiverAppendFormField(NSMutableData *body, NSString *boundary, NSStr
     [request setValue:[NSString stringWithFormat:@"multipart/form-data; boundary=%@", boundary]
         forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:(QuiverReport.config.clientKey ?: @"") forHTTPHeaderField:@"X-Quiver-Client-Key"];
+    [request setValue:(Quiver.config.clientKey ?: @"") forHTTPHeaderField:@"X-Quiver-Client-Key"];
     [request setValue:[QuiverDeviceId deviceId] forHTTPHeaderField:@"X-Quiver-Device-Id"];
 
     NSURLSessionUploadTask *task = [NSURLSession.sharedSession

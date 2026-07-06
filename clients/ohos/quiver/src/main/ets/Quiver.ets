@@ -28,7 +28,7 @@ export class Quiver {
    * device-analytics ping and upload of any pending crash reports — so the
    * app only calls this one method.
    */
-  static start(config: QuiverConfig, context?: common.UIAbilityContext): void {
+  static install(config: QuiverConfig, context?: common.UIAbilityContext): void {
     const trimmed: QuiverConfig = {
       baseUrl: config.baseUrl.endsWith('/')
         ? config.baseUrl.substring(0, config.baseUrl.length - 1)
@@ -51,7 +51,7 @@ export class Quiver {
   static get config(): QuiverConfig {
     const config = Quiver.current;
     if (config === null) {
-      throw new Error('Quiver.start(config) must be called before using the SDK');
+      throw new Error('Quiver.install(config) must be called before using the SDK');
     }
     return config;
   }
