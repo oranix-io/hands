@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addFeedbackComment,
   feedbackAttachmentUrl,
+  feedbackAttachmentInlineUrl,
   getAuthMe,
   getFeedback,
   listFeedback,
@@ -144,6 +145,97 @@ export function AppFeedback({ appId }: { appId: string }) {
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|bmp|heic|heif)$/i;
+
+function isImageAttachment(a: { content_type: string | null; filename: string }): boolean {
+  return (a.content_type?.startsWith("image/") ?? false) || IMAGE_EXTS.test(a.filename);
+}
+
+function AttachmentList({
+  appId,
+  ticketId,
+  attachments,
+}: {
+  appId: string;
+  ticketId: string;
+  attachments: Array<{ id: string; filename: string; content_type: string | null; size_bytes: number }>;
+}) {
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const images = attachments.filter(isImageAttachment);
+  const others = attachments.filter((a) => !isImageAttachment(a));
+
+  return (
+    <div className="card">
+      <h4 className="text-sm font-semibold mb-2">Attachments</h4>
+
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {images.map((a) => {
+            const url = feedbackAttachmentInlineUrl(appId, ticketId, a.id);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                className="group relative h-24 w-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50"
+                onClick={() => setLightbox(url)}
+                title={a.filename}
+              >
+                <img
+                  src={url}
+                  alt={a.filename}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition group-hover:opacity-90"
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <ul className="space-y-1 text-sm">
+          {others.map((a) => (
+            <li key={a.id}>
+              <a
+                className="text-blue-600 hover:underline"
+                href={feedbackAttachmentUrl(appId, ticketId, a.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {a.filename}
+              </a>
+              <span className="ml-2 text-xs text-slate-400">
+                {(a.size_bytes / 1024).toFixed(1)} KB
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox}
+            alt=""
+            className="max-h-full max-w-full rounded-md shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            className="absolute right-5 top-5 text-2xl leading-none text-white/90 hover:text-white"
+            onClick={() => setLightbox(null)}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -320,26 +412,11 @@ export function FeedbackTicketPage({
           </div>
 
           {detail.data!.attachments.length > 0 && (
-            <div className="card">
-              <h4 className="text-sm font-semibold mb-1">Attachments</h4>
-              <ul className="space-y-1 text-sm">
-                {detail.data!.attachments.map((a) => (
-                  <li key={a.id}>
-                    <a
-                      className="text-blue-600 hover:underline"
-                      href={feedbackAttachmentUrl(appId, ticketId, a.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {a.filename}
-                    </a>
-                    <span className="ml-2 text-xs text-slate-400">
-                      {(a.size_bytes / 1024).toFixed(1)} KB
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <AttachmentList
+              appId={appId}
+              ticketId={ticketId}
+              attachments={detail.data!.attachments}
+            />
           )}
 
           <div className="card">

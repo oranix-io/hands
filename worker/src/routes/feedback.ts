@@ -695,10 +695,17 @@ export async function handleDownloadFeedbackAttachment(c: AdminContext) {
   if (!row) return c.json({ error: "attachment not found" }, 404);
   const object = await c.env.APK_BUCKET.get(row.r2_key);
   if (!object) return c.json({ error: "attachment blob missing" }, 404);
+  const contentType = row.content_type ?? "application/octet-stream";
+  // Serve images inline (for the ticket UI's thumbnails/lightbox) when asked;
+  // everything else, and the default, downloads as an attachment.
+  const inline = c.req.query("inline") === "1" && contentType.startsWith("image/");
   return new Response(object.body, {
     headers: {
-      "content-type": row.content_type ?? "application/octet-stream",
-      "content-disposition": `attachment; filename="${row.filename}"`,
+      "content-type": contentType,
+      "content-disposition": inline
+        ? `inline; filename="${row.filename}"`
+        : `attachment; filename="${row.filename}"`,
+      "cache-control": "private, max-age=300",
     },
   });
 }

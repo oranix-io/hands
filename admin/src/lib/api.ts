@@ -1153,6 +1153,9 @@ export const addFeedbackComment = (appId: string, ticketId: string, body: string
 export const feedbackAttachmentUrl = (appId: string, ticketId: string, attachmentId: string) =>
   `/api/apps/${appId}/feedback/${ticketId}/attachments/${attachmentId}`;
 
+export const feedbackAttachmentInlineUrl = (appId: string, ticketId: string, attachmentId: string) =>
+  `/api/apps/${appId}/feedback/${ticketId}/attachments/${attachmentId}?inline=1`;
+
 export const updateAppPublicHistory = (appId: string, enabled: boolean) =>
   request<{ ok: boolean }>(`/api/apps/${appId}`, {
     method: "PATCH",
