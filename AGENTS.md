@@ -170,3 +170,14 @@ publish`).
 - Create or reuse a task-specific worktree.
 - Run focused validation before reporting.
 - Report local-main / remote-main status explicitly.
+
+## Third-party code & licenses
+
+Original implementations only borrow *patterns* from open source (e.g.
+sentry-native's inproc handler discipline, KSCrash's dyld image tracking) —
+that carries no license obligation. If actual code is ported or vendored:
+keep the upstream license header on the file, add a NOTICE entry naming the
+project and license (sentry-native/symbolic/rust-minidump: MIT; KSCrash:
+MIT-style). Tools exec'd in the container (llvm-symbolizer: Apache-2.0 w/
+LLVM exception; binutils readelf: GPL) are separate binaries, not linked
+into our code — no copyleft propagation, no action needed.
