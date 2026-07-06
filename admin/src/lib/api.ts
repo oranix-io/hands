@@ -1168,6 +1168,20 @@ export const feedbackAttachmentUrl = (appId: string, ticketId: string, attachmen
 export const feedbackAttachmentInlineUrl = (appId: string, ticketId: string, attachmentId: string) =>
   `/api/apps/${appId}/feedback/${ticketId}/attachments/${attachmentId}?inline=1`;
 
+export const getFeedbackAttachmentText = async (
+  appId: string,
+  ticketId: string,
+  attachmentId: string,
+  maxBytes = 200_000,
+): Promise<string> => {
+  const res = await fetch(feedbackAttachmentUrl(appId, ticketId, attachmentId), {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`attachment ${res.status}`);
+  const text = await res.text();
+  return text.length > maxBytes ? text.slice(0, maxBytes) + "\n…(truncated)" : text;
+};
+
 export const updateAppPublicHistory = (appId: string, enabled: boolean) =>
   request<{ ok: boolean }>(`/api/apps/${appId}`, {
     method: "PATCH",

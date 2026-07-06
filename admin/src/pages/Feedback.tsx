@@ -14,6 +14,7 @@ import {
   getFeedback,
   listFeedback,
   getDeviceDetail,
+  getFeedbackAttachmentText,
   updateFeedbackTicket,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
@@ -48,7 +49,9 @@ export function AppFeedback({ appId }: { appId: string }) {
     queryFn: () =>
       listFeedback(appId, {
         status: statusFilter || undefined,
-        kind: kindFilter || undefined,
+        // Feedback tab = user feedback + bugs; crashes live in the Crashes
+        // tab. An explicit kind/signature filter overrides this.
+        kind: kindFilter || (signatureFilter ? "crash" : "feedback,bug"),
         deviceId: deviceFilter || undefined,
         versionCode: versionFilter ? Number(versionFilter) : undefined,
         signature: signatureFilter || undefined,
@@ -195,6 +198,35 @@ export function AppFeedback({ appId }: { appId: string }) {
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+function CrashLogView({
+  appId,
+  ticketId,
+  attachmentId,
+}: {
+  appId: string;
+  ticketId: string;
+  attachmentId: string;
+}) {
+  const log = useQuery({
+    queryKey: ["crash-log", appId, ticketId, attachmentId],
+    queryFn: () => getFeedbackAttachmentText(appId, ticketId, attachmentId),
+  });
+  return (
+    <div className="card">
+      <h4 className="text-sm font-semibold mb-2">Stack trace</h4>
+      {log.isLoading && <p className="text-xs text-slate-500">Loading…</p>}
+      {log.error && (
+        <p className="text-xs text-red-600">Could not load crash log.</p>
+      )}
+      {log.data && (
+        <pre className="max-h-[28rem] overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-relaxed text-slate-100">
+          {log.data}
+        </pre>
+      )}
     </div>
   );
 }
@@ -536,6 +568,16 @@ export function FeedbackTicketPage({
               </dd>
             </dl>
           </div>
+
+          {t.kind === "crash" &&
+            (() => {
+              const log = detail.data!.attachments.find(
+                (a) => (a.content_type?.startsWith("text/") ?? false) || /\.txt$/i.test(a.filename),
+              );
+              return log ? (
+                <CrashLogView appId={appId} ticketId={ticketId} attachmentId={log.id} />
+              ) : null;
+            })()}
 
           {detail.data!.attachments.length > 0 && (
             <AttachmentList
