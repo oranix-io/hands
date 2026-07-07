@@ -210,7 +210,22 @@ async function updateReleaseFields(
   actor: string,
 ): Promise<ReleaseRow> {
   if (release.status === "cancelled" || release.status === "superseded") {
-    throw new Error(`cannot update ${release.status} release`);
+    // Locked releases: allow editing only the changelog (display text, e.g.
+    // reformatting an old version's release notes), never the fields with live
+    // rollout/scope/availability semantics.
+    const onlyChangelog =
+      input.changelog !== undefined &&
+      input.should_force_update === undefined &&
+      input.rollout_cohort_count === undefined &&
+      input.rollout_target_cohorts_json === undefined &&
+      input.availability_at === undefined &&
+      input.provenance_json === undefined &&
+      input.scopes === undefined;
+    if (!onlyChangelog) {
+      throw new Error(
+        `cannot update ${release.status} release (only the changelog may be edited)`,
+      );
+    }
   }
   const now = Date.now();
   const sets: string[] = [];
