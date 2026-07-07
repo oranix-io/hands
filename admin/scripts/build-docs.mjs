@@ -132,6 +132,7 @@ function renderMarkdown(markdown) {
   const html = [];
   let paragraph = [];
   let list = [];
+  let listType = "ul";
   let code = [];
   let inCode = false;
   let table = [];
@@ -144,7 +145,7 @@ function renderMarkdown(markdown) {
 
   function flushList() {
     if (list.length === 0) return;
-    html.push(`<ul>${list.map((item) => `<li>${inlineMarkdown(item)}</li>`).join("")}</ul>`);
+    html.push(`<${listType}>${list.map((item) => `<li>${inlineMarkdown(item)}</li>`).join("")}</${listType}>`);
     list = [];
   }
 
@@ -191,9 +192,14 @@ function renderMarkdown(markdown) {
       continue;
     }
     const bullet = /^\s*[-*]\s+(.+)$/.exec(line);
-    if (bullet) {
+    const ordered = bullet ? null : /^\s*\d+\.\s+(.+)$/.exec(line);
+    if (bullet || ordered) {
       flushParagraph();
-      list.push(bullet[1]);
+      const type = bullet ? "ul" : "ol";
+      // Switching between bullet and numbered runs starts a new list.
+      if (list.length && listType !== type) flushList();
+      listType = type;
+      list.push((bullet ?? ordered)[1]);
       continue;
     }
     if (line.trim() === "") {
