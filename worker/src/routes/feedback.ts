@@ -397,7 +397,12 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
     : versionCode != null
       ? String(versionCode)
       : null;
-  const ticketUrl = `${new URL(c.req.url).origin}/apps/${app.id}/feedback/${ticketId}`;
+  let ticketUrl: string | null = null;
+  try {
+    ticketUrl = `${new URL(c.req.url).origin}/apps/${app.id}/feedback/${ticketId}`;
+  } catch {
+    ticketUrl = null;
+  }
   const reference = [app.slug, versionLabel, `ticket ${ticketId.slice(0, 8)}`]
     .filter(Boolean)
     .join(" · ");
