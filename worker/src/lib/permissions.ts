@@ -140,6 +140,46 @@ export async function getEffectiveRole(
   return { org_role: orgRole, app_role: effectiveAppRole, server_app_role: serverAppRole, org_id: orgId };
 }
 
+// Machine-readable 403 for insufficient role: agents/CLI can act on it
+// (required vs current role, a stable resource string, and manage_url pointing
+// an admin to where the role is bumped) instead of parsing a message. Legacy
+// org_role/app_role fields are kept for back-compat.
+function forbiddenRole(
+  c: AdminContext,
+  scope: "org" | "app",
+  requiredRole: string,
+  currentRole: string | null,
+  ids: { org_id?: string | null; app_id?: string | null },
+) {
+  let origin = "https://quiver.oranix.io";
+  let resource = "";
+  try {
+    const u = new URL(c.req.url);
+    origin = u.origin;
+    resource = `${c.req.method} ${u.pathname}`;
+  } catch {
+    // request URL/method unavailable (e.g. tests) — keep defaults
+  }
+  const manageUrl = ids.org_id
+    ? `${origin}/orgs/${ids.org_id}/members`
+    : ids.app_id
+      ? `${origin}/apps/${ids.app_id}/access`
+      : null;
+  return c.json(
+    {
+      error: scope === "org" ? "insufficient_org_role" : "insufficient_app_role",
+      required_role: requiredRole,
+      current_role: currentRole,
+      resource,
+      org_id: ids.org_id ?? null,
+      app_id: ids.app_id ?? null,
+      manage_url: manageUrl,
+      ...(scope === "org" ? { org_role: currentRole } : { app_role: currentRole }),
+    },
+    403,
+  );
+}
+
 export async function ensureOrgRole(c: AdminContext, orgId: string, minimum: OrgRole) {
   if (devTokenBypass(c)) return { ok: true as const, role: "owner" as OrgRole };
   const account = currentAccount(c);
@@ -150,7 +190,7 @@ export async function ensureOrgRole(c: AdminContext, orgId: string, minimum: Org
   if (!isOrgAtLeast(role, minimum)) {
     return {
       ok: false as const,
-      response: c.json({ error: "forbidden", required_role: minimum, org_role: role }, 403),
+      response: forbiddenRole(c, "org", minimum, role, { org_id: orgId }),
     };
   }
   return { ok: true as const, role };
@@ -163,13 +203,12 @@ export async function ensureAppRole(c: AdminContext, appId: string, minimum: App
     if (deployToken.app_id !== appId || !isAppAtLeast(deployToken.app_role, minimum)) {
       return {
         ok: false as const,
-        response: c.json(
-          {
-            error: "forbidden",
-            required_role: minimum,
-            app_role: deployToken.app_id === appId ? deployToken.app_role : null,
-          },
-          403,
+        response: forbiddenRole(
+          c,
+          "app",
+          minimum,
+          deployToken.app_id === appId ? deployToken.app_role : null,
+          { app_id: appId },
         ),
       };
     }
@@ -194,15 +233,10 @@ export async function ensureAppRole(c: AdminContext, appId: string, minimum: App
   if (!orgAllows && !appAllows) {
     return {
       ok: false as const,
-      response: c.json(
-        {
-          error: "forbidden",
-          required_role: minimum,
-          org_role: role.org_role,
-          app_role: role.app_role,
-        },
-        403,
-      ),
+      response: forbiddenRole(c, "app", minimum, role.app_role, {
+        app_id: appId,
+        org_id: role.org_id,
+      }),
     };
   }
   return { ok: true as const, ...role };
