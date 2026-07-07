@@ -125,7 +125,7 @@ function Header({ account }: { account: AuthAccount }) {
     }`;
 
   return (
-    <header className="flex w-16 flex-none flex-col items-center border-r border-slate-200 bg-white py-3">
+    <header className="sticky top-0 h-screen flex w-16 flex-none flex-col items-center border-r border-slate-200 bg-white py-3">
       <Link to="/" aria-label="Quiver" className="mb-4">
         <QuiverMark className="h-9 w-9" />
       </Link>
