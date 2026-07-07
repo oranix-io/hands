@@ -207,6 +207,10 @@ function renderMarkdown(markdown) {
       flushList();
       continue;
     }
+    if (list.length > 0) {
+      list[list.length - 1] += ` ${line.trim()}`;
+      continue;
+    }
     paragraph.push(line.trim());
   }
   flushTable();
