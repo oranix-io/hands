@@ -29,7 +29,7 @@ const ReleaseInput = z
     release_type: z.string().optional(),
     status: z.enum(["draft", "active"]).optional(),
     changelog: z.string().nullable().optional(),
-    changelog_i18n: z.record(z.string(), z.string()).optional(),
+    release_notes: z.record(z.string(), z.string()).nullable().optional(),
     rollout_cohort_count: z.number().int().nullable().optional(),
     should_force_update: z.boolean().optional(),
     scopes: z.array(GenericObject).optional(),
@@ -397,4 +397,3 @@ function registerAccessRoutes(registry: OpenApiRegistry) {
     },
   });
 }
-
