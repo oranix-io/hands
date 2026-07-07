@@ -386,7 +386,32 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
     });
   }
 
-  return c.json({ id: ticketId, status: "open", attachments: attachmentRows.length }, 201);
+  // A ready-to-copy reference so a pasted ticket can be located by an agent:
+  // slug + version + short id, plus a direct admin link. The app copies this
+  // instead of a bare ticket id.
+  const versionName = meta("version_name");
+  const versionLabel = versionName
+    ? versionCode != null
+      ? `${versionName} (${versionCode})`
+      : versionName
+    : versionCode != null
+      ? String(versionCode)
+      : null;
+  const ticketUrl = `${new URL(c.req.url).origin}/apps/${app.id}/feedback/${ticketId}`;
+  const reference = [app.slug, versionLabel, `ticket ${ticketId.slice(0, 8)}`]
+    .filter(Boolean)
+    .join(" · ");
+
+  return c.json(
+    {
+      id: ticketId,
+      status: "open",
+      attachments: attachmentRows.length,
+      reference,
+      ticket_url: ticketUrl,
+    },
+    201,
+  );
 }
 
 /** Signature = "<ExceptionClass>@<top app frame>", trimmed and bounded. */
