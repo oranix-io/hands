@@ -50,6 +50,30 @@ const HISTORY_SQL = `
   ORDER BY b.version_code DESC, released_at DESC
   LIMIT 50`;
 
+// Like HISTORY_SQL but also includes the single draft whose version_code
+// equals ?2 — so the release-notes page can preview a not-yet-published
+// version when its code is requested. Other drafts stay hidden; cancelled
+// is always excluded. ?2 = -1 when no version_code is requested (matches no
+// draft).
+const NOTES_SQL = `
+  SELECT r.id AS release_id, r.status AS release_status,
+         COALESCE(b.completed_at, r.created_at) AS released_at,
+         ch.slug AS channel_slug,
+         b.version_name, b.version_code,
+         COALESCE(r.changelog, b.changelog) AS changelog,
+         (SELECT ba.size_bytes FROM build_assets ba
+          WHERE ba.build_id = b.id AND ba.artifact_kind = 'installable'
+          ORDER BY ba.created_at LIMIT 1) AS size_bytes
+  FROM releases r
+  JOIN builds b ON b.id = r.build_id
+  JOIN channels ch ON ch.id = r.channel_id
+  WHERE r.app_id = ?1 AND (
+    r.status IN ('active', 'superseded')
+    OR (r.status = 'draft' AND b.version_code = ?2)
+  )
+  ORDER BY b.version_code DESC, released_at DESC
+  LIMIT 50`;
+
 export async function handlePublicAppHistory(c: Context<{ Bindings: Env }>) {
   const slug = c.req.param("slug");
   if (!slug) return c.json({ error: "slug required" }, 400);
@@ -102,15 +126,20 @@ export async function handlePublicReleaseNotes(c: Context<{ Bindings: Env }>) {
   if (!app || !app.public_history) {
     return new Response("Not found", { status: 404 });
   }
-  const { results } = await c.env.DB.prepare(HISTORY_SQL)
-    .bind(app.id)
-    .all<HistoryRow>();
-
   const rawVc = c.req.query("version_code");
   const requestedCode =
     rawVc != null && rawVc !== "" && Number.isFinite(Number(rawVc))
       ? Number(rawVc)
       : null;
+
+  // Published (active/superseded) versions, PLUS the single draft whose
+  // version_code was explicitly requested — so a not-yet-published version can
+  // be previewed by its code, marked "Draft". Other drafts stay hidden;
+  // cancelled is always excluded.
+  const { results } = await c.env.DB.prepare(NOTES_SQL)
+    .bind(app.id, requestedCode ?? -1)
+    .all<HistoryRow>();
+
   // With a version_code: show that version and everything older (previous
   // non-cancelled versions). Without it: the full history. Also drop versions
   // whose changelog is a raw CI string (not a curated bilingual note) — these
@@ -270,7 +299,15 @@ function renderReleaseNotesPage(
     .map((row) => {
       const changelog = resolveChangelog(row.changelog, lang);
       const featured = requestedCode != null && row.version_code === requestedCode;
+      const isDraft = row.release_status === "draft";
       const isLatest = row.release_status === "active";
+      const badge = isDraft
+        ? '<span class="badge draft">Draft</span>'
+        : featured
+          ? '<span class="badge you">Current</span>'
+          : isLatest
+            ? '<span class="badge latest">Latest</span>'
+            : "";
       return `
     <li class="entry${featured ? " featured" : ""}" id="v${row.version_code}">
       <div class="rail"><span class="dot"></span></div>
@@ -279,7 +316,7 @@ function renderReleaseNotesPage(
           <div class="title">
             <strong>${esc(row.version_name)}</strong>
             <span class="meta">build ${row.version_code}</span>
-            ${featured ? '<span class="badge you">Current</span>' : isLatest ? '<span class="badge latest">Latest</span>' : ""}
+            ${badge}
           </div>
           <span class="date" data-ts="${row.released_at}"></span>
         </div>
@@ -327,6 +364,7 @@ function renderReleaseNotesPage(
     .badge { border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
     .badge.latest { background: #d8f3e8; color: var(--accent); }
     .badge.you { background: var(--accent); color: #fff; }
+    .badge.draft { background: #f59e0b; color: #fff; }
     .date { color: #9aa0a9; font-size: 12px; white-space: nowrap; }
     .notes { margin: 8px 0 0; font-size: 14px; line-height: 1.55; color: #3b3f45; overflow-wrap: anywhere; }
     .notes.muted { color: #9aa0a9; }
