@@ -13,7 +13,7 @@ npm install -g @oranix/quiver-cli
 Or run it without a permanent install:
 
 ```bash
-npm exec --package @oranix/quiver-cli@0.2.1 -- quiver --help
+npm exec --package @oranix/quiver-cli@0.3.2 -- quiver --help
 ```
 
 In CI, pin a version so release scripts stay reproducible.

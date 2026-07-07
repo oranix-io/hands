@@ -44,7 +44,7 @@ No global install needed:
 npm exec --package @oranix/quiver-cli -- quiver whoami
 ```
 
-(Pin a version with `@oranix/quiver-cli@0.3.1` if you want reproducibility.)
+(Pin a version with `@oranix/quiver-cli@0.3.2` if you want reproducibility.)
 Every command below takes `--json` for scripting.
 
 ## Triage commands
