@@ -780,7 +780,7 @@ export async function handlePublicR2Download(c: Context<{ Bindings: Env }>) {
      JOIN releases r ON r.build_id = b.id
      WHERE ba.r2_key = ?1
        AND ba.artifact_kind = 'installable'
-       AND r.status = 'active'
+       AND r.status IN ('active', 'draft')
      LIMIT 1`,
   )
     .bind(key)
