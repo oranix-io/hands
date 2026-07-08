@@ -93,18 +93,13 @@ APP=raft-android
 quiver feedback show "$APP" "$TICKET_ID"
 ```
 
-The CLI now prints full UUIDs in human output. If you are working from an
-older copied reference that has only an 8-character short id, expand it to the
-full ticket UUID first:
+The CLI now prints full UUIDs in human output. You can also pass a **short id
+or any unique prefix** — the feedback read/detail/attachment endpoints resolve
+it to the full ticket automatically (an ambiguous prefix returns `409`; use a
+longer prefix or the full UUID):
 
 ```bash
-SHORT_ID=389d855b
-APP=raft-android
-
-TICKET_ID="$(quiver feedback list "$APP" --json \
-  | python3 -c 'import json,sys; p=sys.argv[1]; print(next(t["id"] for t in json.load(sys.stdin)["tickets"] if t["id"].startswith(p)))' "$SHORT_ID")"
-
-quiver feedback show "$APP" "$TICKET_ID"
+quiver feedback show raft-android 389d855b   # 8-char short id works
 ```
 
 The `show` output is the first place to check for diagnostics: it includes
@@ -134,35 +129,32 @@ curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
 ## Attachments (diagnostics zips, logs)
 
 `feedback show` lists each attachment's id, filename, and size. Download one
-through the authenticated API endpoint (the CLI doesn't wrap this yet). The
-API path requires the app UUID, not just the slug:
+with the CLI (accepts a slug and a short/prefix ticket id):
+
+```bash
+quiver feedback download-attachment raft-android 389d855b <attachmentId>
+# → Saved 445539 bytes to slock-feedback-....zip   (use -o to choose the path)
+```
+
+Quiver saves the **raw bytes as-is** — it does not unzip or interpret the
+contents. Quiver does not define the files inside an app's diagnostics archive;
+it stores and serves the attachment, and the producing app owns the log format
+and archive layout (how to open a given app's zip is documented in that app's
+repo, not here).
+
+The same downloads and ticket detail can also be fetched directly via REST
+(the API path uses the app **UUID**, not the slug):
 
 ```bash
 APP_ID="$(quiver apps get "$APP" --json \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 
 curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
-  "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID/attachments/<attachmentId>" \
-  -o diagnostics.zip
-```
-
-Find `<appId>` with `quiver apps list` (the slug is stable; the id is the
-UUID the API paths use).
-
-Quiver does not define the files inside an app's diagnostics archive. It
-stores and serves the attachment; the producing app owns the log format and
-archive layout.
-
-The same ticket detail call can be made directly without the CLI:
-
-```bash
+  "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID"                       # ticket detail
 curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
-  "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID"
+  "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID/attachments/<attachmentId>" \
+  -o diagnostics.zip                                                                     # raw attachment
 ```
-
-Known current limitation: the CLI can list attachment ids but does not yet
-wrap attachment downloads; use the authenticated REST call above until a
-`quiver feedback download-attachment` command exists.
 
 ## Other environment knobs
 

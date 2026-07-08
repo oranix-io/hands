@@ -1190,9 +1190,61 @@ export async function handleListFeedback(c: AdminContext) {
   return c.json({ tickets: results });
 }
 
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+type TicketResolution =
+  | { id: string }
+  | { error: "not_found" }
+  | { error: "ambiguous"; count: number };
+
+/**
+ * Resolve a ticket id that may be a full UUID or a short **prefix** (e.g. the
+ * 8-char id historically surfaced in references/UI). A full UUID takes the
+ * exact-match fast path; anything else is matched as `id LIKE prefix%` within
+ * the app and must hit exactly one ticket — 0 ⇒ not found, >1 ⇒ ambiguous.
+ * This lets agents query with whatever id they copied without a manual expand.
+ */
+async function resolveTicketId(
+  db: D1Database,
+  appId: string | undefined,
+  ticketId: string | undefined,
+): Promise<TicketResolution> {
+  if (!appId) return { error: "not_found" };
+  const raw = (ticketId ?? "").trim();
+  if (UUID_RE.test(raw)) {
+    const row = await db
+      .prepare("SELECT id FROM feedback_tickets WHERE app_id = ?1 AND id = ?2")
+      .bind(appId, raw.toLowerCase())
+      .first<{ id: string }>();
+    return row ? { id: row.id } : { error: "not_found" };
+  }
+  // Prefix mode: require a reasonably specific, id-shaped prefix.
+  if (raw.length < 4 || !/^[0-9a-fA-F-]+$/.test(raw)) return { error: "not_found" };
+  const { results } = await db
+    .prepare("SELECT id FROM feedback_tickets WHERE app_id = ?1 AND id LIKE ?2 ORDER BY id LIMIT 6")
+    .bind(appId, raw.toLowerCase() + "%")
+    .all<{ id: string }>();
+  if (results.length === 0) return { error: "not_found" };
+  if (results.length > 1) return { error: "ambiguous", count: results.length };
+  return { id: results[0]!.id };
+}
+
+/** Map a failed ticket resolution to a JSON response. */
+function ticketResolveError(c: AdminContext, r: { error: "not_found" } | { error: "ambiguous"; count: number }) {
+  if (r.error === "ambiguous") {
+    return c.json(
+      { error: `ticket id prefix matches ${r.count} tickets; use the full UUID` },
+      409,
+    );
+  }
+  return c.json({ error: "ticket not found" }, 404);
+}
+
 export async function handleGetFeedback(c: AdminContext) {
   const appId = c.req.param("appId");
-  const ticketId = c.req.param("ticketId");
+  const resolved = await resolveTicketId(c.env.DB, appId, c.req.param("ticketId"));
+  if ("error" in resolved) return ticketResolveError(c, resolved);
+  const ticketId = resolved.id;
   const ticket = await c.env.DB.prepare(
     "SELECT * FROM feedback_tickets WHERE app_id = ?1 AND id = ?2",
   )
@@ -1216,7 +1268,9 @@ export async function handleGetFeedback(c: AdminContext) {
 
 export async function handleUpdateFeedback(c: AdminContext) {
   const appId = c.req.param("appId");
-  const ticketId = c.req.param("ticketId");
+  const resolved = await resolveTicketId(c.env.DB, appId, c.req.param("ticketId"));
+  if ("error" in resolved) return ticketResolveError(c, resolved);
+  const ticketId = resolved.id;
   const body = (await c.req.json().catch(() => ({}))) as {
     status?: string;
     assignee?: string | null;
@@ -1273,7 +1327,9 @@ export async function handleUpdateFeedback(c: AdminContext) {
 
 export async function handleAddFeedbackComment(c: AdminContext) {
   const appId = c.req.param("appId");
-  const ticketId = c.req.param("ticketId");
+  const resolved = await resolveTicketId(c.env.DB, appId, c.req.param("ticketId"));
+  if ("error" in resolved) return ticketResolveError(c, resolved);
+  const ticketId = resolved.id;
   const body = (await c.req.json().catch(() => ({}))) as {
     body?: string;
     internal?: boolean;
@@ -1302,7 +1358,9 @@ export async function handleAddFeedbackComment(c: AdminContext) {
 
 export async function handleDownloadFeedbackAttachment(c: AdminContext) {
   const appId = c.req.param("appId");
-  const ticketId = c.req.param("ticketId");
+  const resolved = await resolveTicketId(c.env.DB, appId, c.req.param("ticketId"));
+  if ("error" in resolved) return ticketResolveError(c, resolved);
+  const ticketId = resolved.id;
   const attachmentId = c.req.param("attachmentId");
   const row = await c.env.DB.prepare(
     `SELECT fa.r2_key, fa.filename, fa.content_type

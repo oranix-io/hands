@@ -3606,6 +3606,57 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(res.status).toBe(401);
   });
 
+  it("handleGetFeedback resolves a short ticket-id prefix and full UUID", async () => {
+    const env = makeEnv();
+    const { handleGetFeedback } = await import("../src/routes/feedback");
+    const fullId = "abcd1234-1111-2222-3333-444455556666";
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets (id, app_id, kind, status, message, metadata_json, created_at, updated_at)
+       VALUES (?1, 'app-scope', 'bug', 'open', 'hi', '{}', 1, 1)`,
+    ).bind(fullId).run();
+    const call = (tid: string) =>
+      handleGetFeedback({
+        env,
+        req: {
+          param: (n: string) => (n === "appId" ? "app-scope" : n === "ticketId" ? tid : undefined),
+          query: () => undefined,
+        },
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+      } as any);
+
+    const short = await call("abcd1234");
+    expect(short.status).toBe(200);
+    expect((await responseJson<any>(short)).ticket.id).toBe(fullId);
+
+    const full = await call(fullId);
+    expect(full.status).toBe(200);
+    expect((await responseJson<any>(full)).ticket.id).toBe(fullId);
+
+    const missing = await call("ffffffff");
+    expect(missing.status).toBe(404);
+  });
+
+  it("handleGetFeedback returns 409 on an ambiguous ticket-id prefix", async () => {
+    const env = makeEnv();
+    const { handleGetFeedback } = await import("../src/routes/feedback");
+    const ins = (id: string) =>
+      env.DB.prepare(
+        `INSERT INTO feedback_tickets (id, app_id, kind, status, message, metadata_json, created_at, updated_at)
+         VALUES (?1, 'app-scope', 'bug', 'open', 'x', '{}', 1, 1)`,
+      ).bind(id).run();
+    await ins("dead0001-0000-0000-0000-000000000000");
+    await ins("dead0002-0000-0000-0000-000000000000");
+    const res = await handleGetFeedback({
+      env,
+      req: {
+        param: (n: string) => (n === "appId" ? "app-scope" : n === "ticketId" ? "dead000" : undefined),
+        query: () => undefined,
+      },
+      json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+    } as any);
+    expect(res.status).toBe(409);
+  });
+
   it("changelogToHtml renders bullets safely", async () => {
     const { changelogToHtml } = await import("../src/routes/public_v2");
     const html = changelogToHtml("- one **bold**\n- two <script>x</script>\n\nplain `c`");
