@@ -172,6 +172,26 @@ design — that is not a bug. To read/triage a ticket: `raft integration login
 `/api/apps/:appId/feedback*` REST endpoints. Full walkthrough:
 [/docs/agent-cli-feedback/](https://quiver.oranix.io/docs/agent-cli-feedback/).
 
+Quick lookup when someone gives you a Quiver feedback id. Newer Quiver
+feedback references include the full ticket UUID; if you get an older short
+id from chat, expand it first:
+
+```bash
+# Detail/attachment API routes require the full ticket UUID.
+TICKET_ID="$(quiver feedback list raft-android --json \
+  | python3 -c 'import json,sys; p=sys.argv[1]; print(next(t["id"] for t in json.load(sys.stdin)["tickets"] if t["id"].startswith(p)))' 389d855b)"
+
+# Show message, device context, comments, and attachment ids.
+quiver feedback show raft-android "$TICKET_ID"
+
+# Logs/diagnostics are ticket attachments. Quiver transports and stores them;
+# the producing app owns the file layout inside the downloaded archive.
+APP_ID="$(quiver apps get raft-android --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
+  "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID/attachments/<attachmentId>" \
+  -o diagnostics.zip
+```
+
 ## First-Day Checklist
 
 - Confirm `gh auth status` works.

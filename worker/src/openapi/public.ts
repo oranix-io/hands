@@ -137,6 +137,9 @@ const FeedbackSubmitResponse = z
   .object({
     id: z.string(),
     status: z.string(),
+    attachments: z.number().int().optional(),
+    reference: z.string().optional(),
+    ticket_url: z.string().nullable().optional(),
   })
   .openapi("FeedbackSubmitResponse");
 

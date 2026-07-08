@@ -400,8 +400,8 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
   }
 
   // A ready-to-copy reference so a pasted ticket can be located by an agent:
-  // slug + version + short id, plus a direct admin link. The app copies this
-  // instead of a bare ticket id.
+  // slug + version + full id, plus a direct admin link. Keep the full UUID
+  // here because detail/attachment API routes require it.
   const versionName = meta("version_name");
   const versionLabel = versionName
     ? versionCode != null
@@ -416,7 +416,7 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
   } catch {
     ticketUrl = null;
   }
-  const reference = [app.slug, versionLabel, `ticket ${ticketId.slice(0, 8)}`]
+  const reference = [app.slug, versionLabel, `ticket ${ticketId}`]
     .filter(Boolean)
     .join(" · ");
 

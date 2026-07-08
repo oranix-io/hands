@@ -62,7 +62,7 @@ export function registerFeedbackCommands(program: Command): void {
       for (const t of res.tickets) {
         const preview = t.message.replace(/\s+/g, " ").slice(0, 60);
         console.log(
-          `${t.id.slice(0, 8)}  ${t.status.padEnd(11)} ${t.kind.padEnd(8)} ` +
+          `${t.id}  ${t.status.padEnd(11)} ${t.kind.padEnd(8)} ` +
             `${(t.assignee ?? "-").padEnd(16)} v${t.version_name ?? "?"} ` +
             `[${t.attachment_count}📎 ${t.comment_count}💬]  ${preview}`,
         );
@@ -85,7 +85,7 @@ export function registerFeedbackCommands(program: Command): void {
         return;
       }
       const t = res.ticket as Record<string, unknown>;
-      console.log(`Ticket ${String(t["id"]).slice(0, 8)} (${t["kind"]}, ${t["status"]})`);
+      console.log(`Ticket ${String(t["id"])} (${t["kind"]}, ${t["status"]})`);
       console.log(`  assignee: ${t["assignee"] ?? "-"}`);
       console.log(`  version:  ${t["version_name"] ?? "?"} (${t["version_code"] ?? "?"}) · ${t["channel"] ?? "?"}`);
       console.log(`  device:   ${t["device_model"] ?? "?"} · Android ${t["os_version"] ?? "?"} · ${t["arch"] ?? "?"} · ${t["locale"] ?? "?"}`);
