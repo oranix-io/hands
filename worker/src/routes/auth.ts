@@ -602,13 +602,13 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
       {
         name: "list-apps",
         description: "List apps the caller can access.",
-        endpoint: { method: "GET", path: "/apps" },
+        endpoint: { method: "GET", path: "/api/apps" },
       },
       {
         name: "list-feedback",
         description:
           "List feedback/crash tickets for an app, newest first. Optional status/kind filters.",
-        endpoint: { method: "GET", path: "/apps/{app_id}/feedback" },
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/feedback" },
         parameters: {
           app_id: { type: "string", in: "path", required: true, description: "App UUID." },
           status: { type: "string", in: "query", required: false, description: "open|in_progress|resolved|closed" },
@@ -619,7 +619,7 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         name: "get-feedback",
         description:
           "Get a feedback/crash ticket with device context, attachments, and comments. ticket_id may be a full UUID or a unique short-id prefix.",
-        endpoint: { method: "GET", path: "/apps/{app_id}/feedback/{ticket_id}" },
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/feedback/{ticket_id}" },
         parameters: {
           app_id: { type: "string", in: "path", required: true, description: "App UUID." },
           ticket_id: { type: "string", in: "path", required: true, description: "Ticket UUID or unique short-id prefix." },
@@ -631,7 +631,7 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
           "Download a raw feedback attachment (bytes as-is; Quiver does not unzip or interpret it).",
         endpoint: {
           method: "GET",
-          path: "/apps/{app_id}/feedback/{ticket_id}/attachments/{attachment_id}",
+          path: "/api/apps/{app_id}/feedback/{ticket_id}/attachments/{attachment_id}",
         },
         parameters: {
           app_id: { type: "string", in: "path", required: true, description: "App UUID." },
