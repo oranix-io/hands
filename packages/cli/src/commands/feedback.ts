@@ -4,6 +4,7 @@
  * update/comment).
  */
 import type { Command } from "commander";
+import { writeFile } from "node:fs/promises";
 import { apiRequest } from "../lib/api.js";
 
 interface TicketRow {
@@ -156,4 +157,39 @@ export function registerFeedbackCommands(program: Command): void {
       }
       console.log(`Commented on ${ticketId.slice(0, 8)}.`);
     });
+
+  feedback
+    .command("download-attachment <appIdOrSlug> <ticketId> <attachmentId>")
+    .alias("download")
+    .description(
+      "Download a feedback attachment to a file. Saves the raw bytes as-is — " +
+        "Quiver does not unzip or interpret the contents (the producing app owns the format).",
+    )
+    .option("-o, --output <path>", "Output file path. Defaults to the server filename in the cwd.")
+    .action(
+      async (
+        appIdOrSlug: string,
+        ticketId: string,
+        attachmentId: string,
+        opts: { output?: string },
+      ) => {
+        const appId = await resolveAppId(appIdOrSlug);
+        const res = await apiRequest<Response>(
+          `/api/apps/${appId}/feedback/${ticketId}/attachments/${attachmentId}`,
+          { raw: true },
+        );
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error(`Download failed: ${res.status} ${res.statusText} ${detail.slice(0, 200)}`);
+          process.exit(1);
+        }
+        const disposition = res.headers.get("content-disposition") ?? "";
+        const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+        const serverName = match?.[1] ? decodeURIComponent(match[1]) : attachmentId;
+        const outPath = opts.output ?? serverName;
+        const bytes = Buffer.from(await res.arrayBuffer());
+        await writeFile(outPath, bytes);
+        console.log(`Saved ${bytes.length} bytes to ${outPath}`);
+      },
+    );
 }
