@@ -8,16 +8,20 @@ NS_ASSUME_NONNULL_BEGIN
 /// disk; the next launch uploads each pending crash as a kind=crash Quiver
 /// ticket and deletes local files on success. Captures uncaught NSExceptions
 /// and fatal signals (SIGABRT/SIGSEGV/SIGBUS/SIGILL/SIGFPE/SIGTRAP).
+
 /// Supplies the host app's own diagnostics log files to attach alongside a
 /// crash. Invoked on a background queue at crash-upload time (next launch),
-/// once per pending crash. Return the absolute paths of the app-owned
-/// diagnostics files to attach (e.g. a rolling slock-diagnostics.jsonl plus a
+/// once per pending crash. `crashAtMillis` is the crash time in Unix epoch
+/// milliseconds (matching the ticket's crash_at and the on-disk crash log
+/// name), or 0 when unknown — use it to return a per-crash snapshot/slice of
+/// the app's logs. Return the absolute paths of the app-owned diagnostics
+/// files to attach (e.g. a rolling slock-diagnostics.jsonl plus a
 /// slock-diagnostics-summary.txt). Missing paths are skipped; return nil or an
 /// empty array to attach nothing. The app only writes and hands over raw file
 /// paths — the SDK owns packaging: it bundles the returned files into a single
 /// diagnostics-<ts>.zip, caps the total size, and attaches it to the crash
 /// ticket. The block must be cheap and non-blocking; do not do heavy work in it.
-typedef NSArray<NSString *> *_Nullable (^QuiverDiagnosticsProvider)(void);
+typedef NSArray<NSString *> *_Nullable (^QuiverDiagnosticsProvider)(int64_t crashAtMillis);
 
 @interface QuiverCrashReporter : NSObject
 

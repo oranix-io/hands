@@ -684,9 +684,11 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
         NSString *diagnosticsZip = nil;
         QuiverDiagnosticsProvider diagnosticsProvider = QuiverCurrentDiagnosticsProvider();
         if (diagnosticsProvider) {
+            int64_t crashAtMillis = [meta[@"crash_at"] isKindOfClass:NSNumber.class]
+                ? [meta[@"crash_at"] longLongValue] : 0;
             NSArray<NSString *> *diagnosticsPaths = nil;
             @try {
-                diagnosticsPaths = diagnosticsProvider();
+                diagnosticsPaths = diagnosticsProvider(crashAtMillis);
             } @catch (NSException *exception) {
                 NSLog(@"[Quiver] diagnostics provider threw: %@", exception.reason ?: exception.name);
                 diagnosticsPaths = nil;
