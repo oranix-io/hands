@@ -606,21 +606,21 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         description:
           "List feedback/crash tickets for an app, newest first. Optional status/kind filters.",
         endpoint: { method: "GET", path: "/apps/{app_id}/feedback" },
-        parameters: [
-          { name: "app_id", in: "path", required: true, description: "App UUID." },
-          { name: "status", in: "query", required: false, description: "open|in_progress|resolved|closed" },
-          { name: "kind", in: "query", required: false, description: "feedback|bug|crash (comma-separated)" },
-        ],
+        parameters: {
+          app_id: { in: "path", required: true, description: "App UUID." },
+          status: { in: "query", required: false, description: "open|in_progress|resolved|closed" },
+          kind: { in: "query", required: false, description: "feedback|bug|crash (comma-separated)" },
+        },
       },
       {
         name: "get-feedback",
         description:
           "Get a feedback/crash ticket with device context, attachments, and comments. ticket_id may be a full UUID or a unique short-id prefix.",
         endpoint: { method: "GET", path: "/apps/{app_id}/feedback/{ticket_id}" },
-        parameters: [
-          { name: "app_id", in: "path", required: true, description: "App UUID." },
-          { name: "ticket_id", in: "path", required: true, description: "Ticket UUID or unique short-id prefix." },
-        ],
+        parameters: {
+          app_id: { in: "path", required: true, description: "App UUID." },
+          ticket_id: { in: "path", required: true, description: "Ticket UUID or unique short-id prefix." },
+        },
       },
       {
         name: "download-feedback-attachment",
@@ -630,11 +630,11 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
           method: "GET",
           path: "/apps/{app_id}/feedback/{ticket_id}/attachments/{attachment_id}",
         },
-        parameters: [
-          { name: "app_id", in: "path", required: true, description: "App UUID." },
-          { name: "ticket_id", in: "path", required: true, description: "Ticket UUID or unique short-id prefix." },
-          { name: "attachment_id", in: "path", required: true, description: "Attachment UUID from the ticket detail." },
-        ],
+        parameters: {
+          app_id: { in: "path", required: true, description: "App UUID." },
+          ticket_id: { in: "path", required: true, description: "Ticket UUID or unique short-id prefix." },
+          attachment_id: { in: "path", required: true, description: "Attachment UUID from the ticket detail." },
+        },
       },
     ],
   });
