@@ -242,6 +242,13 @@ object (`version_name`, `version_code`, `channel`, `platform`, `arch`,
 `(app, device id)` — no PII; the device id is a random per-install UUID.
 Requires the app **client key** (same as feedback). Returns `202`.
 
+Authenticated admins and agents can read the aggregated version view at
+`GET /api/apps/:id/analytics/versions?window_days=30`. It joins these device
+pings with release update-check counters, feedback/crash tickets, and artifact
+download counters to report per-version metrics such as `active_devices`,
+`total_devices`, `update_current_count`, `update_offered_count`,
+`feedback_count`, `crash_count`, and `download_count`.
+
 ## Presigned attachment upload (large files)
 
 For attachments too large for an inline multipart submit (up to **200 MB**),

@@ -67,6 +67,10 @@ export const openApiDocument = docs.getOpenAPI31Document({
       description: "App lifecycle and app-level public client configuration.",
     },
     {
+      name: "Analytics",
+      description: "Authenticated app usage, device, and version metrics.",
+    },
+    {
       name: "Builds",
       description: "Create, inspect, and download build artifacts.",
     },

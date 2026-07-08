@@ -63,6 +63,13 @@ or `PATCH /api/apps/:id/releases/:releaseId` (`{"rollout_cohort_count": 25}`)
 as confidence grows. Release rows expose `offered_count` / `current_count`
 so you can watch real coverage.
 
+For a fuller per-version view, call
+`GET /api/apps/:id/analytics/versions?window_days=30` with Agent Login or a
+viewer-capable app token. The response includes one row per release-backed or
+telemetry-only version with active device count, total devices seen,
+update-check current/offered counts, feedback/crash counts, and artifact
+downloads.
+
 ### Ticket triage (feedback + crashes)
 
 ```bash

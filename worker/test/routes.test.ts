@@ -63,6 +63,7 @@ describe("quiver OpenAPI document", () => {
       "/api/apps/{appId}/releases/{releaseId}/publish",
       "/api/apps/{appId}/feedback/{ticketId}/comments",
       "/api/apps/{appId}/client-key",
+      "/api/apps/{appId}/analytics/versions",
       "/api/orgs/{orgId}/invites",
       "/api/orgs/{orgId}/webhooks/{webhookId}/deliveries",
       "/api/apps/{appId}/channels/{channelId}",
@@ -3921,6 +3922,87 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(v102.devices).toBe(2);
     expect(body.by_platform[0].platform).toBe("android");
     expect(body.by_platform[0].devices).toBe(3);
+  });
+
+  it("analytics: versions aggregates release metrics, devices, feedback, and downloads", async () => {
+    const env = makeEnv();
+    const { handleDeviceRegister, handleVersionAnalytics } = await import("../src/routes/analytics");
+    await seedRelease(env, "rel-metrics", "build-metrics", [["full", "all"]], {
+      versionName: "1.2.0",
+      versionCode: 120,
+      createdAt: 10_000,
+      rolloutCohortCount: 50,
+    });
+    await seedAsset(env, "build-metrics", "asset-metrics");
+    await env.DB.prepare(
+      "UPDATE build_assets SET download_count = ? WHERE id = ?",
+    ).bind(7, "asset-metrics").run();
+    await env.DB.prepare(
+      "INSERT INTO release_metrics (release_id, offered_count, current_count, last_checked_at) VALUES (?, ?, ?, ?)",
+    ).bind("rel-metrics", 5, 2, 11_000).run();
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets
+       (id, app_id, kind, status, message, version_name, version_code, channel,
+        device_id, metadata_json, created_at, updated_at)
+       VALUES (?, 'app-scope', ?, 'open', ?, ?, ?, 'production', ?, '{}', ?, ?)`,
+    ).bind("tick-metrics-1", "feedback", "feedback", "1.2.0", 120, "devA", 12_000, 12_000).run();
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets
+       (id, app_id, kind, status, message, version_name, version_code, channel,
+        device_id, metadata_json, created_at, updated_at)
+       VALUES (?, 'app-scope', ?, 'open', ?, ?, ?, 'production', ?, '{}', ?, ?)`,
+    ).bind("tick-metrics-2", "crash", "crash", "1.2.0", 120, "devB", 12_001, 12_001).run();
+
+    const ping = (deviceId: string, versionName: string, versionCode: number, channel = "production") =>
+      handleDeviceRegister({
+        env,
+        req: {
+          param: (n: string) => (n === "slug" ? "scope-app" : ""),
+          header: (n: string) =>
+            n === "X-Quiver-Client-Key" ? "qk_test" : n === "X-Quiver-Device-Id" ? deviceId : undefined,
+          query: () => undefined,
+          json: async () => ({ version_name: versionName, version_code: versionCode, channel, platform: "android" }),
+        },
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+      } as any);
+
+    expect((await ping("devA", "1.2.0", 120)).status).toBe(202);
+    expect((await ping("devB", "1.2.0", 120)).status).toBe(202);
+    expect((await ping("devC", "2.0.0-beta", 200)).status).toBe(202);
+
+    const res = await handleVersionAnalytics({
+      env,
+      req: { param: (n: string) => (n === "appId" ? "app-scope" : ""), query: () => "30" },
+      json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+    } as any);
+    const body = await responseJson<any>(res);
+    const releaseRow = body.versions.find((v: any) => v.release_id === "rel-metrics");
+    expect(releaseRow).toMatchObject({
+      build_id: "build-metrics",
+      channel: "production",
+      release_status: "active",
+      rollout_cohort_count: 50,
+      version_name: "1.2.0",
+      version_code: 120,
+      active_devices: 2,
+      total_devices: 2,
+      update_current_count: 2,
+      update_offered_count: 5,
+      feedback_count: 2,
+      crash_count: 1,
+      download_count: 7,
+      telemetry_only: false,
+    });
+    const telemetryOnly = body.versions.find((v: any) => v.version_code === 200);
+    expect(telemetryOnly).toMatchObject({
+      release_id: null,
+      build_id: null,
+      channel: "production",
+      version_name: "2.0.0-beta",
+      active_devices: 1,
+      total_devices: 1,
+      telemetry_only: true,
+    });
   });
 
   it("feedback: presigned attachments are namespace-guarded and existence-checked", async () => {

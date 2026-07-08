@@ -46,6 +46,12 @@ Each release row shows update-check analytics: how many devices are already
 **on this version** and how many were **offered** it (update checks from older
 clients), so you can see real rollout coverage as the percentage climbs.
 
+The app overview also exposes version-level metrics from
+`GET /api/apps/:id/analytics/versions`: active devices in the selected window,
+total devices seen, update-check current/offered counts, feedback/crash volume,
+and artifact downloads for each version/channel. The data comes from SDK device
+pings, update checks, feedback tickets, and build asset download counters.
+
 ## Builds
 
 Builds hold uploaded artifacts and provenance. Quiver distinguishes installable artifacts from support artifacts:

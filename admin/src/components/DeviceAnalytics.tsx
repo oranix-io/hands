@@ -5,7 +5,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { getDeviceAnalytics } from "../lib/api";
+import { getDeviceAnalytics, getVersionMetrics } from "../lib/api";
 
 const BAR_COLOR = "#2a78d6";
 
@@ -14,6 +14,10 @@ export function DeviceAnalytics({ appId }: { appId: string }) {
   const analytics = useQuery({
     queryKey: ["device-analytics", appId],
     queryFn: () => getDeviceAnalytics(appId, 30),
+  });
+  const versionMetrics = useQuery({
+    queryKey: ["version-metrics", appId],
+    queryFn: () => getVersionMetrics(appId, 30),
   });
 
   if (analytics.isLoading) return null;
@@ -89,6 +93,65 @@ export function DeviceAnalytics({ appId }: { appId: string }) {
           </div>
         )}
       </div>
+
+      {(versionMetrics.data?.versions.length ?? 0) > 0 && (
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <h4 className="text-xs font-medium text-slate-600">Version metrics</h4>
+            <span className="text-xs text-slate-500">last {versionMetrics.data?.window_days ?? 30} days</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-slate-500">
+                <tr className="border-b border-slate-100">
+                  <th className="py-1.5 pr-3 text-left font-medium">Version</th>
+                  <th className="py-1.5 pr-3 text-left font-medium">Channel</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">Active</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">Seen</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">Current</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">Offered</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">Feedback</th>
+                  <th className="py-1.5 text-right font-medium">Downloads</th>
+                </tr>
+              </thead>
+              <tbody>
+                {versionMetrics.data!.versions.slice(0, 8).map((v) => (
+                  <tr
+                    key={`${v.release_id ?? "telemetry"}-${v.version_code ?? v.version_name}-${v.channel}`}
+                    className="border-b border-slate-50 last:border-0"
+                  >
+                    <td className="py-1.5 pr-3 whitespace-nowrap">
+                      <button
+                        type="button"
+                        className="font-medium text-slate-700 hover:text-blue-700"
+                        onClick={() =>
+                          v.version_code != null &&
+                          navigate(`/apps/${appId}/feedback?version_code=${v.version_code}`)
+                        }
+                      >
+                        {v.version_name}
+                      </button>
+                      {v.version_code != null && (
+                        <span className="ml-1 text-slate-400 tabular-nums">{v.version_code}</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-slate-600">{v.channel}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">{v.active_devices}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">{v.total_devices}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">{v.update_current_count}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">{v.update_offered_count}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">
+                      {v.feedback_count}
+                      {v.crash_count > 0 && <span className="text-slate-400"> / {v.crash_count}</span>}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{v.download_count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
