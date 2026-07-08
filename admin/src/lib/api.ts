@@ -1223,6 +1223,36 @@ export interface DeviceAnalytics {
   by_channel: Array<{ channel: string; devices: number }>;
 }
 
+export interface VersionMetric {
+  release_id: string | null;
+  build_id: string | null;
+  channel: string;
+  product_type: string | null;
+  release_type: string | null;
+  release_status: string | null;
+  rollout_cohort_count: number | null;
+  version_name: string;
+  version_code: number | null;
+  released_at: number | null;
+  release_updated_at: number | null;
+  active_devices: number;
+  total_devices: number;
+  update_current_count: number;
+  update_offered_count: number;
+  last_checked_at: number | null;
+  feedback_count: number;
+  crash_count: number;
+  download_count: number;
+  telemetry_only: boolean;
+}
+
+export interface VersionMetrics {
+  window_start: number;
+  window_days: number;
+  window_minutes: number;
+  versions: VersionMetric[];
+}
+
 export interface DeviceDetail {
   device_id: string;
   version_name: string | null;
@@ -1247,6 +1277,12 @@ export const getDeviceDetail = (appId: string, deviceId: string) =>
 export const getDeviceAnalytics = (appId: string, windowDays = 30) =>
   request<DeviceAnalytics>(
     `/api/apps/${appId}/analytics/devices?window_days=${windowDays}`,
+    { admin: true },
+  );
+
+export const getVersionMetrics = (appId: string, windowDays = 30) =>
+  request<VersionMetrics>(
+    `/api/apps/${appId}/analytics/versions?window_days=${windowDays}`,
     { admin: true },
   );
 

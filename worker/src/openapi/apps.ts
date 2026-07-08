@@ -30,6 +30,49 @@ const ClientKeyResponse = z
   .catchall(z.unknown())
   .openapi("ClientKeyResponse");
 
+const WindowDaysQuery = z.object({
+  window_days: z.coerce.number().int().positive().max(365).optional().openapi({
+    param: { name: "window_days", in: "query" },
+    example: 30,
+  }),
+  window_minutes: z.coerce.number().int().positive().max(525600).optional().openapi({
+    param: { name: "window_minutes", in: "query" },
+    example: 15,
+  }),
+});
+
+const VersionMetricsResponse = z
+  .object({
+    window_start: z.number().int(),
+    window_days: z.number().int(),
+    window_minutes: z.number().int(),
+    versions: z.array(
+      z.object({
+        release_id: z.string().nullable(),
+        build_id: z.string().nullable(),
+        channel: z.string(),
+        product_type: z.string().nullable(),
+        release_type: z.string().nullable(),
+        release_status: z.string().nullable(),
+        rollout_cohort_count: z.number().int().nullable(),
+        version_name: z.string(),
+        version_code: z.number().int().nullable(),
+        released_at: z.number().int().nullable(),
+        release_updated_at: z.number().int().nullable(),
+        active_devices: z.number().int(),
+        total_devices: z.number().int(),
+        update_current_count: z.number().int(),
+        update_offered_count: z.number().int(),
+        last_checked_at: z.number().int().nullable(),
+        feedback_count: z.number().int(),
+        crash_count: z.number().int(),
+        download_count: z.number().int(),
+        telemetry_only: z.boolean(),
+      }),
+    ),
+  })
+  .openapi("VersionMetricsResponse");
+
 export function registerAppRoutes(registry: OpenApiRegistry) {
   register(registry, {
     method: "get",
@@ -153,6 +196,22 @@ export function registerAppRoutes(registry: OpenApiRegistry) {
 
   register(registry, {
     method: "get",
+    path: "/api/apps/{appId}/analytics/versions",
+    tags: ["Analytics"],
+    summary: "List per-version usage metrics",
+    description:
+      "Aggregates release update-check counters, active device pings, feedback/crash volume, and artifact download counts by app version.",
+    security: auth,
+    request: { params: AppIdParam, query: WindowDaysQuery },
+    responses: {
+      200: success("Version metrics.", VersionMetricsResponse),
+      403: error("Current principal cannot view analytics for the app."),
+      404: error("App was not found."),
+    },
+  });
+
+  register(registry, {
+    method: "get",
     path: "/api/apps/{appId}/client-key",
     tags: ["Apps"],
     summary: "Read the app public client key",
@@ -180,4 +239,3 @@ export function registerAppRoutes(registry: OpenApiRegistry) {
     },
   });
 }
-
