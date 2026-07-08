@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'Quiver'
-  s.version          = '0.1.3'
+  s.version          = '0.1.4'
   s.summary          = 'Quiver feedback + crash reporting for iOS.'
   s.description      = <<-DESC
     Native iOS reporting layer for Quiver: in-app feedback tickets
@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
     parameters, never compiled into the SDK.
   DESC
   s.homepage         = 'https://github.com/oranix-io/quiver'
-  s.license          = { :type => 'MIT' }
+  s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'Oranix' => 'artin@cat.ms' }
   s.source           = { :git => 'https://github.com/oranix-io/quiver.git', :tag => "ios-v#{s.version}" }
 
