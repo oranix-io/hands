@@ -216,12 +216,15 @@ find and rotate the key in the app's Settings tab or via
 | `attachments` | No | Inline files (multipart), up to 10 MB each, ≤9 total. |
 | `presigned` | No | JSON array of `{ r2_key, filename, content_type, size }` for files already uploaded via the presign flow (below). |
 
-Returns `201` with `{ "id": "<ticket id>", "status": "open" }`. Rate limit:
-10 submissions per hour per app + client IP. Tickets appear in the admin
-Feedback tab; a `feedback:new` webhook fires for subscribed endpoints (crash
-tickets can additionally trigger `crash:new_group` / `crash:spike`). The
-Android SDK's `QuiverFeedback.submit(...)` wraps this endpoint and attaches
-device metadata automatically.
+Returns `201` with the full ticket UUID in `id`, plus a copyable `reference`
+and `ticket_url`, for example `{ "id": "<ticket UUID>", "status": "open",
+"reference": "raft-android · 1.0.4 (1000400) · ticket <ticket UUID>",
+"ticket_url": "https://quiver.oranix.io/apps/<appId>/feedback/<ticket UUID>" }`.
+Rate limit: 10 submissions per hour per app + client IP. Tickets appear in
+the admin Feedback tab; a `feedback:new` webhook fires for subscribed
+endpoints (crash tickets can additionally trigger `crash:new_group` /
+`crash:spike`). The Android SDK's `QuiverFeedback.submit(...)` wraps this
+endpoint and attaches device metadata automatically.
 
 ## Device Register (telemetry)
 

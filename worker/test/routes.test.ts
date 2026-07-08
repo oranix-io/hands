@@ -3878,6 +3878,7 @@ describe("quiver public API v2 — scope resolution", () => {
     const submitContext = {
       env,
       req: {
+        url: "https://quiver.oranix.io/public/v2/apps/scope-app/feedback",
         param: (name: string) => (name === "slug" ? "scope-app" : ""),
         header: (name: string) => (name === "X-Quiver-Client-Key" ? "qk_test" : undefined),
         query: () => undefined,
@@ -3892,6 +3893,9 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(submitted.status).toBe(201);
     const submittedBody = await responseJson<any>(submitted);
     expect(submittedBody.attachments).toBe(1);
+    expect(submittedBody.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(submittedBody.reference).toContain(`ticket ${submittedBody.id}`);
+    expect(submittedBody.ticket_url).toContain(`/apps/app-scope/feedback/${submittedBody.id}`);
     expect(putCalls.length).toBe(1);
     expect(putCalls[0]!.key).toContain("feedback/app-scope/");
 

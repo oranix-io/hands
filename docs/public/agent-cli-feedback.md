@@ -57,20 +57,66 @@ quiver feedback list raft-android --status open --kind crash
 quiver feedback list raft-android --kind bug
 
 # Show one ticket: description, device context, attachments, comments.
-# The ticket id can be the short 8-char prefix or the full UUID.
-quiver feedback show raft-android 389d855b
+# Use the full UUID from the submitted ticket response/reference.
+quiver feedback show raft-android 389d855b-0000-0000-0000-000000000000
 
 # Triage: change status and/or (re)assign
-quiver feedback update raft-android 389d855b --status in_progress --assignee me
-quiver feedback update raft-android 389d855b --status resolved
-quiver feedback update raft-android 389d855b --assignee none   # unassign
+quiver feedback update raft-android 389d855b-0000-0000-0000-000000000000 --status in_progress --assignee me
+quiver feedback update raft-android 389d855b-0000-0000-0000-000000000000 --status resolved
+quiver feedback update raft-android 389d855b-0000-0000-0000-000000000000 --assignee none   # unassign
 
 # Leave an internal comment (also where auto-retrace/symbolication land)
-quiver feedback comment raft-android 389d855b "reproduced on SGT-AL10; fix in progress"
+quiver feedback comment raft-android 389d855b-0000-0000-0000-000000000000 "reproduced on SGT-AL10; fix in progress"
 ```
 
 Status flow: `open → in_progress → resolved → closed`. Assignee is
 independent of status.
+
+## Quick lookup by feedback id
+
+When a user pastes a Quiver feedback id, first identify the app slug. For
+Raft Android/mobile, that slug is normally `raft-android`.
+
+New Quiver feedback responses include the full UUID in both `id` and the
+copyable `reference` field, for example:
+
+```text
+raft-android · 1.0.4 (1000400) · ticket 389d855b-0000-0000-0000-000000000000
+```
+
+Use that UUID directly:
+
+```bash
+TICKET_ID=389d855b-0000-0000-0000-000000000000
+APP=raft-android
+
+quiver feedback show "$APP" "$TICKET_ID"
+```
+
+The CLI now prints full UUIDs in human output. If you are working from an
+older copied reference that has only an 8-character short id, expand it to the
+full ticket UUID first:
+
+```bash
+SHORT_ID=389d855b
+APP=raft-android
+
+TICKET_ID="$(quiver feedback list "$APP" --json \
+  | python3 -c 'import json,sys; p=sys.argv[1]; print(next(t["id"] for t in json.load(sys.stdin)["tickets"] if t["id"].startswith(p)))' "$SHORT_ID")"
+
+quiver feedback show "$APP" "$TICKET_ID"
+```
+
+The `show` output is the first place to check for diagnostics: it includes
+the user message, version/channel, device context, comments, and all
+attachment ids. Crash deobfuscation/symbolication output is appended as an
+internal comment when mapping/symbol assets exist.
+
+For scripts, keep the raw JSON:
+
+```bash
+quiver feedback show "$APP" "$TICKET_ID" --json > ticket.json
+```
 
 ## Crashes
 
@@ -88,16 +134,35 @@ curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
 ## Attachments (diagnostics zips, logs)
 
 `feedback show` lists each attachment's id, filename, and size. Download one
-through the authenticated API endpoint (the CLI doesn't wrap this yet):
+through the authenticated API endpoint (the CLI doesn't wrap this yet). The
+API path requires the app UUID, not just the slug:
 
 ```bash
+APP_ID="$(quiver apps get "$APP" --json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+
 curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
-  "https://quiver.oranix.io/api/apps/<appId>/feedback/<ticketId>/attachments/<attachmentId>" \
+  "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID/attachments/<attachmentId>" \
   -o diagnostics.zip
 ```
 
 Find `<appId>` with `quiver apps list` (the slug is stable; the id is the
 UUID the API paths use).
+
+Quiver does not define the files inside an app's diagnostics archive. It
+stores and serves the attachment; the producing app owns the log format and
+archive layout.
+
+The same ticket detail call can be made directly without the CLI:
+
+```bash
+curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
+  "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID"
+```
+
+Known current limitation: the CLI can list attachment ids but does not yet
+wrap attachment downloads; use the authenticated REST call above until a
+`quiver feedback download-attachment` command exists.
 
 ## Other environment knobs
 
