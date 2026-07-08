@@ -29,6 +29,19 @@ enum {
 static char gQuiverCrashDir[512] = {0};
 static NSUncaughtExceptionHandler *gQuiverPreviousExceptionHandler = NULL;
 
+// App-registered diagnostics provider (see QuiverCrashReporter.h). Written
+// once at init; read at upload time on a background queue. Guarded by a lock
+// so set/get never tears across threads.
+static QuiverDiagnosticsProvider gQuiverDiagnosticsProvider = nil;
+static pthread_mutex_t gQuiverDiagnosticsProviderLock = PTHREAD_MUTEX_INITIALIZER;
+
+static QuiverDiagnosticsProvider QuiverCurrentDiagnosticsProvider(void) {
+    pthread_mutex_lock(&gQuiverDiagnosticsProviderLock);
+    QuiverDiagnosticsProvider provider = gQuiverDiagnosticsProvider;
+    pthread_mutex_unlock(&gQuiverDiagnosticsProviderLock);
+    return provider;
+}
+
 typedef struct {
     char uuid[37];
     char path[QuiverImagePathMax];
@@ -493,6 +506,66 @@ static void QuiverHandleSignal(int signalNumber) {
     raise(signalNumber);
 }
 
+// Bundles the app-provided diagnostics files into a single zip for upload.
+// The app hands over raw file paths; the SDK owns packaging. Returns the zip
+// path (inside a fresh temp dir the caller cleans up) or nil when there is
+// nothing to attach. Runs at upload time (next launch), not in the crash
+// handler, so ordinary Foundation APIs are safe. NSFileCoordinator's
+// forUploading option is the dependency-free way to produce a real .zip on
+// iOS: coordinated-reading a directory yields a zipped copy.
+static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stamp) {
+    if (![paths isKindOfClass:NSArray.class] || paths.count == 0) return nil;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *stageRoot = [NSTemporaryDirectory()
+        stringByAppendingPathComponent:[@"quiver-diag-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+    NSString *stageDir = [stageRoot stringByAppendingPathComponent:@"diagnostics"];
+    if (![fm createDirectoryAtPath:stageDir withIntermediateDirectories:YES attributes:nil error:nil]) {
+        return nil;
+    }
+
+    NSUInteger staged = 0;
+    for (NSString *path in paths) {
+        if (![path isKindOfClass:NSString.class] || path.length == 0) continue;
+        BOOL isDir = NO;
+        if (![fm fileExistsAtPath:path isDirectory:&isDir] || isDir) continue;
+        NSString *name = path.lastPathComponent;
+        NSString *dest = [stageDir stringByAppendingPathComponent:name];
+        for (NSUInteger n = 1; [fm fileExistsAtPath:dest]; n++) {
+            NSString *ext = name.pathExtension;
+            NSString *base = name.stringByDeletingPathExtension;
+            NSString *alt = ext.length > 0
+                ? [NSString stringWithFormat:@"%@-%lu.%@", base, (unsigned long)n, ext]
+                : [NSString stringWithFormat:@"%@-%lu", base, (unsigned long)n];
+            dest = [stageDir stringByAppendingPathComponent:alt];
+        }
+        if ([fm copyItemAtPath:path toPath:dest error:nil]) staged++;
+    }
+    if (staged == 0) {
+        [fm removeItemAtPath:stageRoot error:nil];
+        return nil;
+    }
+
+    __block NSString *zipPath = nil;
+    NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+    NSError *coordError = nil;
+    [coordinator coordinateReadingItemAtURL:[NSURL fileURLWithPath:stageDir]
+                                    options:NSFileCoordinatorReadingForUploading
+                                      error:&coordError
+                                 byAccessor:^(NSURL *zippedURL) {
+        NSString *dest = [stageRoot stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"diagnostics-%@.zip", stamp.length > 0 ? stamp : @"crash"]];
+        if ([fm copyItemAtPath:zippedURL.path toPath:dest error:nil]) {
+            zipPath = dest;
+        }
+    }];
+
+    [fm removeItemAtPath:stageDir error:nil];
+    if (!zipPath) {
+        [fm removeItemAtPath:stageRoot error:nil];
+    }
+    return zipPath;
+}
+
 @implementation QuiverCrashReporter
 
 + (void)install {
@@ -533,6 +606,12 @@ static void QuiverHandleSignal(int signalNumber) {
     [fm removeItemAtPath:logPath error:nil];
     NSString *metaPath = [[logPath stringByDeletingPathExtension] stringByAppendingString:@".meta.json"];
     [fm removeItemAtPath:metaPath error:nil];
+}
+
++ (void)setDiagnosticsProvider:(QuiverDiagnosticsProvider)provider {
+    pthread_mutex_lock(&gQuiverDiagnosticsProviderLock);
+    gQuiverDiagnosticsProvider = [provider copy];
+    pthread_mutex_unlock(&gQuiverDiagnosticsProviderLock);
 }
 
 + (void)uploadPendingAfterDelay:(NSTimeInterval)delay {
@@ -598,10 +677,34 @@ static void QuiverHandleSignal(int signalNumber) {
             extras[@"crash_frames"] = framesJSON;
         }
 
+        // Attach app-owned diagnostics (if a provider is registered): the app
+        // hands over raw file paths, the SDK zips them into a single
+        // diagnostics-<stamp>.zip alongside the crash log.
+        NSMutableArray<NSString *> *attachmentPaths = [NSMutableArray arrayWithObject:logPath];
+        NSString *diagnosticsZip = nil;
+        QuiverDiagnosticsProvider diagnosticsProvider = QuiverCurrentDiagnosticsProvider();
+        if (diagnosticsProvider) {
+            int64_t crashAtMillis = [meta[@"crash_at"] isKindOfClass:NSNumber.class]
+                ? [meta[@"crash_at"] longLongValue] : 0;
+            NSArray<NSString *> *diagnosticsPaths = nil;
+            @try {
+                diagnosticsPaths = diagnosticsProvider(crashAtMillis);
+            } @catch (NSException *exception) {
+                NSLog(@"[Quiver] diagnostics provider threw: %@", exception.reason ?: exception.name);
+                diagnosticsPaths = nil;
+            }
+            NSString *stamp = [[logName stringByReplacingOccurrencesOfString:@"crash-" withString:@""]
+                stringByReplacingOccurrencesOfString:@".txt" withString:@""];
+            diagnosticsZip = QuiverZipDiagnostics(diagnosticsPaths, stamp);
+            if (diagnosticsZip) {
+                [attachmentPaths addObject:diagnosticsZip];
+            }
+        }
+
         dispatch_semaphore_t done = dispatch_semaphore_create(0);
         [QuiverFeedbackClient submitWithMessage:message
                                                 kind:@"crash"
-                                     attachmentPaths:@[ logPath ]
+                                     attachmentPaths:attachmentPaths
                                               extras:extras
                                           completion:^(NSString *ticketId, NSError *error) {
             if (ticketId.length > 0 && !error) {
@@ -613,6 +716,13 @@ static void QuiverHandleSignal(int signalNumber) {
             dispatch_semaphore_signal(done);
         }];
         dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(60 * NSEC_PER_SEC)));
+
+        // The zip lives in a throwaway temp dir; remove it whether or not the
+        // upload succeeded (the crash log itself is retained on failure so the
+        // next launch retries).
+        if (diagnosticsZip) {
+            [NSFileManager.defaultManager removeItemAtPath:diagnosticsZip.stringByDeletingLastPathComponent error:nil];
+        }
     }
 }
 
