@@ -263,7 +263,7 @@ function layout({ title, description, body, activeSlug }) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} - Quiver Docs</title>
+  <title>${escapeHtml(title)} - Hands Docs</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <style>
     :root { color-scheme: light; --ink:#020617; --muted:#475569; --line:#e2e8f0; --bg:#f8fafc; --panel:#fff; --accent:#0f172a; }
@@ -322,7 +322,7 @@ function layout({ title, description, body, activeSlug }) {
 <body>
   <header>
     <div class="top">
-      <a class="brand" href="/"><img src="/favicon.svg" alt="" /> Quiver</a>
+      <a class="brand" href="/"><img src="/favicon.svg" alt="" /> Hands</a>
       <nav>
         <a href="/docs/">Docs</a>
         <a href="/api-docs">API explorer</a>
@@ -333,7 +333,7 @@ function layout({ title, description, body, activeSlug }) {
   <div class="shell">
     <aside>${nav}</aside>
     <main>
-      <div class="eyebrow">Quiver Docs</div>
+      <div class="eyebrow">Hands Docs</div>
       <h1>${escapeHtml(title)}</h1>
       <p class="lede">${escapeHtml(description)}</p>
       ${body}
