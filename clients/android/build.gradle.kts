@@ -56,8 +56,8 @@ afterEvaluate {
                 version = project.version.toString()
 
                 pom {
-                    name.set("Quiver Android Updater")
-                    description.set("Android SDK for server-side Quiver update checks and APK installation.")
+                    name.set("Hands Android Updater")
+                    description.set("Android SDK for server-side Hands update checks and APK installation.")
                     url.set("https://github.com/oranix-io/quiver")
                     licenses {
                         license {
