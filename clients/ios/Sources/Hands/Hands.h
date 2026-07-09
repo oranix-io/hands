@@ -32,7 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// iOS, posting to a Hands server's public feedback endpoint.
 ///
 ///   [Hands installWithConfig:
-///       [HandsConfig configWithBaseUrl:@"https://quiver.example.com"
+///       [HandsConfig configWithBaseUrl:@"https://hands.build"
 ///                                     appSlug:@"my-app"
 ///                                     channel:@"main"
 ///                                   clientKey:@"qk_…"]];

@@ -11,7 +11,7 @@ Hands feedback + crash reporting SDK for HarmonyOS (ArkTS).
 
 Configured at runtime (base URL, app slug, channel, client key are init
 parameters, never compiled in). See the Hands docs at
-<https://quiver.oranix.io/docs> for integration details.
+<https://hands.build/docs> for integration details.
 
 ## Install
 

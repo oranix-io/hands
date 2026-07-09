@@ -88,7 +88,7 @@ class HandsFeedback(
             versionCode?.let { put("version_code", it) }
             put("platform", "android")
             put("bundle_id", context.packageName)
-            put("quiver_sdk", SDK_VERSION)
+            put("hands_sdk", SDK_VERSION)
             channel?.let { put("channel", it) }
             buildCommit(context)?.let { put("commit", it) }
 
@@ -250,7 +250,7 @@ class HandsFeedback(
     companion object {
         /** Quiver Android SDK version — reported in feedback/crash environment
          *  metadata. Keep in sync with the SDK's published version. */
-        const val SDK_VERSION = "0.9.0"
+        const val SDK_VERSION = "0.10.1"
 
         /** Server-enforced: at most 9 attachments per ticket. */
         const val MAX_ATTACHMENTS = 9

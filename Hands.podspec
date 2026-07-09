@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'Hands'
-  s.version          = '0.2.0'
+  s.version          = '0.2.1'
   s.summary          = 'Hands feedback + crash reporting for iOS.'
   s.description      = <<-DESC
     Native iOS reporting layer for Hands: in-app feedback tickets
