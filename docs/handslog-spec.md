@@ -1,7 +1,7 @@
 # HandsLog — design spec
 
-Status: **draft for review** (2026-07-09)
-Owner: CC-Hands-Owner · Requested by: artin
+Status: **Node/desktop track approved — Phase 1 in progress** (2026-07-09)
+Owner: CC-Quiver-Owner · Requested by: artin
 
 ## Why
 
@@ -23,16 +23,49 @@ Hands.log.*  →  rotating JSONL on disk + in-memory ring
 
 ## Scope
 
-- **In**: a Log capability **inside** the existing packages — `@oranix/quiver`
-  (iOS pod), `@oranix/quiver-android`, `@oranix/quiver` (ohpm), and
-  `@oranix/quiver-electron`. No new standalone package.
+Two delivery surfaces for the **same** generic capability:
+
+- **Mobile** — a Log capability **inside** the existing mobile SDKs (`Hands`
+  iOS pod, `hands-android-sdk`, ohpm `@botiverse/hands`). No new standalone
+  package there; it feeds the crash-diagnostics attach that already exists.
+- **Node / desktop** — a **new pure-Node core package `@botiverse/hands-node`**
+  (there was no Node SDK before), consumed directly by the `hands` CLI and any
+  Node service, and wrapped by an **`@botiverse/hands-electron`** adapter for the
+  desktop app. This is the track artin greenlit first (see Architecture below).
 - **Generic only** (see the "Hands stays generic" principle): HandsLog is a
   logging *primitive* — levels, structured fields, tags, rotation, ring buffer,
   redaction. It does **not** encode any consumer's log semantics; Slock and
   others layer meaning on top.
-- **Out (P1)**: remote distribution/collection and tag "染色" selective capture
-  are **P2**. This spec designs the P1 surface so P2 slots in without breaking
-  changes.
+- **Out (P1)**: server-assisted distribution/collection and tag "染色" selective
+  capture are later phases. This spec designs the P1 surface + the collection
+  **contract** so they slot in without breaking changes.
+
+## Architecture (Node / desktop two-layer)
+
+Decided 2026-07-09 (artin + KMP + QA + Codex, thread #Hands:c526b5e1):
+
+- **`@botiverse/hands-node`** — the pure-Node core. Logger (JSONL / size+daily
+  rotation / ring buffer / retention / redaction), plus compression, upload, and
+  the collect-policy executor. Depends only on Node `fs/http/crypto/timers` —
+  **no Electron or browser deps** — so the `hands` CLI, any Node service, CI, and
+  the Electron main process all import it directly.
+  - **Schema is a stable sub-export**, `@botiverse/hands-node/logs/schema`:
+    the `types + validators` for the **collect policy**, the **log bundle**, and
+    the **redaction contract**. Client SDK, CLI, and the Hands backend all agree
+    on this one definition (no per-consumer reinterpretation). Kept as a
+    sub-export rather than a separate `@botiverse/hands-log-schema` package —
+    split it out only if a cross-language / separate-backend-repo / contract-only
+    consumer appears.
+- **`@botiverse/hands-electron`** — the desktop adapter. Depends on
+  `@botiverse/hands-node`; adds only Electron-runtime context: main/renderer
+  **preload + IPC** (the renderer cannot write files, so it logs via IPC to the
+  main-process node logger), `windowId` / `process`, `app.getPath('userData')`
+  default log dir, crashpad/minidump association, and autoUpdater events. All
+  write/rotate/redact/collect/upload logic is reused from the core.
+
+So CLI uses the core, Electron uses the wrapped package, and future Node backends
+reuse the same core — one log format, one rotation/redaction, one collection
+contract everywhere.
 
 ## Non-goals
 
@@ -139,23 +172,75 @@ Verify end-to-end (trigger a crash → confirm the ticket's diagnostics zip
 contains the HandsLog files and the backend/UI still renders them) before
 removing the bespoke writer/rotation.
 
+## Server-assisted collection — contract & governance
+
+Backend-driven collection ("下发日志采集") is **pull-based**, reusing the poll the
+client already does (update-check / metrics): the server includes a **collect
+policy** in the poll response; the client matches locally, packages a **log
+bundle**, and uploads it to a **log-ingest endpoint** decoupled from the business
+API. Both `collect policy` and `log bundle` are defined by
+`@botiverse/hands-node/logs/schema`. Governance constraints (must be enforced in
+the core, so every consumer inherits them):
+
+- **Signed + versioned + expiring policy.** The client verifies the policy's
+  signature, schema version, and expiry; expired / downgraded / bad-signature
+  policies **fail closed** and write an audit entry — never collect on a stale or
+  tampered policy.
+- **Hard budgets.** Per-collection max bytes, per-day max bytes, upload
+  concurrency cap, and weak-network backoff. Hitting a limit must not affect the
+  host app / CLI main flow.
+- **Redaction is mandatory and re-applied at upload.** Secrets / tokens / JWTs /
+  API keys / env / `Authorization` / cookies are redacted by default; the bundle
+  is scrubbed again just before upload. No plaintext secret may appear in a
+  bundle.
+- **Decoupled + non-blocking.** The log-ingest endpoint is separate from the
+  business API; ingest failure must not affect the app.
+- **Opt-out.** Org- and user-level switches; enterprise environments can disable
+  remote collection entirely.
+
 ## Phasing
 
-- **P1** — core capture: levels, tags, structured JSONL, size+daily rotation,
-  ring buffer, redaction, retention; wire into the existing crash-diagnostics
-  attach; migrate `slock-diagnostics` via the adapter above. Platforms: **iOS +
-  Android are must-do**; OHOS ships the same batch if its SDK writes to disk
-  reliably, otherwise interface-placeholder now + wire attach right after.
-  (Electron: P2, unless the website/Electron story is wanted immediately.)
-- **P2** — server-assisted **distribution/collection** (on-demand log pull,
-  remote minimum level per device/cohort) and **染色 / tag-based selective
-  capture** (mark a tag/session for verbose capture + eager upload). Needs new
-  server endpoints; designed to layer on P1's tag + level model.
+Node / desktop track (artin greenlit, thread #Hands:c526b5e1):
+
+- **Phase 1** — `@botiverse/hands-node` core: logger (levels, tags, structured
+  JSONL, size+daily rotation, ring buffer, redaction, retention) +
+  `logs/schema` sub-export (policy/bundle/redaction types + validators) + **CLI
+  integration** (the `hands` CLI writes structured logs via the core; a
+  `hands logs collect` scaffold that packages locally against a policy).
+- **Phase 2** — server: log-ingest endpoint + a `collect` policy in the poll
+  response + admin UI (start a collection / view returned bundles / opt-out
+  switches). Enforces the governance contract above.
+- **Phase 3** — `@botiverse/hands-electron` adapter over the core (IPC/window/
+  crashpad/autoUpdater/userData context).
+
+Mobile track (original P1/P2, unchanged):
+
+- **Mobile P1** — core capture inside the mobile SDKs + wire into the existing
+  crash-diagnostics attach; migrate `slock-diagnostics` via the adapter above.
+  **iOS + Android must-do**; OHOS same batch if its SDK writes to disk reliably,
+  else interface-placeholder + wire attach right after.
+- **Mobile P2** — the same server-assisted distribution/collection + 染色, built
+  on the contract above.
+
+### Phase 1 acceptance criteria (QA)
+
+- CLI writes JSONL rolling logs via `@botiverse/hands-node`; append/rotate resume
+  correctly after a restart.
+- `policy` / `bundle` / `redaction` schemas are exported from
+  `@botiverse/hands-node/logs/schema`; CLI fixtures validate against them.
+- Redaction by default covers token / JWT / API key / env / `Authorization` /
+  cookies; no plaintext secret appears in an upload bundle.
+- A collect policy is verified for signature / version / expiry; expired,
+  downgraded, and bad-signature policies all **fail closed** and write an audit
+  log.
+- Budget hard-limits (per-collection size, per-day size, concurrency, weak-net
+  backoff) are testable and, when hit, do not affect the CLI main flow.
 
 ## Open questions for review
 
 1. Default rotation — `daily`+size-cap as proposed, or size-only to match today?
 2. Ring buffer default size (500?) and default retention (7 days / 4 MB?).
-3. Electron in P1 or P2?
+3. ~~Electron in P1 or P2?~~ **Resolved**: Node core (`@botiverse/hands-node`) +
+   CLI is Phase 1; Electron adapter is Phase 3, built over the core.
 4. P2 remote-level control: per-device vs per-cohort, and does it reuse the
    `/metrics` device identity or a new channel?
