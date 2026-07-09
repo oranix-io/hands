@@ -5,7 +5,7 @@ plugins {
     id("maven-publish")
 }
 
-group = "io.quiver"
+group = "build.hands"
 version = providers.gradleProperty("VERSION_NAME").orElse("0.1.0-SNAPSHOT").get()
 
 android {
@@ -51,8 +51,8 @@ afterEvaluate {
         publications {
             create<MavenPublication>("release") {
                 from(components["release"])
-                groupId = "io.quiver"
-                artifactId = "quiver-android-updater"
+                groupId = "build.hands"
+                artifactId = "hands-android-updater"
                 version = project.version.toString()
 
                 pom {
