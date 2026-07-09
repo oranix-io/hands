@@ -1,22 +1,22 @@
-# QuiverLog — design spec
+# HandsLog — design spec
 
 Status: **draft for review** (2026-07-09)
-Owner: CC-Quiver-Owner · Requested by: artin
+Owner: CC-Hands-Owner · Requested by: artin
 
 ## Why
 
-Quiver already owns the **transport** side of client observability: crash and
+Hands already owns the **transport** side of client observability: crash and
 feedback ingest, attachments, `/metrics`, and (iOS) automatic bundling of a
 diagnostics zip onto crash tickets. What's missing is the **capture** side.
 
 Today every consumer rolls its own log writer — the Slock app ships a bespoke
 `slock-diagnostics.jsonl` writer (rotation, JSONL format, ring buffer) that only
-it can use. Anyone else adopting Quiver needs the same thing. QuiverLog makes log
-capture a **first-class, generic capability built into the existing Quiver
-SDKs**, so it flows straight into Quiver's transport and closes the loop:
+it can use. Anyone else adopting Hands needs the same thing. HandsLog makes log
+capture a **first-class, generic capability built into the existing Hands
+SDKs**, so it flows straight into Hands's transport and closes the loop:
 
 ```
-Quiver.log.*  →  rotating JSONL on disk + in-memory ring
+Hands.log.*  →  rotating JSONL on disk + in-memory ring
               →  (on crash/feedback) zipped & attached to the ticket   [exists today]
               →  (P2) on-demand pull / remote level / tag-based collection
 ```
@@ -26,7 +26,7 @@ Quiver.log.*  →  rotating JSONL on disk + in-memory ring
 - **In**: a Log capability **inside** the existing packages — `@oranix/quiver`
   (iOS pod), `@oranix/quiver-android`, `@oranix/quiver` (ohpm), and
   `@oranix/quiver-electron`. No new standalone package.
-- **Generic only** (see the "Quiver stays generic" principle): QuiverLog is a
+- **Generic only** (see the "Hands stays generic" principle): HandsLog is a
   logging *primitive* — levels, structured fields, tags, rotation, ring buffer,
   redaction. It does **not** encode any consumer's log semantics; Slock and
   others layer meaning on top.
@@ -37,7 +37,7 @@ Quiver.log.*  →  rotating JSONL on disk + in-memory ring
 ## Non-goals
 
 - Not a general APM/tracing system. Structured tags enable later correlation but
-  QuiverLog is file-first, best-effort, offline-friendly.
+  HandsLog is file-first, best-effort, offline-friendly.
 - Never blocks or crashes the host app: all I/O is best-effort and off the hot path.
 
 ## Concepts
@@ -84,7 +84,7 @@ artin asked for while bounding disk.
 Naming/casing adapts per platform; shape is identical.
 
 ```
-Quiver.log.configure({
+Hands.log.configure({
   dir,                 // defaults to the SDK's diagnostics dir
   minLevel,            // default: info (debug in debug builds)
   rotate,              // "daily" | "size"  (default "daily")
@@ -95,27 +95,27 @@ Quiver.log.configure({
   redactor,            // optional (entry) => entry | null
 })
 
-Quiver.log.verbose|debug|info|warn|error(tag, message, fields?)
-Quiver.log.flush()                 // force pending writes to disk
-Quiver.log.currentFiles() -> [paths]   // what the crash provider attaches
-Quiver.log.snapshot() -> [entries]     // ring buffer, for crash-time capture
+Hands.log.verbose|debug|info|warn|error(tag, message, fields?)
+Hands.log.flush()                 // force pending writes to disk
+Hands.log.currentFiles() -> [paths]   // what the crash provider attaches
+Hands.log.snapshot() -> [entries]     // ring buffer, for crash-time capture
 ```
 
-## Integration with existing Quiver transport
+## Integration with existing Hands transport
 
 - **Crash / feedback** — the iOS crash reporter already takes a diagnostics
   provider (`setDiagnosticsProvider`, task #102/#133) that returns file paths the
-  SDK zips and attaches. QuiverLog simply *becomes that provider's source*:
+  SDK zips and attaches. HandsLog simply *becomes that provider's source*:
   `currentFiles()` for the rolling files + a rendered `snapshot()` summary. Same
   for the Android/OHOS crash uploaders (they attach via the feedback client).
 - **Metrics** — unaffected.
 - **Format** — JSONL stays the shape the server already parses from the
   diagnostics zip, so no server change is needed for P1.
 
-## Migration (slock-diagnostics → QuiverLog)
+## Migration (slock-diagnostics → HandsLog)
 
 The Slock app's `slock-diagnostics` writer (KMP, task #101) is replaced by
-`Quiver.log`. Three hard constraints (from KMP review) protect the existing
+`Hands.log`. Three hard constraints (from KMP review) protect the existing
 crash/feedback evidence chain during migration:
 
 1. **Superset entry shape, `event` preserved.** The JSONL fields above are a
@@ -130,13 +130,13 @@ crash/feedback evidence chain during migration:
    it's the most likely "zip has files but nobody can see them" break.
 3. **Slock-side adapter, not a rewrite.** Slock keeps its call sites and red
    lines (app-owned logs only; never read system logcat/hilog; redact sensitive
-   fields first) behind a thin `SlockDiagnosticsSink → Quiver.log` adapter.
-   QuiverLog owns only disk/rotation/ring/`currentFiles`/`snapshot`. This keeps
+   fields first) behind a thin `SlockDiagnosticsSink → Hands.log` adapter.
+   HandsLog owns only disk/rotation/ring/`currentFiles`/`snapshot`. This keeps
    P1 a minimal swap instead of touching business call sites on all three
    platforms at once.
 
 Verify end-to-end (trigger a crash → confirm the ticket's diagnostics zip
-contains the QuiverLog files and the backend/UI still renders them) before
+contains the HandsLog files and the backend/UI still renders them) before
 removing the bespoke writer/rotation.
 
 ## Phasing
