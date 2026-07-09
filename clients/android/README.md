@@ -7,7 +7,7 @@ Android SDK for Hands server-side update checks and APK installation.
 ```kotlin
 repositories {
     maven {
-        url = uri("https://maven.pkg.github.com/oranix-io/quiver")
+        url = uri("https://maven.pkg.github.com/oranix-io/hands")
         credentials {
             username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
             password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
@@ -16,7 +16,7 @@ repositories {
 }
 
 dependencies {
-    implementation("build.hands:hands-android-sdk:0.4.0")
+    implementation("build.hands:hands-android-sdk:0.10.0")
 }
 ```
 
@@ -25,7 +25,7 @@ dependencies {
 ```kotlin
 val checker = UpdateChecker(
     context = applicationContext,
-    baseUrl = "https://quiver.oranix.io",
+    baseUrl = "https://hands.build",
     appSlug = "myapp-android",
     installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
     channel = "main",
@@ -53,7 +53,7 @@ Publish to GitHub Packages:
 ```bash
 cd clients/android
 GITHUB_ACTOR=<github-user> GITHUB_TOKEN=<token-with-packages-write> \
-  gradle publish -PVERSION_NAME=0.1.0
+  gradle publish -PVERSION_NAME=0.10.0
 ```
 
-In CI, use the `Publish Android SDK` workflow and a version such as `0.1.0`.
+In CI, use the `Publish Android SDK` workflow and a version such as `0.10.0`.

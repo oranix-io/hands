@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'Hands'
-  s.version          = '0.1.4'
+  s.version          = '0.2.0'
   s.summary          = 'Hands feedback + crash reporting for iOS.'
   s.description      = <<-DESC
     Native iOS reporting layer for Hands: in-app feedback tickets
@@ -10,10 +10,10 @@ Pod::Spec.new do |s|
     runtime — base URL, app slug, channel, and client key are init
     parameters, never compiled into the SDK.
   DESC
-  s.homepage         = 'https://github.com/oranix-io/quiver'
+  s.homepage         = 'https://github.com/oranix-io/hands'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'Oranix' => 'artin@cat.ms' }
-  s.source           = { :git => 'https://github.com/oranix-io/quiver.git', :tag => "ios-v#{s.version}" }
+  s.source           = { :git => 'https://github.com/oranix-io/hands.git', :tag => "ios-v#{s.version}" }
 
   s.ios.deployment_target = '14.1'
   s.source_files     = 'clients/ios/Sources/Hands/**/*.{h,m}'
