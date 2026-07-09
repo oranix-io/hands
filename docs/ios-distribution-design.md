@@ -206,7 +206,10 @@ Workflow:
 5. `xcodebuild -exportArchive` to produce `.ipa`.
 6. Zip dSYMs.
 7. Create or update Hands build record with source metadata.
-8. Upload `.ipa` and `.dSYM.zip` to Hands.
+8. Upload the signed `.ipa` and `.dSYM.zip` to Hands, for example:
+   ```sh
+   hands builds publish-ios --ipa build/App.ipa --dsym build/App.dSYM.zip --draft
+   ```
 9. Upload `.ipa` to App Store Connect with Apple-supported upload tooling:
    Xcode Organizer, `altool`, or Transporter. In CI, prefer Transporter with
    App Store Connect API authentication, or fastlane `pilot` as a maintained
