@@ -1,6 +1,6 @@
 # Android SDK
 
-`build.hands:hands-android-updater` is the Android SDK for Hands. It handles
+`build.hands:hands-android-sdk` is the Android SDK for Hands. It handles
 in-app update checks and installation, staged-rollout device bucketing,
 feedback submission, and crash reporting.
 
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    implementation("build.hands:hands-android-updater:0.9.0")
+    implementation("build.hands:hands-android-sdk:0.9.0")
 }
 ```
 

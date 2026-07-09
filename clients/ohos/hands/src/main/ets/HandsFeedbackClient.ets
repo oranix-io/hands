@@ -228,7 +228,7 @@ export class HandsFeedbackClient {
       const body = typeof response.result === 'string' ? response.result : '';
       if (code < 200 || code >= 300) {
         hilog.warn(0x0000, TAG, 'feedback submit failed code=%{public}d body=%{public}s', code, body.slice(0, 200));
-        throw new Error(`quiver feedback failed: HTTP ${code}`);
+        throw new Error(`Hands feedback failed: HTTP ${code}`);
       }
       const parsed = JSON.parse(body) as Record<string, string>;
       const ticketId = parsed['id'] ?? '';
@@ -277,7 +277,7 @@ export class HandsFeedbackClient {
     const presignCode = Number(presignResponse.responseCode ?? 0);
     const presignBody = typeof presignResponse.result === 'string' ? presignResponse.result : '';
     if (presignCode < 200 || presignCode >= 300) {
-      throw new Error(`quiver presign failed: HTTP ${presignCode}`);
+      throw new Error(`Hands presign failed: HTTP ${presignCode}`);
     }
     const uploads = (JSON.parse(presignBody) as HandsPresignResponse).uploads ?? [];
 
@@ -289,7 +289,7 @@ export class HandsFeedbackClient {
       const uploadUrl = upload?.upload_url ?? '';
       const r2Key = upload?.r2_key ?? '';
       if (uploadUrl.length === 0 || r2Key.length === 0) {
-        throw new Error(`quiver presign entry ${index} missing upload_url/r2_key`);
+        throw new Error(`Hands presign entry ${index} missing upload_url/r2_key`);
       }
       const contentType = guessContentType(fileName);
       // The presigned PUT signs the content-type, so it must match exactly.
@@ -302,7 +302,7 @@ export class HandsFeedbackClient {
       });
       const putCode = Number(putResponse.responseCode ?? 0);
       if (putCode < 200 || putCode >= 300) {
-        throw new Error(`quiver R2 upload failed for ${fileName}: HTTP ${putCode}`);
+        throw new Error(`Hands R2 upload failed for ${fileName}: HTTP ${putCode}`);
       }
       refs.push({
         r2_key: r2Key,

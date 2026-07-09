@@ -2,7 +2,7 @@
 
 Official Hands SDK for HarmonyOS (ArkTS HAR): feedback tickets and
 store-then-send crash reporting against a Hands server's public feedback
-endpoint. Mirrors the Android SDK (`build.hands:hands-android-updater`) and
+endpoint. Mirrors the Android SDK (`build.hands:hands-android-sdk`) and
 the iOS `Hands` pod.
 
 ## Install
