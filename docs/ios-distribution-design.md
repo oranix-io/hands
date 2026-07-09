@@ -4,6 +4,10 @@ Status: draft spec for review
 Owner: Codex-Android-DevOPS
 Updated: 2026-07-09
 
+Official references:
+
+- Apple App Store Connect Help: [Upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)
+
 Hands should treat iOS as a first-class product type. The platform should know
 when an app ships iOS artifacts, collect the right release assets, track
 TestFlight state, and guide CI through signing/upload. It should not treat
@@ -203,7 +207,10 @@ Workflow:
 6. Zip dSYMs.
 7. Create or update Hands build record with source metadata.
 8. Upload `.ipa` and `.dSYM.zip` to Hands.
-9. Upload `.ipa` to TestFlight with fastlane `pilot` or Apple Transporter.
+9. Upload `.ipa` to App Store Connect with Apple-supported upload tooling:
+   Xcode Organizer, `altool`, or Transporter. In CI, prefer Transporter with
+   App Store Connect API authentication, or fastlane `pilot` as a maintained
+   wrapper around the Apple upload path.
 10. Poll App Store Connect until processing is complete or times out.
 11. Add selected internal tester groups.
 12. Write TestFlight state back to Hands.
@@ -316,7 +323,8 @@ Developer Enterprise Program. Do not design the default flow around it.
 ## Open questions
 
 - Which GitHub Environment should hold iOS release secrets?
-- Do we require fastlane, or do we support a pure Xcode/Transporter path?
+- Do we require fastlane for the first adapter, or do we implement a pure
+  Xcode/Transporter path first?
 - Should Hands create GitHub workflow dispatches, or should mobile repos call
   Hands after their own build completes?
 - Should TestFlight external groups be platform-managed, or should Hands only
