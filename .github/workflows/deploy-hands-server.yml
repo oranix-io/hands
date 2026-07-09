@@ -62,7 +62,8 @@ jobs:
         run: |
           pnpm --filter @botiverse/hands-worker test
           pnpm --filter @botiverse/hands-worker build
-          pnpm --filter @botiverse/hands-cli build
+          # "..." builds workspace deps first (hands-cli depends on hands-node).
+          pnpm --filter @botiverse/hands-cli... build
           pnpm --filter @botiverse/hands-admin build
 
       - name: Build deploy assets
