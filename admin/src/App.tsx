@@ -521,7 +521,7 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
           <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-[1.1fr_0.9fr] md:items-center md:py-20">
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                The release platform for Raft-built client apps
+                The agent-native platform for Raft-built client apps.
               </div>
               <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
                 Ship it, roll it out, hear it break, fix it.
