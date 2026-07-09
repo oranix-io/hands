@@ -87,20 +87,175 @@ jobs:
           node <<'NODE'
           const fs = require("node:fs");
           const sql = fs.readFileSync("../tmp/hands-sync/quiver-data-filtered.sql", "utf8");
+          const insertRe = /^INSERT INTO "([^"]+)" \((.*)\) VALUES\((.*)\);$/s;
           const seen = new Set();
           const tables = [];
-          for (const match of sql.matchAll(/^INSERT INTO "([^"]+)"/gm)) {
-            if (!seen.has(match[1])) {
-              seen.add(match[1]);
-              tables.push(match[1]);
+          const groups = new Map();
+
+          function parseInsert(line) {
+            const match = insertRe.exec(line);
+            if (!match) return null;
+            const columns = [...match[2].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+            const values = splitSqlValues(match[3]);
+            if (columns.length !== values.length) {
+              throw new Error(`Column/value mismatch in ${match[1]}`);
             }
+            return { table: match[1], columns, values };
           }
+
+          function splitSqlValues(input) {
+            const values = [];
+            let current = "";
+            let inString = false;
+            let depth = 0;
+            for (let i = 0; i < input.length; i += 1) {
+              const ch = input[i];
+              if (ch === "'") {
+                current += ch;
+                if (inString && input[i + 1] === "'") {
+                  current += input[i + 1];
+                  i += 1;
+                } else {
+                  inString = !inString;
+                }
+                continue;
+              }
+              if (!inString && ch === "(") depth += 1;
+              if (!inString && ch === ")") depth -= 1;
+              if (ch === "," && !inString && depth === 0) {
+                values.push(current);
+                current = "";
+                continue;
+              }
+              current += ch;
+            }
+            values.push(current);
+            return values;
+          }
+
+          function splitSqlStatements(input) {
+            const statements = [];
+            let current = "";
+            let inString = false;
+            for (let i = 0; i < input.length; i += 1) {
+              const ch = input[i];
+              current += ch;
+              if (ch === "'") {
+                if (inString && input[i + 1] === "'") {
+                  current += input[i + 1];
+                  i += 1;
+                } else {
+                  inString = !inString;
+                }
+                continue;
+              }
+              if (ch === ";" && !inString) {
+                statements.push(current.trim());
+                current = "";
+              }
+            }
+            if (current.trim()) statements.push(current.trim());
+            return statements;
+          }
+
+          function quoteIdent(name) {
+            return `"${name.replace(/"/g, '""')}"`;
+          }
+
+          function rewriteInsert(parsed, nullColumn, restoreUpdates) {
+            const values = [...parsed.values];
+            const idIndex = parsed.columns.indexOf("id");
+            const columnIndex = parsed.columns.indexOf(nullColumn);
+            if (idIndex === -1 || columnIndex === -1) return formatInsert(parsed.table, parsed.columns, values);
+            const previous = values[columnIndex];
+            if (previous.toUpperCase() !== "NULL") {
+              restoreUpdates.push(
+                `UPDATE ${quoteIdent(parsed.table)} SET ${quoteIdent(nullColumn)} = ${previous} WHERE "id" = ${values[idIndex]};`,
+              );
+              values[columnIndex] = "NULL";
+            }
+            return formatInsert(parsed.table, parsed.columns, values);
+          }
+
+          function formatInsert(table, columns, values) {
+            return `INSERT INTO ${quoteIdent(table)} (${columns.map(quoteIdent).join(",")}) VALUES(${values.join(",")});`;
+          }
+
+          for (const statement of splitSqlStatements(sql)) {
+            if (statement.startsWith("PRAGMA ")) continue;
+            const parsed = parseInsert(statement);
+            if (!parsed) continue;
+            if (!seen.has(parsed.table)) {
+              seen.add(parsed.table);
+              tables.push(parsed.table);
+            }
+            const rows = groups.get(parsed.table) ?? [];
+            rows.push(parsed);
+            groups.set(parsed.table, rows);
+          }
+
           const escapeIdent = (name) => name.replace(/"/g, '""');
           const resetSql = [
             "PRAGMA defer_foreign_keys=TRUE;",
             ...tables.reverse().map((table) => `DELETE FROM "${escapeIdent(table)}";`),
           ].join("\n");
           fs.writeFileSync("../tmp/hands-sync/reset-hands-data.sql", `${resetSql}\n`);
+
+          const importOrder = [
+            "raft_accounts",
+            "organizations",
+            "apps",
+            "channels",
+            "versions",
+            "raft_sessions",
+            "operation_logs",
+            "audit_logs",
+            "org_members",
+            "app_members",
+            "builds",
+            "signing_credentials",
+            "product_types",
+            "release_types",
+            "build_assets",
+            "releases",
+            "release_scopes",
+            "release_shares",
+            "release_share_events",
+            "release_metrics",
+            "app_server_grants",
+            "app_deploy_tokens",
+            "feedback_tickets",
+            "feedback_attachments",
+            "feedback_comments",
+            "webhooks",
+            "webhook_deliveries",
+            "invites",
+            "device_pings",
+          ];
+
+          const remaining = tables.filter((table) => !importOrder.includes(table));
+          const appDefaultChannelUpdates = [];
+          const productParentUpdates = [];
+          const supersededReleaseUpdates = [];
+          const importLines = ["PRAGMA defer_foreign_keys=TRUE;"];
+          for (const table of [...importOrder, ...remaining]) {
+            const rows = groups.get(table) ?? [];
+            for (const row of rows) {
+              if (table === "apps") {
+                importLines.push(rewriteInsert(row, "default_channel_id", appDefaultChannelUpdates));
+              } else if (table === "product_types") {
+                importLines.push(rewriteInsert(row, "parent_product_type_id", productParentUpdates));
+              } else if (table === "releases") {
+                importLines.push(rewriteInsert(row, "superseded_by_release_id", supersededReleaseUpdates));
+              } else {
+                importLines.push(formatInsert(row.table, row.columns, row.values));
+              }
+            }
+            if (table === "channels") importLines.push(...appDefaultChannelUpdates);
+            if (table === "product_types") importLines.push(...productParentUpdates);
+            if (table === "releases") importLines.push(...supersededReleaseUpdates);
+          }
+          fs.writeFileSync("../tmp/hands-sync/quiver-data-ordered.sql", `${importLines.join("\n")}\n`);
           console.log(`Prepared D1 data export for ${tables.length} tables.`);
           NODE
 
@@ -131,7 +286,7 @@ jobs:
           pnpm exec wrangler d1 execute "${TARGET_D1_DATABASE_NAME}" \
             --remote \
             --config wrangler.hands.jsonc \
-            --file ../tmp/hands-sync/quiver-data-filtered.sql \
+            --file ../tmp/hands-sync/quiver-data-ordered.sql \
             --yes
 
       - name: Build R2 key manifest from Quiver D1
