@@ -1,29 +1,29 @@
-#import "QuiverFeedbackClient.h"
+#import "HandsFeedbackClient.h"
 
-#import "Quiver.h"
+#import "Hands.h"
 
 #import <TargetConditionals.h>
 #import <UIKit/UIKit.h>
 #import <sys/utsname.h>
 
-#import "QuiverDeviceId.h"
+#import "HandsDeviceId.h"
 
-static NSString *const QuiverErrorDomain = @"Quiver";
-static NSTimeInterval const QuiverRequestTimeout = 30.0;
-static NSTimeInterval const QuiverUploadTimeout = 120.0;
+static NSString *const HandsErrorDomain = @"Hands";
+static NSTimeInterval const HandsRequestTimeout = 30.0;
+static NSTimeInterval const HandsUploadTimeout = 120.0;
 
-// Quiver iOS SDK version — reported in feedback/crash environment metadata.
-// Keep in sync with Quiver.podspec on release.
-static NSString *const kQuiverSDKVersion = @"0.1.5";
+// Hands iOS SDK version — reported in feedback/crash environment metadata.
+// Keep in sync with Hands.podspec on release.
+static NSString *const kHandsSDKVersion = @"0.1.5";
 
 // Server-enforced: at most 9 attachments per ticket.
-static NSUInteger const QuiverMaxAttachments = 9;
+static NSUInteger const HandsMaxAttachments = 9;
 // Files up to this size stream inline in the multipart body.
-static unsigned long long const QuiverMultipartMaxBytes = 10ULL * 1024 * 1024;
+static unsigned long long const HandsMultipartMaxBytes = 10ULL * 1024 * 1024;
 // Files up to this size upload via presigned direct-to-R2 PUT.
-static unsigned long long const QuiverPresignMaxBytes = 200ULL * 1024 * 1024;
+static unsigned long long const HandsPresignMaxBytes = 200ULL * 1024 * 1024;
 
-static NSString *QuiverHardwareModel(void) {
+static NSString *HandsHardwareModel(void) {
     struct utsname systemInfo;
     if (uname(&systemInfo) != 0) {
         return UIDevice.currentDevice.model ?: @"iOS";
@@ -32,7 +32,7 @@ static NSString *QuiverHardwareModel(void) {
     return machine.length > 0 ? machine : (UIDevice.currentDevice.model ?: @"iOS");
 }
 
-static NSString *QuiverArch(void) {
+static NSString *HandsArch(void) {
 #if defined(__arm64__)
     return @"arm64";
 #elif defined(__x86_64__)
@@ -42,7 +42,7 @@ static NSString *QuiverArch(void) {
 #endif
 }
 
-static BOOL QuiverIsSimulator(void) {
+static BOOL HandsIsSimulator(void) {
 #if TARGET_OS_SIMULATOR
     return YES;
 #else
@@ -50,7 +50,7 @@ static BOOL QuiverIsSimulator(void) {
 #endif
 }
 
-static NSString *QuiverThermalState(void) {
+static NSString *HandsThermalState(void) {
     switch (NSProcessInfo.processInfo.thermalState) {
         case NSProcessInfoThermalStateNominal: return @"nominal";
         case NSProcessInfoThermalStateFair: return @"fair";
@@ -60,7 +60,7 @@ static NSString *QuiverThermalState(void) {
     return @"unknown";
 }
 
-static NSString *QuiverBatteryStateString(UIDeviceBatteryState state) {
+static NSString *HandsBatteryStateString(UIDeviceBatteryState state) {
     switch (state) {
         case UIDeviceBatteryStateUnplugged: return @"unplugged";
         case UIDeviceBatteryStateCharging: return @"charging";
@@ -72,9 +72,9 @@ static NSString *QuiverBatteryStateString(UIDeviceBatteryState state) {
 
 // The app's build git commit, injected into Info.plist at build time. The SDK
 // only reports it; the host build is responsible for setting one of these keys
-// (preferred: QuiverBuildCommit). Returns nil when not injected.
-static NSString *QuiverBuildCommit(NSDictionary *info) {
-    for (NSString *key in @[ @"QuiverBuildCommit", @"GitCommit", @"CommitHash" ]) {
+// (preferred: HandsBuildCommit). Returns nil when not injected.
+static NSString *HandsBuildCommit(NSDictionary *info) {
+    for (NSString *key in @[ @"HandsBuildCommit", @"GitCommit", @"CommitHash" ]) {
         id value = info[key];
         if ([value isKindOfClass:NSString.class] && [(NSString *)value length] > 0) {
             return value;
@@ -83,7 +83,7 @@ static NSString *QuiverBuildCommit(NSDictionary *info) {
     return nil;
 }
 
-static NSString *QuiverContentType(NSString *name) {
+static NSString *HandsContentType(NSString *name) {
     NSString *lower = name.lowercaseString;
     if ([lower hasSuffix:@".png"]) return @"image/png";
     if ([lower hasSuffix:@".jpg"] || [lower hasSuffix:@".jpeg"]) return @"image/jpeg";
@@ -94,12 +94,12 @@ static NSString *QuiverContentType(NSString *name) {
     return @"application/octet-stream";
 }
 
-static unsigned long long QuiverFileSize(NSString *path) {
+static unsigned long long HandsFileSize(NSString *path) {
     NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
     return attrs ? [attrs[NSFileSize] unsignedLongLongValue] : 0;
 }
 
-static void QuiverAppendFormField(NSMutableData *body, NSString *boundary, NSString *name, NSString *value) {
+static void HandsAppendFormField(NSMutableData *body, NSString *boundary, NSString *name, NSString *value) {
     NSMutableString *part = [NSMutableString string];
     [part appendFormat:@"--%@\r\n", boundary];
     [part appendFormat:@"Content-Disposition: form-data; name=\"%@\"\r\n", name];
@@ -109,13 +109,13 @@ static void QuiverAppendFormField(NSMutableData *body, NSString *boundary, NSStr
     [body appendData:[@"\r\n" dataUsingEncoding:NSUTF8StringEncoding]];
 }
 
-static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
-    return [NSError errorWithDomain:QuiverErrorDomain
+static NSError *HandsErrorWithMessage(NSInteger code, NSString *detail) {
+    return [NSError errorWithDomain:HandsErrorDomain
                                code:code
                            userInfo:@{NSLocalizedDescriptionKey : detail ?: @"unknown error"}];
 }
 
-@implementation QuiverFeedbackClient
+@implementation HandsFeedbackClient
 
 + (NSDictionary<NSString *, id> *)metadataWithExtras:(NSDictionary<NSString *, NSString *> *)extras {
     NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
@@ -127,16 +127,16 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
     metadata[@"version_name"] = info[@"CFBundleShortVersionString"] ?: @"";
     metadata[@"version_code"] = @([(info[@"CFBundleVersion"] ?: @"0") longLongValue]);
     metadata[@"bundle_id"] = info[@"CFBundleIdentifier"] ?: @"";
-    NSString *commit = QuiverBuildCommit(info);
+    NSString *commit = HandsBuildCommit(info);
     if (commit) metadata[@"commit"] = commit;
-    metadata[@"channel"] = (Quiver.config.channel ?: @"");
-    metadata[@"quiver_sdk"] = kQuiverSDKVersion;
+    metadata[@"channel"] = (Hands.config.channel ?: @"");
+    metadata[@"quiver_sdk"] = kHandsSDKVersion;
 
     // Platform / OS
     metadata[@"platform"] = @"ios";
     metadata[@"os"] = device.systemName ?: @"iOS";
     metadata[@"os_version"] = [NSString stringWithFormat:@"%@ %@", device.systemName ?: @"iOS", device.systemVersion ?: @""];
-    metadata[@"arch"] = QuiverArch();
+    metadata[@"arch"] = HandsArch();
     metadata[@"locale"] = NSLocale.currentLocale.localeIdentifier ?: @"";
     metadata[@"timezone"] = NSTimeZone.localTimeZone.name ?: @"";
     NSArray<NSString *> *languages = NSLocale.preferredLanguages;
@@ -145,10 +145,10 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
     }
 
     // Device
-    metadata[@"device_id"] = [QuiverDeviceId deviceId];
-    metadata[@"device_model"] = QuiverHardwareModel();
+    metadata[@"device_id"] = [HandsDeviceId deviceId];
+    metadata[@"device_model"] = HandsHardwareModel();
     metadata[@"device_name"] = device.name ?: @"";
-    metadata[@"is_simulator"] = QuiverIsSimulator() ? @"true" : @"false";
+    metadata[@"is_simulator"] = HandsIsSimulator() ? @"true" : @"false";
     CGRect bounds = UIScreen.mainScreen.bounds;
     CGFloat scale = UIScreen.mainScreen.scale;
     metadata[@"screen"] = [NSString stringWithFormat:@"%.0fx%.0f@%.0fx",
@@ -158,7 +158,7 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
     metadata[@"physical_memory"] = @(process.physicalMemory);
     metadata[@"uptime_seconds"] = @((long long)process.systemUptime);
     metadata[@"low_power_mode"] = process.isLowPowerModeEnabled ? @"true" : @"false";
-    metadata[@"thermal_state"] = QuiverThermalState();
+    metadata[@"thermal_state"] = HandsThermalState();
     NSDictionary *fsAttrs = [NSFileManager.defaultManager attributesOfFileSystemForPath:NSHomeDirectory() error:nil];
     if (fsAttrs[NSFileSystemSize]) metadata[@"disk_total"] = fsAttrs[NSFileSystemSize];
     if (fsAttrs[NSFileSystemFreeSize]) metadata[@"disk_free"] = fsAttrs[NSFileSystemFreeSize];
@@ -168,7 +168,7 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
     if (device.batteryMonitoringEnabled) {
         float batteryLevel = device.batteryLevel;
         if (batteryLevel >= 0) metadata[@"battery_level"] = @((int)(batteryLevel * 100));
-        metadata[@"battery_state"] = QuiverBatteryStateString(device.batteryState);
+        metadata[@"battery_state"] = HandsBatteryStateString(device.batteryState);
     }
 
     // Caller-supplied extras (crash_* fields etc.) override/augment the above.
@@ -183,9 +183,9 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
           attachmentPaths:(NSArray<NSString *> *)attachmentPaths
                    extras:(NSDictionary<NSString *, NSString *> *)extras
                completion:(void (^)(NSString *_Nullable, NSError *_Nullable))completion {
-    QuiverConfig *config = Quiver.config;
+    HandsConfig *config = Hands.config;
     if (!config) {
-        completion(nil, QuiverErrorWithMessage(0, @"Quiver not started"));
+        completion(nil, HandsErrorWithMessage(0, @"Hands not started"));
         return;
     }
 
@@ -195,14 +195,14 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
     NSMutableArray<NSString *> *largePaths = [NSMutableArray array];
     for (NSString *path in attachmentPaths) {
         if (![NSFileManager.defaultManager fileExistsAtPath:path]) continue;
-        if (inlinePaths.count + largePaths.count >= QuiverMaxAttachments) break;
-        unsigned long long size = QuiverFileSize(path);
+        if (inlinePaths.count + largePaths.count >= HandsMaxAttachments) break;
+        unsigned long long size = HandsFileSize(path);
         if (size == 0) continue;
-        if (size > QuiverPresignMaxBytes) {
-            completion(nil, QuiverErrorWithMessage(0, [NSString stringWithFormat:@"attachment %@ exceeds the 200 MB limit", path.lastPathComponent]));
+        if (size > HandsPresignMaxBytes) {
+            completion(nil, HandsErrorWithMessage(0, [NSString stringWithFormat:@"attachment %@ exceeds the 200 MB limit", path.lastPathComponent]));
             return;
         }
-        if (size > QuiverMultipartMaxBytes) {
+        if (size > HandsMultipartMaxBytes) {
             [largePaths addObject:path];
         } else {
             [inlinePaths addObject:path];
@@ -253,13 +253,13 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
                  metadataText:(NSString *)metadataText
                   inlinePaths:(NSArray<NSString *> *)inlinePaths
                 presignedRefs:(NSArray<NSDictionary *> *)presignedRefs
-                       config:(QuiverConfig *)config
+                       config:(HandsConfig *)config
                    completion:(void (^)(NSString *_Nullable, NSError *_Nullable))completion {
-    NSString *boundary = [NSString stringWithFormat:@"Quiver%@", NSUUID.UUID.UUIDString];
+    NSString *boundary = [NSString stringWithFormat:@"Hands%@", NSUUID.UUID.UUIDString];
     NSMutableData *body = [NSMutableData data];
-    QuiverAppendFormField(body, boundary, @"message", message ?: @"");
-    QuiverAppendFormField(body, boundary, @"kind", kind.length > 0 ? kind : @"feedback");
-    QuiverAppendFormField(body, boundary, @"metadata", metadataText ?: @"{}");
+    HandsAppendFormField(body, boundary, @"message", message ?: @"");
+    HandsAppendFormField(body, boundary, @"kind", kind.length > 0 ? kind : @"feedback");
+    HandsAppendFormField(body, boundary, @"metadata", metadataText ?: @"{}");
 
     for (NSString *path in inlinePaths) {
         NSData *fileData = [NSData dataWithContentsOfFile:path];
@@ -270,7 +270,7 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
         NSMutableString *part = [NSMutableString string];
         [part appendFormat:@"--%@\r\n", boundary];
         [part appendFormat:@"Content-Disposition: form-data; name=\"attachments\"; filename=\"%@\"\r\n", fileName];
-        [part appendFormat:@"Content-Type: %@\r\n\r\n", QuiverContentType(fileName)];
+        [part appendFormat:@"Content-Type: %@\r\n\r\n", HandsContentType(fileName)];
         [body appendData:[part dataUsingEncoding:NSUTF8StringEncoding]];
         [body appendData:fileData];
         [body appendData:[@"\r\n" dataUsingEncoding:NSUTF8StringEncoding]];
@@ -279,7 +279,7 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
     if (presignedRefs.count > 0) {
         NSData *refsData = [NSJSONSerialization dataWithJSONObject:presignedRefs options:0 error:nil];
         NSString *refsText = refsData ? [[NSString alloc] initWithData:refsData encoding:NSUTF8StringEncoding] : @"[]";
-        QuiverAppendFormField(body, boundary, @"presigned", refsText ?: @"[]");
+        HandsAppendFormField(body, boundary, @"presigned", refsText ?: @"[]");
     }
 
     [body appendData:[[NSString stringWithFormat:@"--%@--\r\n", boundary] dataUsingEncoding:NSUTF8StringEncoding]];
@@ -288,12 +288,12 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
                                                    config.baseUrl, config.appSlug];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlText]];
     request.HTTPMethod = @"POST";
-    request.timeoutInterval = QuiverRequestTimeout;
+    request.timeoutInterval = HandsRequestTimeout;
     [request setValue:[NSString stringWithFormat:@"multipart/form-data; boundary=%@", boundary]
         forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [request setValue:(config.clientKey ?: @"") forHTTPHeaderField:@"X-Quiver-Client-Key"];
-    [request setValue:[QuiverDeviceId deviceId] forHTTPHeaderField:@"X-Quiver-Device-Id"];
+    [request setValue:[HandsDeviceId deviceId] forHTTPHeaderField:@"X-Quiver-Device-Id"];
 
     NSURLSessionUploadTask *task = [NSURLSession.sharedSession
         uploadTaskWithRequest:request
@@ -313,7 +313,7 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
                     NSString *detail = [parsed isKindOfClass:NSDictionary.class] && parsed[@"error"]
                         ? [NSString stringWithFormat:@"%@", parsed[@"error"]]
                         : [NSString stringWithFormat:@"HTTP %ld", (long)statusCode];
-                    completion(nil, QuiverErrorWithMessage(statusCode, detail));
+                    completion(nil, HandsErrorWithMessage(statusCode, detail));
                     return;
                 }
                 completion(ticketId, nil);
@@ -324,15 +324,15 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
 /// Presign the whole batch, then PUT each large file to R2 sequentially,
 /// returning the `presigned` refs the ticket references.
 + (void)uploadLargeAttachments:(NSArray<NSString *> *)paths
-                        config:(QuiverConfig *)config
+                        config:(HandsConfig *)config
                     completion:(void (^)(NSArray<NSDictionary *> *_Nullable, NSError *_Nullable))completion {
     NSMutableArray<NSDictionary *> *requestFiles = [NSMutableArray array];
     for (NSString *path in paths) {
         NSString *fileName = path.lastPathComponent ?: @"attachment";
         [requestFiles addObject:@{
             @"filename" : fileName,
-            @"content_type" : QuiverContentType(fileName),
-            @"size" : @(QuiverFileSize(path)),
+            @"content_type" : HandsContentType(fileName),
+            @"size" : @(HandsFileSize(path)),
         }];
     }
     NSData *presignBody = [NSJSONSerialization dataWithJSONObject:@{@"files" : requestFiles} options:0 error:nil];
@@ -341,7 +341,7 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
                                                       config.baseUrl, config.appSlug];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:presignUrl]];
     request.HTTPMethod = @"POST";
-    request.timeoutInterval = QuiverRequestTimeout;
+    request.timeoutInterval = HandsRequestTimeout;
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [request setValue:(config.clientKey ?: @"") forHTTPHeaderField:@"X-Quiver-Client-Key"];
@@ -360,7 +360,7 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
                     : nil;
                 NSArray *uploads = [parsed isKindOfClass:NSDictionary.class] ? parsed[@"uploads"] : nil;
                 if (statusCode < 200 || statusCode >= 300 || ![uploads isKindOfClass:NSArray.class]) {
-                    completion(nil, QuiverErrorWithMessage(statusCode, [NSString stringWithFormat:@"presign failed: HTTP %ld", (long)statusCode]));
+                    completion(nil, HandsErrorWithMessage(statusCode, [NSString stringWithFormat:@"presign failed: HTTP %ld", (long)statusCode]));
                     return;
                 }
                 [self putFileAtIndex:0
@@ -387,14 +387,14 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
     NSString *uploadUrl = [upload[@"upload_url"] isKindOfClass:NSString.class] ? upload[@"upload_url"] : nil;
     NSString *r2Key = [upload[@"r2_key"] isKindOfClass:NSString.class] ? upload[@"r2_key"] : nil;
     if (uploadUrl.length == 0 || r2Key.length == 0) {
-        completion(nil, QuiverErrorWithMessage(0, [NSString stringWithFormat:@"presign entry %lu missing upload_url/r2_key", (unsigned long)index]));
+        completion(nil, HandsErrorWithMessage(0, [NSString stringWithFormat:@"presign entry %lu missing upload_url/r2_key", (unsigned long)index]));
         return;
     }
 
-    NSString *contentType = QuiverContentType(fileName);
+    NSString *contentType = HandsContentType(fileName);
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:uploadUrl]];
     request.HTTPMethod = @"PUT";
-    request.timeoutInterval = QuiverUploadTimeout;
+    request.timeoutInterval = HandsUploadTimeout;
     // The presigned PUT signs the content-type, so it must match exactly.
     [request setValue:contentType forHTTPHeaderField:@"Content-Type"];
 
@@ -409,14 +409,14 @@ static NSError *QuiverErrorWithMessage(NSInteger code, NSString *detail) {
                 }
                 NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
                 if (statusCode < 200 || statusCode >= 300) {
-                    completion(nil, QuiverErrorWithMessage(statusCode, [NSString stringWithFormat:@"R2 upload failed for %@: HTTP %ld", fileName, (long)statusCode]));
+                    completion(nil, HandsErrorWithMessage(statusCode, [NSString stringWithFormat:@"R2 upload failed for %@: HTTP %ld", fileName, (long)statusCode]));
                     return;
                 }
                 [refs addObject:@{
                     @"r2_key" : r2Key,
                     @"filename" : fileName,
                     @"content_type" : contentType,
-                    @"size" : @(QuiverFileSize(path)),
+                    @"size" : @(HandsFileSize(path)),
                 }];
                 [self putFileAtIndex:index + 1
                                paths:paths

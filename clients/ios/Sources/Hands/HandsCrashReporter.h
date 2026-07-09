@@ -5,7 +5,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// Store-then-send crash reporting for the iOS host (mirrors the Android
 /// SDK's QuiverCrash and the OHOS QuiverCrashUploader): at crash time the
 /// handler only writes crash-<ts>.txt plus a .meta.json signature sidecar to
-/// disk; the next launch uploads each pending crash as a kind=crash Quiver
+/// disk; the next launch uploads each pending crash as a kind=crash Hands
 /// ticket and deletes local files on success. Captures uncaught NSExceptions
 /// and fatal signals (SIGABRT/SIGSEGV/SIGBUS/SIGILL/SIGFPE/SIGTRAP).
 
@@ -21,19 +21,19 @@ NS_ASSUME_NONNULL_BEGIN
 /// paths — the SDK owns packaging: it bundles the returned files into a single
 /// diagnostics-<ts>.zip, caps the total size, and attaches it to the crash
 /// ticket. The block must be cheap and non-blocking; do not do heavy work in it.
-typedef NSArray<NSString *> *_Nullable (^QuiverDiagnosticsProvider)(int64_t crashAtMillis);
+typedef NSArray<NSString *> *_Nullable (^HandsDiagnosticsProvider)(int64_t crashAtMillis);
 
-@interface QuiverCrashReporter : NSObject
+@interface HandsCrashReporter : NSObject
 
 /// Install the exception and signal handlers. Call once, as early as
 /// possible (app init). Previous NSException handlers are chained.
 + (void)install;
 
-/// Register the app diagnostics provider (see QuiverDiagnosticsProvider).
+/// Register the app diagnostics provider (see HandsDiagnosticsProvider).
 /// Call once during app init, BEFORE -uploadPendingAfterDelay: so pending
 /// crashes pick it up. Pass nil to clear. The SDK zips whatever the provider
 /// returns and attaches it to each crash ticket; the app never zips.
-+ (void)setDiagnosticsProvider:(nullable QuiverDiagnosticsProvider)provider;
++ (void)setDiagnosticsProvider:(nullable HandsDiagnosticsProvider)provider;
 
 /// Upload pending crash reports after a delay (off the launch critical
 /// path). Safe to call every launch; no-op when nothing is pending.

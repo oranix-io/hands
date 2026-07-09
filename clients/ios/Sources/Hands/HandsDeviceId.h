@@ -2,10 +2,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Stable per-install device id for Quiver (rollout cohorting and report
+/// Stable per-install device id for Hands (rollout cohorting and report
 /// correlation). A random UUID persisted in NSUserDefaults — not a hardware
 /// id; it resets on reinstall, mirroring the Android and OHOS helpers.
-@interface QuiverDeviceId : NSObject
+@interface HandsDeviceId : NSObject
 
 + (NSString *)deviceId;
 

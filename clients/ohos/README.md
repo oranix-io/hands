@@ -1,7 +1,7 @@
 # @oranix/quiver (HarmonyOS)
 
-Official Quiver SDK for HarmonyOS (ArkTS HAR): feedback tickets and
-store-then-send crash reporting against a Quiver server's public feedback
+Official Hands SDK for HarmonyOS (ArkTS HAR): feedback tickets and
+store-then-send crash reporting against a Hands server's public feedback
 endpoint. Mirrors the Android SDK (`io.quiver:quiver-android-updater`) and
 the iOS `Quiver` pod.
 
@@ -17,17 +17,17 @@ ohpm install @oranix/quiver
 ## Configure & start
 
 All configuration is runtime parameters — the SDK ships nothing
-app-specific. Get the client key from your app's Settings tab in the Quiver
+app-specific. Get the client key from your app's Settings tab in the Hands
 console (Sentry-DSN model: it identifies the app; rotate it from the console
 if it leaks).
 
 ```ts
-import { Quiver } from '@oranix/quiver';
+import { Hands } from '@oranix/quiver';
 
-Quiver.install({
+Hands.install({
   baseUrl: 'https://quiver.example.com',
   appSlug: 'my-app',
-  channel: 'main',          // Quiver release-channel routing field
+  channel: 'main',          // Hands release-channel routing field
   clientKey: 'qk_…',
 });
 ```
@@ -37,9 +37,9 @@ Call it as early as possible (UIAbility `onCreate`).
 ## Feedback
 
 ```ts
-import { QuiverFeedbackClient } from '@oranix/quiver';
+import { HandsFeedbackClient } from '@oranix/quiver';
 
-const ticketId = await QuiverFeedbackClient.submit(
+const ticketId = await HandsFeedbackClient.submit(
   context,                    // common.UIAbilityContext
   'Feed does not refresh',    // message
   'bug',                      // 'feedback' | 'bug' | 'crash'
@@ -57,9 +57,9 @@ At crash time (e.g. an `errorManager` observer), write the crash log and its
 signature sidecar — no network in the dying process:
 
 ```ts
-import { QuiverCrashUploader } from '@oranix/quiver';
+import { HandsCrashUploader } from '@oranix/quiver';
 
-QuiverCrashUploader.writeMeta(crashLogPath, {
+HandsCrashUploader.writeMeta(crashLogPath, {
   exception_class: error.name,
   exception_message: error.message,
   top_frame: topFrame,
@@ -71,8 +71,8 @@ QuiverCrashUploader.writeMeta(crashLogPath, {
 On the next launch (a few seconds after startup):
 
 ```ts
-QuiverCrashUploader.enforceRetention(context);
-await QuiverCrashUploader.uploadPending(context);
+HandsCrashUploader.enforceRetention(context);
+await HandsCrashUploader.uploadPending(context);
 ```
 
 Pending crashes upload as `kind=crash` tickets, grouped by signature

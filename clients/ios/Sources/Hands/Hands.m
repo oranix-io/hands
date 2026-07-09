@@ -1,24 +1,24 @@
-#import "Quiver.h"
+#import "Hands.h"
 
-#import "QuiverCrashReporter.h"
-#import "QuiverDeviceId.h"
-#import "QuiverFeedbackClient.h"
+#import "HandsCrashReporter.h"
+#import "HandsDeviceId.h"
+#import "HandsFeedbackClient.h"
 
 #import <UIKit/UIKit.h>
 #import <sys/utsname.h>
 
-static NSTimeInterval const QuiverPendingUploadDelay = 3.0;
-static NSTimeInterval const QuiverDevicePingInterval = 24 * 60 * 60;
-static NSString *const QuiverLastPingDefaultsKey = @"quiver_last_device_ping_at";
+static NSTimeInterval const HandsPendingUploadDelay = 3.0;
+static NSTimeInterval const HandsDevicePingInterval = 24 * 60 * 60;
+static NSString *const HandsLastPingDefaultsKey = @"quiver_last_device_ping_at";
 
-@interface QuiverConfig ()
+@interface HandsConfig ()
 @property (nonatomic, copy, readwrite) NSString *baseUrl;
 @property (nonatomic, copy, readwrite) NSString *appSlug;
 @property (nonatomic, copy, readwrite) NSString *channel;
 @property (nonatomic, copy, readwrite) NSString *clientKey;
 @end
 
-@implementation QuiverConfig
+@implementation HandsConfig
 
 - (instancetype)initWithBaseUrl:(NSString *)baseUrl
                         appSlug:(NSString *)appSlug
@@ -41,7 +41,7 @@ static NSString *const QuiverLastPingDefaultsKey = @"quiver_last_device_ping_at"
                           appSlug:(NSString *)appSlug
                           channel:(NSString *)channel
                         clientKey:(NSString *)clientKey {
-    return [[QuiverConfig alloc] initWithBaseUrl:baseUrl
+    return [[HandsConfig alloc] initWithBaseUrl:baseUrl
                                                appSlug:appSlug
                                                channel:channel
                                              clientKey:clientKey];
@@ -49,25 +49,25 @@ static NSString *const QuiverLastPingDefaultsKey = @"quiver_last_device_ping_at"
 
 @end
 
-static QuiverConfig *gQuiverConfig = nil;
+static HandsConfig *gHandsConfig = nil;
 
-@implementation Quiver
+@implementation Hands
 
-+ (void)installWithConfig:(QuiverConfig *)config {
-    gQuiverConfig = config;
-    [QuiverCrashReporter install];
-    [QuiverCrashReporter uploadPendingAfterDelay:QuiverPendingUploadDelay];
++ (void)installWithConfig:(HandsConfig *)config {
+    gHandsConfig = config;
+    [HandsCrashReporter install];
+    [HandsCrashReporter uploadPendingAfterDelay:HandsPendingUploadDelay];
     [self reportDevice];
 }
 
 + (void)reportDevice {
-    QuiverConfig *config = gQuiverConfig;
+    HandsConfig *config = gHandsConfig;
     if (!config) return;
 
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    NSTimeInterval last = [defaults doubleForKey:QuiverLastPingDefaultsKey];
+    NSTimeInterval last = [defaults doubleForKey:HandsLastPingDefaultsKey];
     NSTimeInterval nowSecs = NSDate.date.timeIntervalSince1970;
-    if (last > 0 && nowSecs - last < QuiverDevicePingInterval) return;
+    if (last > 0 && nowSecs - last < HandsDevicePingInterval) return;
 
     NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
     UIDevice *device = UIDevice.currentDevice;
@@ -99,7 +99,7 @@ static QuiverConfig *gQuiverConfig = nil;
     request.timeoutInterval = 15;
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request setValue:config.clientKey forHTTPHeaderField:@"X-Quiver-Client-Key"];
-    [request setValue:[QuiverDeviceId deviceId] forHTTPHeaderField:@"X-Quiver-Device-Id"];
+    [request setValue:[HandsDeviceId deviceId] forHTTPHeaderField:@"X-Quiver-Device-Id"];
 
     NSURLSessionUploadTask *task = [NSURLSession.sharedSession
         uploadTaskWithRequest:request
@@ -107,14 +107,14 @@ static QuiverConfig *gQuiverConfig = nil;
             completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
                 NSInteger code = [(NSHTTPURLResponse *)response statusCode];
                 if (!error && code >= 200 && code < 300) {
-                    [defaults setDouble:nowSecs forKey:QuiverLastPingDefaultsKey];
+                    [defaults setDouble:nowSecs forKey:HandsLastPingDefaultsKey];
                 }
             }];
     [task resume];
 }
 
-+ (QuiverConfig *)config {
-    return gQuiverConfig;
++ (HandsConfig *)config {
+    return gHandsConfig;
 }
 
 + (void)submitFeedback:(NSString *)message
@@ -122,7 +122,7 @@ static QuiverConfig *gQuiverConfig = nil;
        attachmentPaths:(NSArray<NSString *> *)attachmentPaths
                 extras:(NSDictionary<NSString *, NSString *> *)extras
             completion:(void (^)(NSString *_Nullable, NSError *_Nullable))completion {
-    [QuiverFeedbackClient submitWithMessage:message
+    [HandsFeedbackClient submitWithMessage:message
                                        kind:kind
                             attachmentPaths:attachmentPaths
                                      extras:extras
@@ -130,7 +130,7 @@ static QuiverConfig *gQuiverConfig = nil;
 }
 
 + (NSString *)deviceId {
-    return [QuiverDeviceId deviceId];
+    return [HandsDeviceId deviceId];
 }
 
 @end

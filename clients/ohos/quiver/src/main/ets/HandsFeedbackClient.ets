@@ -7,12 +7,12 @@ import hilog from '@ohos.hilog';
 import display from '@ohos.display';
 import statvfs from '@ohos.file.statvfs';
 import batteryInfo from '@ohos.batteryInfo';
-import { Quiver } from './Quiver';
-import { QuiverDeviceId } from './QuiverDeviceId';
+import { Hands } from './Hands';
+import { HandsDeviceId } from './HandsDeviceId';
 
-const TAG: string = 'QuiverFeedbackClient';
+const TAG: string = 'HandsFeedbackClient';
 
-// Quiver OHOS SDK version — reported in feedback/crash environment metadata.
+// Hands OHOS SDK version — reported in feedback/crash environment metadata.
 // Keep in sync with oh-package.json5 on release.
 const QUIVER_SDK_VERSION: string = '0.1.0';
 
@@ -42,29 +42,29 @@ const MULTIPART_MAX_BYTES: number = 10 * 1024 * 1024;
  */
 const PRESIGN_MAX_BYTES: number = 50 * 1024 * 1024;
 
-export interface QuiverFeedbackExtras {
+export interface HandsFeedbackExtras {
   key: string;
   value: string;
 }
 
-interface QuiverPresignUpload {
+interface HandsPresignUpload {
   attachment_id?: string;
   r2_key?: string;
   upload_url?: string;
   expires_at?: number;
 }
 
-interface QuiverPresignResponse {
-  uploads?: QuiverPresignUpload[];
+interface HandsPresignResponse {
+  uploads?: HandsPresignUpload[];
 }
 
-interface QuiverPresignRequestFile {
+interface HandsPresignRequestFile {
   filename: string;
   content_type: string;
   size: number;
 }
 
-interface QuiverPresignedRef {
+interface HandsPresignedRef {
   r2_key: string;
   filename: string;
   content_type: string;
@@ -103,7 +103,7 @@ function readFileBytes(path: string): ArrayBuffer {
 }
 
 /**
- * Submits feedback / crash tickets to the Quiver feedback endpoint
+ * Submits feedback / crash tickets to the Hands feedback endpoint
  * (multipart/form-data) — the OHOS counterpart of the Android SDK's
  * QuiverFeedback. Device and app metadata are attached automatically.
  *
@@ -114,7 +114,7 @@ function readFileBytes(path: string): ArrayBuffer {
  * stream the presigned PUT and allow up to 200 MB; OHOS reads the file into
  * memory — see PRESIGN_MAX_BYTES.)
  */
-export class QuiverFeedbackClient {
+export class HandsFeedbackClient {
   /**
    * @returns the created ticket id
    */
@@ -123,7 +123,7 @@ export class QuiverFeedbackClient {
     message: string,
     kind: string,
     attachmentPaths: string[],
-    extras: QuiverFeedbackExtras[],
+    extras: HandsFeedbackExtras[],
   ): Promise<string> {
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
     const metadata: Record<string, string | number> = {
@@ -133,9 +133,9 @@ export class QuiverFeedbackClient {
       'bundle_id': bundleInfo.name,
       'platform': 'ohos',
       'quiver_sdk': QUIVER_SDK_VERSION,
-      'channel': Quiver.config.channel,
+      'channel': Hands.config.channel,
       // Device
-      'device_id': QuiverDeviceId.get(context),
+      'device_id': HandsDeviceId.get(context),
       'device_model': `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
       'device_manufacturer': deviceInfo.manufacture,
       'device_brand': deviceInfo.brand,
@@ -185,8 +185,8 @@ export class QuiverFeedbackClient {
     try {
       // Large attachments go straight to R2 via presigned PUT before the
       // ticket is submitted; the ticket then references them by r2_key.
-      const presignedRefs: QuiverPresignedRef[] =
-        large.length > 0 ? await QuiverFeedbackClient.uploadLargeAttachments(client, large) : [];
+      const presignedRefs: HandsPresignedRef[] =
+        large.length > 0 ? await HandsFeedbackClient.uploadLargeAttachments(client, large) : [];
 
       const multiFormDataList: Array<http.MultiFormData> = [
         { name: 'message', contentType: 'text/plain', data: message },
@@ -211,13 +211,13 @@ export class QuiverFeedbackClient {
       }
 
       const response = await client.request(
-        `${Quiver.config.baseUrl}/public/v2/apps/${Quiver.config.appSlug}/feedback`,
+        `${Hands.config.baseUrl}/public/v2/apps/${Hands.config.appSlug}/feedback`,
         {
           method: http.RequestMethod.POST,
           header: {
             'Content-Type': 'multipart/form-data',
             'Accept': 'application/json',
-            'X-Quiver-Client-Key': Quiver.config.clientKey,
+            'X-Quiver-Client-Key': Hands.config.clientKey,
           },
           multiFormDataList: multiFormDataList,
           connectTimeout: REQUEST_TIMEOUT_MS,
@@ -250,8 +250,8 @@ export class QuiverFeedbackClient {
   private static async uploadLargeAttachments(
     client: http.HttpRequest,
     paths: string[],
-  ): Promise<QuiverPresignedRef[]> {
-    const requestFiles: QuiverPresignRequestFile[] = paths.map((path): QuiverPresignRequestFile => {
+  ): Promise<HandsPresignedRef[]> {
+    const requestFiles: HandsPresignRequestFile[] = paths.map((path): HandsPresignRequestFile => {
       const fileName = path.split('/').pop() ?? 'attachment';
       return {
         filename: fileName,
@@ -261,13 +261,13 @@ export class QuiverFeedbackClient {
     });
 
     const presignResponse = await client.request(
-      `${Quiver.config.baseUrl}/public/v2/apps/${Quiver.config.appSlug}/feedback/presign`,
+      `${Hands.config.baseUrl}/public/v2/apps/${Hands.config.appSlug}/feedback/presign`,
       {
         method: http.RequestMethod.POST,
         header: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-Quiver-Client-Key': Quiver.config.clientKey,
+          'X-Quiver-Client-Key': Hands.config.clientKey,
         },
         extraData: JSON.stringify({ files: requestFiles }),
         connectTimeout: REQUEST_TIMEOUT_MS,
@@ -279,9 +279,9 @@ export class QuiverFeedbackClient {
     if (presignCode < 200 || presignCode >= 300) {
       throw new Error(`quiver presign failed: HTTP ${presignCode}`);
     }
-    const uploads = (JSON.parse(presignBody) as QuiverPresignResponse).uploads ?? [];
+    const uploads = (JSON.parse(presignBody) as HandsPresignResponse).uploads ?? [];
 
-    const refs: QuiverPresignedRef[] = [];
+    const refs: HandsPresignedRef[] = [];
     for (let index = 0; index < paths.length; index++) {
       const path = paths[index];
       const fileName = path.split('/').pop() ?? 'attachment';

@@ -1,9 +1,9 @@
 Pod::Spec.new do |s|
-  s.name             = 'Quiver'
+  s.name             = 'Hands'
   s.version          = '0.1.4'
-  s.summary          = 'Quiver feedback + crash reporting for iOS.'
+  s.summary          = 'Hands feedback + crash reporting for iOS.'
   s.description      = <<-DESC
-    Native iOS reporting layer for Quiver: in-app feedback tickets
+    Native iOS reporting layer for Hands: in-app feedback tickets
     (multipart with attachments and automatic device metadata) and
     store-then-send crash reporting (uncaught NSExceptions and fatal
     signals, uploaded as crash tickets on the next launch). Configured at
@@ -16,8 +16,8 @@ Pod::Spec.new do |s|
   s.source           = { :git => 'https://github.com/oranix-io/quiver.git', :tag => "ios-v#{s.version}" }
 
   s.ios.deployment_target = '14.1'
-  s.source_files     = 'clients/ios/Sources/Quiver/**/*.{h,m}'
-  s.public_header_files = 'clients/ios/Sources/Quiver/Quiver.h'
+  s.source_files     = 'clients/ios/Sources/Hands/**/*.{h,m}'
+  s.public_header_files = 'clients/ios/Sources/Hands/Hands.h'
   s.frameworks       = 'Foundation', 'UIKit'
   s.requires_arc     = true
 end

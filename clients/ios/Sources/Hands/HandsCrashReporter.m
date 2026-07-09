@@ -1,4 +1,4 @@
-#import "QuiverCrashReporter.h"
+#import "HandsCrashReporter.h"
 
 #import <execinfo.h>
 #import <dlfcn.h>
@@ -12,89 +12,89 @@
 #import <string.h>
 #import <unistd.h>
 
-#import "QuiverFeedbackClient.h"
+#import "HandsFeedbackClient.h"
 
-static NSUInteger const QuiverMaxStoredCrashes = 5;
+static NSUInteger const HandsMaxStoredCrashes = 5;
 enum {
-    QuiverMaxBinaryImages = 256,
-    QuiverMaxCrashFrames = 64,
-    QuiverImagePathMax = 512,
-    QuiverImageNameMax = 128,
-    QuiverImageJsonMax = 1536,
+    HandsMaxBinaryImages = 256,
+    HandsMaxCrashFrames = 64,
+    HandsImagePathMax = 512,
+    HandsImageNameMax = 128,
+    HandsImageJsonMax = 1536,
 };
 
 // Signal handlers cannot allocate; the crash directory path is captured as a
 // C string at install time and file names are assembled with the safe
 // append helpers below.
-static char gQuiverCrashDir[512] = {0};
-static NSUncaughtExceptionHandler *gQuiverPreviousExceptionHandler = NULL;
+static char gHandsCrashDir[512] = {0};
+static NSUncaughtExceptionHandler *gHandsPreviousExceptionHandler = NULL;
 
-// App-registered diagnostics provider (see QuiverCrashReporter.h). Written
+// App-registered diagnostics provider (see HandsCrashReporter.h). Written
 // once at init; read at upload time on a background queue. Guarded by a lock
 // so set/get never tears across threads.
-static QuiverDiagnosticsProvider gQuiverDiagnosticsProvider = nil;
-static pthread_mutex_t gQuiverDiagnosticsProviderLock = PTHREAD_MUTEX_INITIALIZER;
+static HandsDiagnosticsProvider gHandsDiagnosticsProvider = nil;
+static pthread_mutex_t gHandsDiagnosticsProviderLock = PTHREAD_MUTEX_INITIALIZER;
 
-static QuiverDiagnosticsProvider QuiverCurrentDiagnosticsProvider(void) {
-    pthread_mutex_lock(&gQuiverDiagnosticsProviderLock);
-    QuiverDiagnosticsProvider provider = gQuiverDiagnosticsProvider;
-    pthread_mutex_unlock(&gQuiverDiagnosticsProviderLock);
+static HandsDiagnosticsProvider HandsCurrentDiagnosticsProvider(void) {
+    pthread_mutex_lock(&gHandsDiagnosticsProviderLock);
+    HandsDiagnosticsProvider provider = gHandsDiagnosticsProvider;
+    pthread_mutex_unlock(&gHandsDiagnosticsProviderLock);
     return provider;
 }
 
 typedef struct {
     char uuid[37];
-    char path[QuiverImagePathMax];
-    char name[QuiverImageNameMax];
-    char json[QuiverImageJsonMax];
+    char path[HandsImagePathMax];
+    char name[HandsImageNameMax];
+    char json[HandsImageJsonMax];
     uintptr_t loadAddress;
     uintptr_t baseAddress;
     uintptr_t endAddress;
     intptr_t slide;
-} QuiverBinaryImage;
+} HandsBinaryImage;
 
-static QuiverBinaryImage gQuiverBinaryImages[QuiverMaxBinaryImages];
-static volatile sig_atomic_t gQuiverBinaryImageCount = 0;
-static pthread_mutex_t gQuiverBinaryImageLock = PTHREAD_MUTEX_INITIALIZER;
+static HandsBinaryImage gHandsBinaryImages[HandsMaxBinaryImages];
+static volatile sig_atomic_t gHandsBinaryImageCount = 0;
+static pthread_mutex_t gHandsBinaryImageLock = PTHREAD_MUTEX_INITIALIZER;
 
-static int const kQuiverFatalSignals[] = {SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP};
-static int const kQuiverFatalSignalCount = sizeof(kQuiverFatalSignals) / sizeof(int);
+static int const kHandsFatalSignals[] = {SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP};
+static int const kHandsFatalSignalCount = sizeof(kHandsFatalSignals) / sizeof(int);
 
-static NSString *QuiverCrashDirPath(void) {
+static NSString *HandsCrashDirPath(void) {
     NSString *base = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
     return [base stringByAppendingPathComponent:@"quiver/crashes"];
 }
 
-static NSString *QuiverStringFromCString(const char *text) {
+static NSString *HandsStringFromCString(const char *text) {
     return text && text[0] != '\0' ? ([NSString stringWithUTF8String:text] ?: @"") : @"";
 }
 
-static NSDictionary *QuiverDictionaryFromImage(QuiverBinaryImage image) {
+static NSDictionary *HandsDictionaryFromImage(HandsBinaryImage image) {
     return @{
-        @"uuid" : QuiverStringFromCString(image.uuid),
+        @"uuid" : HandsStringFromCString(image.uuid),
         @"load_address" : [NSString stringWithFormat:@"0x%016llx", (unsigned long long)image.loadAddress],
         @"base_address" : [NSString stringWithFormat:@"0x%016llx", (unsigned long long)image.baseAddress],
         @"end_address" : [NSString stringWithFormat:@"0x%016llx", (unsigned long long)image.endAddress],
         @"slide" : [NSString stringWithFormat:@"0x%016llx", (unsigned long long)image.slide],
-        @"path" : QuiverStringFromCString(image.path),
-        @"name" : QuiverStringFromCString(image.name),
+        @"path" : HandsStringFromCString(image.path),
+        @"name" : HandsStringFromCString(image.name),
     };
 }
 
-static NSArray<NSDictionary *> *QuiverCurrentBinaryImages(void) {
+static NSArray<NSDictionary *> *HandsCurrentBinaryImages(void) {
     NSMutableArray<NSDictionary *> *images = [NSMutableArray array];
-    pthread_mutex_lock(&gQuiverBinaryImageLock);
-    int count = (int)gQuiverBinaryImageCount;
-    for (int i = 0; i < count && i < QuiverMaxBinaryImages; i++) {
-        [images addObject:QuiverDictionaryFromImage(gQuiverBinaryImages[i])];
+    pthread_mutex_lock(&gHandsBinaryImageLock);
+    int count = (int)gHandsBinaryImageCount;
+    for (int i = 0; i < count && i < HandsMaxBinaryImages; i++) {
+        [images addObject:HandsDictionaryFromImage(gHandsBinaryImages[i])];
     }
-    pthread_mutex_unlock(&gQuiverBinaryImageLock);
+    pthread_mutex_unlock(&gHandsBinaryImageLock);
     return images;
 }
 
-static NSArray<NSDictionary *> *QuiverFrameAddressesFromReturnAddresses(NSArray<NSNumber *> *returnAddresses) {
+static NSArray<NSDictionary *> *HandsFrameAddressesFromReturnAddresses(NSArray<NSNumber *> *returnAddresses) {
     NSMutableArray<NSDictionary *> *frames = [NSMutableArray array];
-    NSUInteger maxFrames = MIN(returnAddresses.count, (NSUInteger)QuiverMaxCrashFrames);
+    NSUInteger maxFrames = MIN(returnAddresses.count, (NSUInteger)HandsMaxCrashFrames);
     for (NSUInteger i = 0; i < maxFrames; i++) {
         unsigned long long address = returnAddresses[i].unsignedLongLongValue;
         if (address == 0) continue;
@@ -106,19 +106,19 @@ static NSArray<NSDictionary *> *QuiverFrameAddressesFromReturnAddresses(NSArray<
     return frames;
 }
 
-static NSString *QuiverJSONString(id object) {
+static NSString *HandsJSONString(id object) {
     if (!object) return @"";
     NSData *data = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
     return data ? ([[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"") : @"";
 }
 
-static void QuiverWriteMetaFile(NSString *logPath,
+static void HandsWriteMetaFile(NSString *logPath,
                                      NSString *exceptionClass,
                                      NSString *exceptionMessage,
                                      NSString *topFrame,
                                      NSString *reason,
                                      NSArray<NSDictionary *> *frames) {
-    NSArray<NSDictionary *> *binaryImages = QuiverCurrentBinaryImages();
+    NSArray<NSDictionary *> *binaryImages = HandsCurrentBinaryImages();
     NSDictionary *meta = @{
         @"exception_class" : exceptionClass ?: @"IosCrash",
         @"exception_message" : exceptionMessage ?: @"",
@@ -135,7 +135,7 @@ static void QuiverWriteMetaFile(NSString *logPath,
 
 /// First stack frame that belongs to the app image rather than system
 /// libraries — the same "top frame" notion the server groups crashes by.
-static NSString *QuiverTopAppFrame(NSArray<NSString *> *frames) {
+static NSString *HandsTopAppFrame(NSArray<NSString *> *frames) {
     NSString *executable = NSProcessInfo.processInfo.processName;
     for (NSString *frame in frames) {
         if (executable.length > 0 && [frame containsString:executable]) {
@@ -145,8 +145,8 @@ static NSString *QuiverTopAppFrame(NSArray<NSString *> *frames) {
     return frames.count > 1 ? frames[1] : (frames.firstObject ?: @"");
 }
 
-static void QuiverHandleException(NSException *exception) {
-    NSString *dir = QuiverCrashDirPath();
+static void HandsHandleException(NSException *exception) {
+    NSString *dir = HandsCrashDirPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
     long long ts = (long long)(NSDate.date.timeIntervalSince1970 * 1000.0);
     NSString *logPath = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"crash-%lld.txt", ts]];
@@ -160,39 +160,39 @@ static void QuiverHandleException(NSException *exception) {
     [log appendString:@"\n"];
     [log writeToFile:logPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
-    QuiverWriteMetaFile(logPath,
+    HandsWriteMetaFile(logPath,
                              exception.name ?: @"NSException",
                              exception.reason ?: @"",
-                             QuiverTopAppFrame(frames),
+                             HandsTopAppFrame(frames),
                              @"uncaught_exception",
-                             QuiverFrameAddressesFromReturnAddresses(exception.callStackReturnAddresses ?: @[]));
+                             HandsFrameAddressesFromReturnAddresses(exception.callStackReturnAddresses ?: @[]));
 
-    if (gQuiverPreviousExceptionHandler) {
-        gQuiverPreviousExceptionHandler(exception);
+    if (gHandsPreviousExceptionHandler) {
+        gHandsPreviousExceptionHandler(exception);
     }
 }
 
 // ---- async-signal-safe primitives (no snprintf/malloc/ObjC in handlers) ----
 
-static size_t QuiverSafeStrLen(const char *text) {
+static size_t HandsSafeStrLen(const char *text) {
     size_t n = 0;
     while (text[n] != '\0') n++;
     return n;
 }
 
-static void QuiverSafeAppend(char *buffer, size_t capacity, size_t *offset, const char *text) {
-    size_t n = QuiverSafeStrLen(text);
+static void HandsSafeAppend(char *buffer, size_t capacity, size_t *offset, const char *text) {
+    size_t n = HandsSafeStrLen(text);
     if (*offset + n >= capacity) return;
     for (size_t i = 0; i < n; i++) buffer[*offset + i] = text[i];
     *offset += n;
     buffer[*offset] = '\0';
 }
 
-static void QuiverSafeAppendNumber(char *buffer, size_t capacity, size_t *offset, long long value) {
+static void HandsSafeAppendNumber(char *buffer, size_t capacity, size_t *offset, long long value) {
     char digits[24];
     int i = 0;
     if (value <= 0) {
-        QuiverSafeAppend(buffer, capacity, offset, "0");
+        HandsSafeAppend(buffer, capacity, offset, "0");
         return;
     }
     while (value > 0 && i < 20) {
@@ -202,10 +202,10 @@ static void QuiverSafeAppendNumber(char *buffer, size_t capacity, size_t *offset
     char out[24];
     for (int j = 0; j < i; j++) out[j] = digits[i - 1 - j];
     out[i] = '\0';
-    QuiverSafeAppend(buffer, capacity, offset, out);
+    HandsSafeAppend(buffer, capacity, offset, out);
 }
 
-static void QuiverSafeAppendHex(char *buffer, size_t capacity, size_t *offset, uint64_t value) {
+static void HandsSafeAppendHex(char *buffer, size_t capacity, size_t *offset, uint64_t value) {
     char digits[19];
     int i = 18;
     digits[i--] = '\0';
@@ -215,11 +215,11 @@ static void QuiverSafeAppendHex(char *buffer, size_t capacity, size_t *offset, u
         digits[i--] = alphabet[value & 0xf];
         value >>= 4;
     }
-    QuiverSafeAppend(buffer, capacity, offset, "0x");
-    QuiverSafeAppend(buffer, capacity, offset, &digits[i + 1]);
+    HandsSafeAppend(buffer, capacity, offset, "0x");
+    HandsSafeAppend(buffer, capacity, offset, &digits[i + 1]);
 }
 
-static void QuiverSafeWriteAll(int fd, const char *buffer, size_t length) {
+static void HandsSafeWriteAll(int fd, const char *buffer, size_t length) {
     size_t written = 0;
     while (written < length) {
         ssize_t n = write(fd, buffer + written, length - written);
@@ -228,31 +228,31 @@ static void QuiverSafeWriteAll(int fd, const char *buffer, size_t length) {
     }
 }
 
-static void QuiverWriteBinaryImagesJSON(int fd) {
-    QuiverSafeWriteAll(fd, "\"binary_images\":[", 17);
-    int count = (int)gQuiverBinaryImageCount;
-    if (count > QuiverMaxBinaryImages) count = QuiverMaxBinaryImages;
+static void HandsWriteBinaryImagesJSON(int fd) {
+    HandsSafeWriteAll(fd, "\"binary_images\":[", 17);
+    int count = (int)gHandsBinaryImageCount;
+    if (count > HandsMaxBinaryImages) count = HandsMaxBinaryImages;
     for (int i = 0; i < count; i++) {
-        if (i > 0) QuiverSafeWriteAll(fd, ",", 1);
-        QuiverSafeWriteAll(fd, gQuiverBinaryImages[i].json, QuiverSafeStrLen(gQuiverBinaryImages[i].json));
+        if (i > 0) HandsSafeWriteAll(fd, ",", 1);
+        HandsSafeWriteAll(fd, gHandsBinaryImages[i].json, HandsSafeStrLen(gHandsBinaryImages[i].json));
     }
-    QuiverSafeWriteAll(fd, "]", 1);
+    HandsSafeWriteAll(fd, "]", 1);
 }
 
-static void QuiverWriteRawFrames(int fd, void **frames, int frameCount) {
-    QuiverSafeWriteAll(fd, "\n\nQuiverFrames:\n", 16);
-    int count = frameCount < QuiverMaxCrashFrames ? frameCount : QuiverMaxCrashFrames;
+static void HandsWriteRawFrames(int fd, void **frames, int frameCount) {
+    HandsSafeWriteAll(fd, "\n\nHandsFrames:\n", 15);
+    int count = frameCount < HandsMaxCrashFrames ? frameCount : HandsMaxCrashFrames;
     for (int i = 0; i < count; i++) {
         char line[48];
         size_t off = 0;
-        QuiverSafeAppendHex(line, sizeof(line), &off, (uint64_t)(uintptr_t)frames[i]);
-        QuiverSafeAppend(line, sizeof(line), &off, "\n");
-        QuiverSafeWriteAll(fd, line, off);
+        HandsSafeAppendHex(line, sizeof(line), &off, (uint64_t)(uintptr_t)frames[i]);
+        HandsSafeAppend(line, sizeof(line), &off, "\n");
+        HandsSafeWriteAll(fd, line, off);
     }
-    QuiverSafeWriteAll(fd, "EndQuiverFrames\n", 16);
+    HandsSafeWriteAll(fd, "EndHandsFrames\n", 15);
 }
 
-static BOOL QuiverParseHexLine(NSString *line, unsigned long long *value) {
+static BOOL HandsParseHexLine(NSString *line, unsigned long long *value) {
     NSString *trimmed = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (![trimmed hasPrefix:@"0x"] || trimmed.length <= 2) return NO;
     NSScanner *scanner = [NSScanner scannerWithString:[trimmed substringFromIndex:2]];
@@ -263,33 +263,33 @@ static BOOL QuiverParseHexLine(NSString *line, unsigned long long *value) {
     return YES;
 }
 
-static NSArray<NSDictionary *> *QuiverFramesFromLogFile(NSString *logPath) {
+static NSArray<NSDictionary *> *HandsFramesFromLogFile(NSString *logPath) {
     NSString *text = [NSString stringWithContentsOfFile:logPath encoding:NSUTF8StringEncoding error:nil];
     if (text.length == 0) return @[];
     NSMutableArray<NSDictionary *> *frames = [NSMutableArray array];
     BOOL inFrames = NO;
     NSArray<NSString *> *lines = [text componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet];
     for (NSString *line in lines) {
-        if ([line isEqualToString:@"QuiverFrames:"]) {
+        if ([line isEqualToString:@"HandsFrames:"]) {
             inFrames = YES;
             continue;
         }
-        if ([line isEqualToString:@"EndQuiverFrames"]) {
+        if ([line isEqualToString:@"EndHandsFrames"]) {
             break;
         }
         if (!inFrames) continue;
         unsigned long long address = 0;
-        if (!QuiverParseHexLine(line, &address) || address == 0) continue;
+        if (!HandsParseHexLine(line, &address) || address == 0) continue;
         [frames addObject:@{
             @"index" : @(frames.count),
             @"address" : [NSString stringWithFormat:@"0x%016llx", address],
         }];
-        if (frames.count >= (NSUInteger)QuiverMaxCrashFrames) break;
+        if (frames.count >= (NSUInteger)HandsMaxCrashFrames) break;
     }
     return frames;
 }
 
-static void QuiverFormatUUID(const uint8_t uuid[16], char out[37]) {
+static void HandsFormatUUID(const uint8_t uuid[16], char out[37]) {
     snprintf(out, 37,
              "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
              uuid[0], uuid[1], uuid[2], uuid[3],
@@ -299,7 +299,7 @@ static void QuiverFormatUUID(const uint8_t uuid[16], char out[37]) {
              uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
 }
 
-static BOOL QuiverReadMachOInfo(const struct mach_header *header,
+static BOOL HandsReadMachOInfo(const struct mach_header *header,
                                 intptr_t slide,
                                 char uuid[37],
                                 uintptr_t *baseAddress,
@@ -325,7 +325,7 @@ static BOOL QuiverReadMachOInfo(const struct mach_header *header,
         const struct load_command *cmd = (const struct load_command *)cursor;
         if (cmd->cmd == LC_UUID) {
             const struct uuid_command *uuidCmd = (const struct uuid_command *)cmd;
-            QuiverFormatUUID(uuidCmd->uuid, uuid);
+            HandsFormatUUID(uuidCmd->uuid, uuid);
             foundUUID = YES;
         } else if (cmd->cmd == LC_SEGMENT_64 && cmd->cmdsize >= sizeof(struct segment_command_64)) {
             const struct segment_command_64 *segment = (const struct segment_command_64 *)cmd;
@@ -354,7 +354,7 @@ static BOOL QuiverReadMachOInfo(const struct mach_header *header,
     return foundUUID;
 }
 
-static void QuiverCopyCString(const char *input, char *output, size_t capacity) {
+static void HandsCopyCString(const char *input, char *output, size_t capacity) {
     if (capacity == 0) return;
     size_t off = 0;
     for (; input && input[off] != '\0' && off + 1 < capacity; off++) {
@@ -363,7 +363,7 @@ static void QuiverCopyCString(const char *input, char *output, size_t capacity) 
     output[off] = '\0';
 }
 
-static void QuiverCopyEscapedJSONString(const char *input, char *output, size_t capacity) {
+static void HandsCopyEscapedJSONString(const char *input, char *output, size_t capacity) {
     size_t off = 0;
     for (size_t i = 0; input && input[i] != '\0' && off + 1 < capacity; i++) {
         unsigned char ch = (unsigned char)input[i];
@@ -377,30 +377,30 @@ static void QuiverCopyEscapedJSONString(const char *input, char *output, size_t 
     output[off] = '\0';
 }
 
-static void QuiverCacheBinaryImage(const struct mach_header *header, intptr_t slide) {
+static void HandsCacheBinaryImage(const struct mach_header *header, intptr_t slide) {
     if (!header) return;
-    QuiverBinaryImage image;
+    HandsBinaryImage image;
     memset(&image, 0, sizeof(image));
     uintptr_t baseAddress = 0;
     uintptr_t endAddress = 0;
-    if (!QuiverReadMachOInfo(header, slide, image.uuid, &baseAddress, &endAddress)) {
+    if (!HandsReadMachOInfo(header, slide, image.uuid, &baseAddress, &endAddress)) {
         return;
     }
     Dl_info info;
     memset(&info, 0, sizeof(info));
     if (dladdr(header, &info) != 0 && info.dli_fname) {
-        QuiverCopyCString(info.dli_fname, image.path, sizeof(image.path));
+        HandsCopyCString(info.dli_fname, image.path, sizeof(image.path));
         const char *slash = strrchr(info.dli_fname, '/');
-        QuiverCopyCString(slash ? slash + 1 : info.dli_fname, image.name, sizeof(image.name));
+        HandsCopyCString(slash ? slash + 1 : info.dli_fname, image.name, sizeof(image.name));
     }
     image.loadAddress = (uintptr_t)header;
     image.baseAddress = baseAddress;
     image.endAddress = endAddress;
     image.slide = slide;
-    char escapedPath[QuiverImagePathMax * 2];
-    char escapedName[QuiverImageNameMax * 2];
-    QuiverCopyEscapedJSONString(image.path, escapedPath, sizeof(escapedPath));
-    QuiverCopyEscapedJSONString(image.name, escapedName, sizeof(escapedName));
+    char escapedPath[HandsImagePathMax * 2];
+    char escapedName[HandsImageNameMax * 2];
+    HandsCopyEscapedJSONString(image.path, escapedPath, sizeof(escapedPath));
+    HandsCopyEscapedJSONString(image.name, escapedName, sizeof(escapedName));
     snprintf(image.json, sizeof(image.json),
              "{\"uuid\":\"%s\",\"load_address\":\"0x%016llx\",\"base_address\":\"0x%016llx\",\"end_address\":\"0x%016llx\",\"slide\":\"0x%016llx\",\"path\":\"%s\",\"name\":\"%s\"}",
              image.uuid,
@@ -411,23 +411,23 @@ static void QuiverCacheBinaryImage(const struct mach_header *header, intptr_t sl
              escapedPath,
              escapedName);
 
-    pthread_mutex_lock(&gQuiverBinaryImageLock);
-    int count = (int)gQuiverBinaryImageCount;
-    if (count < QuiverMaxBinaryImages) {
-        gQuiverBinaryImages[count] = image;
-        gQuiverBinaryImageCount = count + 1;
+    pthread_mutex_lock(&gHandsBinaryImageLock);
+    int count = (int)gHandsBinaryImageCount;
+    if (count < HandsMaxBinaryImages) {
+        gHandsBinaryImages[count] = image;
+        gHandsBinaryImageCount = count + 1;
     }
-    pthread_mutex_unlock(&gQuiverBinaryImageLock);
+    pthread_mutex_unlock(&gHandsBinaryImageLock);
 }
 
-static void QuiverDyldAddImageCallback(const struct mach_header *header, intptr_t slide) {
-    QuiverCacheBinaryImage(header, slide);
+static void HandsDyldAddImageCallback(const struct mach_header *header, intptr_t slide) {
+    HandsCacheBinaryImage(header, slide);
 }
 
-static void QuiverInstallBinaryImageCache(void) {
+static void HandsInstallBinaryImageCache(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        _dyld_register_func_for_add_image(&QuiverDyldAddImageCallback);
+        _dyld_register_func_for_add_image(&HandsDyldAddImageCallback);
     });
 }
 
@@ -437,8 +437,8 @@ static void QuiverInstallBinaryImageCache(void) {
 /// best-effort stack capture at the end deadlocks in a corrupted-runtime
 /// crash; backtrace()/backtrace_symbols_fd() are not strictly safe and are
 /// deliberately last.
-static void QuiverHandleSignal(int signalNumber) {
-    if (gQuiverCrashDir[0] == '\0') {
+static void HandsHandleSignal(int signalNumber) {
+    if (gHandsCrashDir[0] == '\0') {
         signal(signalNumber, SIG_DFL);
         raise(signalNumber);
         return;
@@ -458,46 +458,46 @@ static void QuiverHandleSignal(int signalNumber) {
     // Meta sidecar first — the minimal guaranteed record.
     char metaPath[640];
     size_t off = 0;
-    QuiverSafeAppend(metaPath, sizeof(metaPath), &off, gQuiverCrashDir);
-    QuiverSafeAppend(metaPath, sizeof(metaPath), &off, "/crash-");
-    QuiverSafeAppendNumber(metaPath, sizeof(metaPath), &off, ts);
-    QuiverSafeAppend(metaPath, sizeof(metaPath), &off, ".meta.json");
+    HandsSafeAppend(metaPath, sizeof(metaPath), &off, gHandsCrashDir);
+    HandsSafeAppend(metaPath, sizeof(metaPath), &off, "/crash-");
+    HandsSafeAppendNumber(metaPath, sizeof(metaPath), &off, ts);
+    HandsSafeAppend(metaPath, sizeof(metaPath), &off, ".meta.json");
     int metaFd = open(metaPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (metaFd >= 0) {
         char meta[256];
         off = 0;
-        QuiverSafeAppend(meta, sizeof(meta), &off, "{\"exception_class\":\"");
-        QuiverSafeAppend(meta, sizeof(meta), &off, name);
-        QuiverSafeAppend(meta, sizeof(meta), &off, "\",\"exception_message\":\"fatal signal\",\"reason\":\"signal\",\"crash_at\":");
-        QuiverSafeAppendNumber(meta, sizeof(meta), &off, ts);
-        QuiverSafeAppend(meta, sizeof(meta), &off, ",");
-        QuiverSafeWriteAll(metaFd, meta, off);
-        QuiverWriteBinaryImagesJSON(metaFd);
-        QuiverSafeWriteAll(metaFd, ",\"frames\":[]}", 13);
+        HandsSafeAppend(meta, sizeof(meta), &off, "{\"exception_class\":\"");
+        HandsSafeAppend(meta, sizeof(meta), &off, name);
+        HandsSafeAppend(meta, sizeof(meta), &off, "\",\"exception_message\":\"fatal signal\",\"reason\":\"signal\",\"crash_at\":");
+        HandsSafeAppendNumber(meta, sizeof(meta), &off, ts);
+        HandsSafeAppend(meta, sizeof(meta), &off, ",");
+        HandsSafeWriteAll(metaFd, meta, off);
+        HandsWriteBinaryImagesJSON(metaFd);
+        HandsSafeWriteAll(metaFd, ",\"frames\":[]}", 13);
         close(metaFd);
     }
 
     // Log file with a fixed header (still fully safe calls only).
     char logPath[640];
     off = 0;
-    QuiverSafeAppend(logPath, sizeof(logPath), &off, gQuiverCrashDir);
-    QuiverSafeAppend(logPath, sizeof(logPath), &off, "/crash-");
-    QuiverSafeAppendNumber(logPath, sizeof(logPath), &off, ts);
-    QuiverSafeAppend(logPath, sizeof(logPath), &off, ".txt");
+    HandsSafeAppend(logPath, sizeof(logPath), &off, gHandsCrashDir);
+    HandsSafeAppend(logPath, sizeof(logPath), &off, "/crash-");
+    HandsSafeAppendNumber(logPath, sizeof(logPath), &off, ts);
+    HandsSafeAppend(logPath, sizeof(logPath), &off, ".txt");
     int logFd = open(logPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (logFd >= 0) {
         char header[96];
         off = 0;
-        QuiverSafeAppend(header, sizeof(header), &off, "Fatal signal: ");
-        QuiverSafeAppend(header, sizeof(header), &off, name);
-        QuiverSafeAppend(header, sizeof(header), &off, "\n\nStack (best-effort):\n");
+        HandsSafeAppend(header, sizeof(header), &off, "Fatal signal: ");
+        HandsSafeAppend(header, sizeof(header), &off, name);
+        HandsSafeAppend(header, sizeof(header), &off, "\n\nStack (best-effort):\n");
         write(logFd, header, off);
         // Best-effort, LAST: backtrace can touch unwind/runtime state and is
         // not async-signal-safe; if it hangs or crashes, the record above is
         // already on disk.
         void *frames[64];
         int frameCount = backtrace(frames, 64);
-        QuiverWriteRawFrames(logFd, frames, frameCount);
+        HandsWriteRawFrames(logFd, frames, frameCount);
         backtrace_symbols_fd(frames, frameCount, logFd);
         close(logFd);
     }
@@ -513,7 +513,7 @@ static void QuiverHandleSignal(int signalNumber) {
 // handler, so ordinary Foundation APIs are safe. NSFileCoordinator's
 // forUploading option is the dependency-free way to produce a real .zip on
 // iOS: coordinated-reading a directory yields a zipped copy.
-static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stamp) {
+static NSString *HandsZipDiagnostics(NSArray<NSString *> *paths, NSString *stamp) {
     if (![paths isKindOfClass:NSArray.class] || paths.count == 0) return nil;
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *stageRoot = [NSTemporaryDirectory()
@@ -566,36 +566,36 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
     return zipPath;
 }
 
-@implementation QuiverCrashReporter
+@implementation HandsCrashReporter
 
 + (void)install {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSString *dir = QuiverCrashDirPath();
+        NSString *dir = HandsCrashDirPath();
         [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-        [dir getCString:gQuiverCrashDir maxLength:sizeof(gQuiverCrashDir) encoding:NSUTF8StringEncoding];
-        QuiverInstallBinaryImageCache();
+        [dir getCString:gHandsCrashDir maxLength:sizeof(gHandsCrashDir) encoding:NSUTF8StringEncoding];
+        HandsInstallBinaryImageCache();
 
-        gQuiverPreviousExceptionHandler = NSGetUncaughtExceptionHandler();
-        NSSetUncaughtExceptionHandler(&QuiverHandleException);
-        for (int i = 0; i < kQuiverFatalSignalCount; i++) {
-            signal(kQuiverFatalSignals[i], &QuiverHandleSignal);
+        gHandsPreviousExceptionHandler = NSGetUncaughtExceptionHandler();
+        NSSetUncaughtExceptionHandler(&HandsHandleException);
+        for (int i = 0; i < kHandsFatalSignalCount; i++) {
+            signal(kHandsFatalSignals[i], &HandsHandleSignal);
         }
         [self enforceRetention];
     });
 }
 
 + (void)enforceRetention {
-    NSString *dir = QuiverCrashDirPath();
+    NSString *dir = HandsCrashDirPath();
     NSArray<NSString *> *entries = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil];
     NSArray<NSString *> *logs = [[entries filteredArrayUsingPredicate:
         [NSPredicate predicateWithBlock:^BOOL(NSString *name, NSDictionary *bindings) {
             return [name hasPrefix:@"crash-"] && [name hasSuffix:@".txt"];
         }]] sortedArrayUsingSelector:@selector(compare:)];
-    if (logs.count < QuiverMaxStoredCrashes) {
+    if (logs.count < HandsMaxStoredCrashes) {
         return;
     }
-    NSUInteger excess = logs.count - (QuiverMaxStoredCrashes - 1);
+    NSUInteger excess = logs.count - (HandsMaxStoredCrashes - 1);
     for (NSUInteger i = 0; i < excess; i++) {
         [self deletePairForLogPath:[dir stringByAppendingPathComponent:logs[i]]];
     }
@@ -608,10 +608,10 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
     [fm removeItemAtPath:metaPath error:nil];
 }
 
-+ (void)setDiagnosticsProvider:(QuiverDiagnosticsProvider)provider {
-    pthread_mutex_lock(&gQuiverDiagnosticsProviderLock);
-    gQuiverDiagnosticsProvider = [provider copy];
-    pthread_mutex_unlock(&gQuiverDiagnosticsProviderLock);
++ (void)setDiagnosticsProvider:(HandsDiagnosticsProvider)provider {
+    pthread_mutex_lock(&gHandsDiagnosticsProviderLock);
+    gHandsDiagnosticsProvider = [provider copy];
+    pthread_mutex_unlock(&gHandsDiagnosticsProviderLock);
 }
 
 + (void)uploadPendingAfterDelay:(NSTimeInterval)delay {
@@ -622,7 +622,7 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
 }
 
 + (void)uploadPendingNow {
-    NSString *dir = QuiverCrashDirPath();
+    NSString *dir = HandsCrashDirPath();
     NSArray<NSString *> *entries = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil];
     NSArray<NSString *> *sidecars = [[entries filteredArrayUsingPredicate:
         [NSPredicate predicateWithBlock:^BOOL(NSString *name, NSDictionary *bindings) {
@@ -651,7 +651,7 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
         NSArray *binaryImages = [meta[@"binary_images"] isKindOfClass:NSArray.class] ? meta[@"binary_images"] : @[];
         NSArray *frameAddresses = [meta[@"frames"] isKindOfClass:NSArray.class] ? meta[@"frames"] : @[];
         if (frameAddresses.count == 0) {
-            frameAddresses = QuiverFramesFromLogFile(logPath);
+            frameAddresses = HandsFramesFromLogFile(logPath);
         }
 
         NSMutableString *message = [NSMutableString stringWithFormat:@"Crash: %@", exceptionClass];
@@ -668,11 +668,11 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
             @"crash_reason" : [meta[@"reason"] isKindOfClass:NSString.class] ? meta[@"reason"] : @"",
             @"crash_at" : [NSString stringWithFormat:@"%@", meta[@"crash_at"] ?: @0],
         } mutableCopy];
-        NSString *binaryImagesJSON = QuiverJSONString(binaryImages);
+        NSString *binaryImagesJSON = HandsJSONString(binaryImages);
         if (binaryImagesJSON.length > 0) {
             extras[@"crash_binary_images"] = binaryImagesJSON;
         }
-        NSString *framesJSON = QuiverJSONString(frameAddresses);
+        NSString *framesJSON = HandsJSONString(frameAddresses);
         if (framesJSON.length > 0) {
             extras[@"crash_frames"] = framesJSON;
         }
@@ -682,7 +682,7 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
         // diagnostics-<stamp>.zip alongside the crash log.
         NSMutableArray<NSString *> *attachmentPaths = [NSMutableArray arrayWithObject:logPath];
         NSString *diagnosticsZip = nil;
-        QuiverDiagnosticsProvider diagnosticsProvider = QuiverCurrentDiagnosticsProvider();
+        HandsDiagnosticsProvider diagnosticsProvider = HandsCurrentDiagnosticsProvider();
         if (diagnosticsProvider) {
             int64_t crashAtMillis = [meta[@"crash_at"] isKindOfClass:NSNumber.class]
                 ? [meta[@"crash_at"] longLongValue] : 0;
@@ -690,28 +690,28 @@ static NSString *QuiverZipDiagnostics(NSArray<NSString *> *paths, NSString *stam
             @try {
                 diagnosticsPaths = diagnosticsProvider(crashAtMillis);
             } @catch (NSException *exception) {
-                NSLog(@"[Quiver] diagnostics provider threw: %@", exception.reason ?: exception.name);
+                NSLog(@"[Hands] diagnostics provider threw: %@", exception.reason ?: exception.name);
                 diagnosticsPaths = nil;
             }
             NSString *stamp = [[logName stringByReplacingOccurrencesOfString:@"crash-" withString:@""]
                 stringByReplacingOccurrencesOfString:@".txt" withString:@""];
-            diagnosticsZip = QuiverZipDiagnostics(diagnosticsPaths, stamp);
+            diagnosticsZip = HandsZipDiagnostics(diagnosticsPaths, stamp);
             if (diagnosticsZip) {
                 [attachmentPaths addObject:diagnosticsZip];
             }
         }
 
         dispatch_semaphore_t done = dispatch_semaphore_create(0);
-        [QuiverFeedbackClient submitWithMessage:message
+        [HandsFeedbackClient submitWithMessage:message
                                                 kind:@"crash"
                                      attachmentPaths:attachmentPaths
                                               extras:extras
                                           completion:^(NSString *ticketId, NSError *error) {
             if (ticketId.length > 0 && !error) {
                 [self deletePairForLogPath:logPath];
-                NSLog(@"[Quiver] uploaded crash %@ as %@", logName, [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)]);
+                NSLog(@"[Hands] uploaded crash %@ as %@", logName, [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)]);
             } else {
-                NSLog(@"[Quiver] crash upload failed for %@: %@", logName, error.localizedDescription ?: @"unknown");
+                NSLog(@"[Hands] crash upload failed for %@: %@", logName, error.localizedDescription ?: @"unknown");
             }
             dispatch_semaphore_signal(done);
         }];

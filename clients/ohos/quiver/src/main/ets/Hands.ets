@@ -1,27 +1,27 @@
 import { common } from '@kit.AbilityKit';
-import { QuiverAnalytics } from './QuiverAnalytics';
-import { QuiverCrashUploader } from './QuiverCrashUploader';
-import { QuiverCrashReporter } from './QuiverCrashReporter';
+import { HandsAnalytics } from './HandsAnalytics';
+import { HandsCrashUploader } from './HandsCrashUploader';
+import { HandsCrashReporter } from './HandsCrashReporter';
 
 /**
- * Quiver SDK entry point for HarmonyOS. All configuration is runtime
+ * Hands SDK entry point for HarmonyOS. All configuration is runtime
  * parameters — the SDK ships nothing app-specific; the client key follows
  * the Sentry-DSN model (identifies the app, ships in the bundle, rotatable
- * from the Quiver console).
+ * from the Hands console).
  */
-export interface QuiverConfig {
-  /** Quiver server origin, e.g. https://quiver.example.com (no trailing /). */
+export interface HandsConfig {
+  /** Hands server origin, e.g. https://quiver.example.com (no trailing /). */
   baseUrl: string;
-  /** App slug in the Quiver console. */
+  /** App slug in the Hands console. */
   appSlug: string;
-  /** Release channel this build reports under (Quiver routing/archival field). */
+  /** Release channel this build reports under (Hands routing/archival field). */
   channel: string;
   /** Per-app client key (qk_…) required by the feedback endpoint. */
   clientKey: string;
 }
 
-export class Quiver {
-  private static current: QuiverConfig | null = null;
+export class Hands {
+  private static current: HandsConfig | null = null;
 
   /**
    * Call once, as early as possible (UIAbility onCreate). Passing the
@@ -29,8 +29,8 @@ export class Quiver {
    * device-analytics ping and upload of any pending crash reports — so the
    * app only calls this one method.
    */
-  static install(config: QuiverConfig, context?: common.UIAbilityContext): void {
-    const trimmed: QuiverConfig = {
+  static install(config: HandsConfig, context?: common.UIAbilityContext): void {
+    const trimmed: HandsConfig = {
       baseUrl: config.baseUrl.endsWith('/')
         ? config.baseUrl.substring(0, config.baseUrl.length - 1)
         : config.baseUrl,
@@ -38,29 +38,29 @@ export class Quiver {
       channel: config.channel,
       clientKey: config.clientKey,
     };
-    Quiver.current = trimmed;
+    Hands.current = trimmed;
     if (context) {
       // Register the crash observer synchronously so a crash during startup
       // is still captured.
-      QuiverCrashReporter.install(context);
+      HandsCrashReporter.install(context);
       // Device ping + pending-crash upload off the launch critical path.
       setTimeout(() => {
-        QuiverAnalytics.reportDevice(context).catch((): void => {});
-        QuiverCrashUploader.enforceRetention(context);
-        QuiverCrashUploader.uploadPending(context).catch((): void => {});
+        HandsAnalytics.reportDevice(context).catch((): void => {});
+        HandsCrashUploader.enforceRetention(context);
+        HandsCrashUploader.uploadPending(context).catch((): void => {});
       }, 3000);
     }
   }
 
-  static get config(): QuiverConfig {
-    const config = Quiver.current;
+  static get config(): HandsConfig {
+    const config = Hands.current;
     if (config === null) {
-      throw new Error('Quiver.install(config) must be called before using the SDK');
+      throw new Error('Hands.install(config) must be called before using the SDK');
     }
     return config;
   }
 
   static get started(): boolean {
-    return Quiver.current !== null;
+    return Hands.current !== null;
   }
 }

@@ -2,12 +2,12 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Submits feedback / crash tickets to the Quiver feedback endpoint
+/// Submits feedback / crash tickets to the Hands feedback endpoint
 /// (multipart/form-data) — the iOS counterpart of the Android SDK's
 /// QuiverFeedback and the OHOS QuiverFeedbackClient. App and device
 /// metadata are attached automatically; the per-app client key is sent as
 /// X-Quiver-Client-Key.
-@interface QuiverFeedbackClient : NSObject
+@interface HandsFeedbackClient : NSObject
 
 /// kind is "feedback", "bug", or "crash". Completion runs on an arbitrary
 /// queue with the created ticket id, or an error.

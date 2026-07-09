@@ -1,9 +1,9 @@
 import { common } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
-import { QuiverFeedbackClient, QuiverFeedbackExtras } from './QuiverFeedbackClient';
+import { HandsFeedbackClient, HandsFeedbackExtras } from './HandsFeedbackClient';
 
-const TAG: string = 'QuiverCrashUploader';
+const TAG: string = 'HandsCrashUploader';
 const MAX_STORED_CRASHES: number = 5;
 
 export interface CrashMeta {
@@ -18,11 +18,11 @@ export interface CrashMeta {
  * Store-then-send crash reporting for OHOS (mirrors the Android SDK's
  * QuiverCrash): SlockOhosCrashReporter writes crash-<ts>.txt plus a
  * .meta.json sidecar at crash time; this uploader runs on the next launch,
- * submits each pending crash as a kind=crash Quiver ticket (full log
+ * submits each pending crash as a kind=crash Hands ticket (full log
  * attached, signature fields in metadata), and deletes local files on
  * success.
  */
-export class QuiverCrashUploader {
+export class HandsCrashUploader {
   static crashDir(context: common.UIAbilityContext): string {
     return `${context.filesDir}/crashes`;
   }
@@ -40,7 +40,7 @@ export class QuiverCrashUploader {
 
   /** Delete oldest crashes beyond the retention cap. */
   static enforceRetention(context: common.UIAbilityContext): void {
-    const dir = QuiverCrashUploader.crashDir(context);
+    const dir = HandsCrashUploader.crashDir(context);
     if (!fs.accessSync(dir)) {
       return;
     }
@@ -50,13 +50,13 @@ export class QuiverCrashUploader {
       .sort()
       .reverse();
     for (const name of logs.slice(MAX_STORED_CRASHES - 1)) {
-      QuiverCrashUploader.deletePair(`${dir}/${name}`);
+      HandsCrashUploader.deletePair(`${dir}/${name}`);
     }
   }
 
   /** Upload all pending crashes; call on launch, off the critical path. */
   static async uploadPending(context: common.UIAbilityContext): Promise<void> {
-    const dir = QuiverCrashUploader.crashDir(context);
+    const dir = HandsCrashUploader.crashDir(context);
     if (!fs.accessSync(dir)) {
       return;
     }
@@ -87,15 +87,15 @@ export class QuiverCrashUploader {
       if (topFrame.length > 0) {
         message = `${message}\nat ${topFrame}`;
       }
-      const extras: QuiverFeedbackExtras[] = [
+      const extras: HandsFeedbackExtras[] = [
         { key: 'crash_exception_class', value: exceptionClass },
         { key: 'crash_top_frame', value: topFrame },
         { key: 'crash_reason', value: meta.reason ?? '' },
         { key: 'crash_at', value: String(meta.crash_at ?? 0) },
       ];
       try {
-        const ticketId = await QuiverFeedbackClient.submit(context, message, 'crash', [logPath], extras);
-        QuiverCrashUploader.deletePair(logPath);
+        const ticketId = await HandsFeedbackClient.submit(context, message, 'crash', [logPath], extras);
+        HandsCrashUploader.deletePair(logPath);
         hilog.info(0x0000, TAG, 'uploaded crash %{public}s as %{public}s', sidecarName, ticketId.slice(0, 8));
       } catch (error) {
         hilog.warn(0x0000, TAG, 'crash upload failed for %{public}s: %{public}s', sidecarName, String(error));

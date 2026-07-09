@@ -2,30 +2,30 @@ import { bundleManager, common, errorManager } from '@kit.AbilityKit';
 import deviceInfo from '@ohos.deviceInfo';
 import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
-import { QuiverCrashUploader } from './QuiverCrashUploader';
+import { HandsCrashUploader } from './HandsCrashUploader';
 
-const TAG: string = 'QuiverCrashReporter';
+const TAG: string = 'HandsCrashReporter';
 const CRASH_LOG_MAX_CHARS: number = 180000;
 
 /**
  * ArkTS crash capture for HarmonyOS: registers an errorManager observer that
  * writes a crash log + signature sidecar at crash time (store-then-send).
- * Quiver.install() calls this — apps do not use it directly.
+ * Hands.install() calls this — apps do not use it directly.
  */
-export class QuiverCrashReporter {
+export class HandsCrashReporter {
   private static installed: boolean = false;
 
   static install(context: common.UIAbilityContext): void {
-    if (QuiverCrashReporter.installed) {
+    if (HandsCrashReporter.installed) {
       return;
     }
-    QuiverCrashReporter.installed = true;
+    HandsCrashReporter.installed = true;
     const observer: errorManager.ErrorObserver = {
       onUnhandledException: (errMsg: string): void => {
-        QuiverCrashReporter.capture(context, 'unhandledException', errMsg);
+        HandsCrashReporter.capture(context, 'unhandledException', errMsg);
       },
       onException: (errObject: Error): void => {
-        QuiverCrashReporter.capture(context, 'exception', QuiverCrashReporter.errorToText(errObject));
+        HandsCrashReporter.capture(context, 'exception', HandsCrashReporter.errorToText(errObject));
       },
     };
     errorManager.on('error', observer);
@@ -34,14 +34,14 @@ export class QuiverCrashReporter {
 
   private static capture(context: common.UIAbilityContext, reason: string, errorText: string): void {
     try {
-      const crashLog = QuiverCrashReporter.buildCrashLog(context, reason, errorText).slice(0, CRASH_LOG_MAX_CHARS);
-      const crashPath = QuiverCrashReporter.writeCrashLog(context, crashLog);
-      QuiverCrashUploader.enforceRetention(context);
+      const crashLog = HandsCrashReporter.buildCrashLog(context, reason, errorText).slice(0, CRASH_LOG_MAX_CHARS);
+      const crashPath = HandsCrashReporter.writeCrashLog(context, crashLog);
+      HandsCrashUploader.enforceRetention(context);
       const firstLine = errorText.split('\n')[0] ?? '';
       const exceptionClass = firstLine.split(':')[0]?.trim() ?? 'OhosCrash';
       const exceptionMessage = firstLine.slice(exceptionClass.length + 1).trim();
       const frameLine = errorText.split('\n').find((line: string): boolean => line.trim().startsWith('at ')) ?? '';
-      QuiverCrashUploader.writeMeta(crashPath, {
+      HandsCrashUploader.writeMeta(crashPath, {
         exception_class: exceptionClass.length > 0 ? exceptionClass : 'OhosCrash',
         exception_message: exceptionMessage,
         top_frame: frameLine.trim().replace(/^at\s+/, ''),
@@ -56,7 +56,7 @@ export class QuiverCrashReporter {
   private static buildCrashLog(context: common.UIAbilityContext, reason: string, errorText: string): string {
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
     const lines: string[] = [
-      'Quiver OHOS crash log',
+      'Hands OHOS crash log',
       `Crash at: ${new Date().toString()}`,
       `Bundle: ${bundleInfo.name}`,
       `Version name: ${bundleInfo.versionName}`,
