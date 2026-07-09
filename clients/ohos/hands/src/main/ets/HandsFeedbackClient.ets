@@ -233,7 +233,7 @@ export class HandsFeedbackClient {
       const parsed = JSON.parse(body) as Record<string, string>;
       const ticketId = parsed['id'] ?? '';
       if (ticketId.length === 0) {
-        throw new Error('quiver feedback: missing ticket id in response');
+        throw new Error('Hands feedback: missing ticket id in response');
       }
       hilog.info(0x0000, TAG, 'feedback submitted ticket=%{public}s kind=%{public}s', ticketId.slice(0, 8), kind);
       return ticketId;
