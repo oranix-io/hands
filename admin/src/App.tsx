@@ -480,6 +480,47 @@ function AuthGate() {
 }
 
 function PublicLanding({ account }: { account?: AuthAccount }) {
+  const [workflow, setWorkflow] = useState<"release" | "feedback" | "metrics">("release");
+  const workflowExamples = {
+    release: {
+      label: "Release",
+      tag: "main",
+      lines: [
+        "$ npm exec --package @botiverse/hands-cli -- hands builds publish-android raft-android --apk ./app-release.apk --draft",
+        "uploading signed artifact and provenance...",
+        "creating draft release on channel main...",
+        "release: 14998dba-cfde-4002-8c01-230a2760f662",
+        "share: https://hands.build/share/...",
+      ],
+    },
+    feedback: {
+      label: "Feedback",
+      tag: "agent-ready",
+      lines: [
+        "$ hands feedback list raft-android --status open --kind crash",
+        "3 open crash tickets, grouped by signature",
+        "$ hands feedback show raft-android 3dc0f662",
+        "attachments: crash.txt, diagnostics.zip",
+        "$ hands feedback update raft-android 3dc0f662 --status resolved",
+      ],
+    },
+    metrics: {
+      label: "Metrics",
+      tag: "30d",
+      lines: [
+        "$ curl https://hands.build/api/apps/$APP_ID/analytics/versions?window_days=30",
+        "1.1.0  active devices 1,284  update offers 642",
+        "1.0.4  active devices   319  crash tickets 3",
+        "$ curl https://hands.build/public/v2/apps/raft-android/latest?channel=main",
+        "latest: 1.1.0 (1010000)",
+      ],
+    },
+  } satisfies Record<
+    "release" | "feedback" | "metrics",
+    { label: string; tag: string; lines: string[] }
+  >;
+  const activeExample = workflowExamples[workflow];
+
   useEffect(() => {
     document.title = "Hands - Client release operations";
   }, []);
@@ -521,17 +562,17 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
           <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-[1.1fr_0.9fr] md:items-center md:py-20">
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                The release platform for Raft-built client apps
+                Agent-native release operations for client apps
               </div>
               <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
                 Ship it, roll it out, hear it break, fix it.
               </h1>
               <p className="mt-5 text-lg leading-8 text-slate-600">
                 Hands runs the whole release loop: builds land as drafts,
-                agents review and publish with bilingual changelogs, staged
-                rollouts meter exposure, and in-app feedback and crash
-                reports come back as tickets — grouped, deobfuscated, and
-                triageable by humans and agents alike.
+                humans and agents review and publish with bilingual
+                changelogs, staged rollouts meter exposure, and in-app
+                feedback and crash reports come back as tickets — grouped,
+                deobfuscated, and actionable from the console, CLI, and API.
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-slate-500">
@@ -573,17 +614,42 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
 
             <div className="rounded-lg border border-slate-200 bg-slate-950 p-5 text-sm text-slate-100 shadow-sm">
               <div className="mb-4 flex items-center justify-between border-b border-slate-700 pb-3">
-                <span className="font-medium">quiver release</span>
+                <span className="font-medium">hands {workflow}</span>
                 <span className="rounded bg-sky-400/15 px-2 py-0.5 text-xs text-sky-200">
-                  main
+                  {activeExample.tag}
                 </span>
               </div>
+              <div className="mb-4 grid grid-cols-3 gap-1 rounded-md border border-slate-800 bg-slate-900 p-1">
+                {Object.entries(workflowExamples).map(([key, example]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setWorkflow(key as "release" | "feedback" | "metrics")}
+                    className={`h-8 rounded text-xs font-medium transition ${
+                      workflow === key
+                        ? "bg-slate-100 text-slate-950"
+                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                    }`}
+                  >
+                    {example.label}
+                  </button>
+                ))}
+              </div>
               <div className="space-y-3 font-mono text-xs leading-6 text-slate-300">
-                <div>$ npm exec --package @botiverse/hands-cli -- quiver builds publish-android raft-android</div>
-                <div className="text-slate-500">uploading APK and metadata...</div>
-                <div className="text-slate-500">creating release on channel main...</div>
-                <div className="text-emerald-300">release: 14998dba-cfde-4002-8c01-230a2760f662</div>
-                <div className="text-emerald-300">share: https://quiver.oranix.io/share/...</div>
+                {activeExample.lines.map((line, index) => (
+                  <div
+                    key={`${workflow}-${index}`}
+                    className={
+                      line.startsWith("$")
+                        ? "text-slate-200"
+                        : line.includes(":")
+                          ? "text-emerald-300"
+                          : "text-slate-500"
+                    }
+                  >
+                    {line}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
