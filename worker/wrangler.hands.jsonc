@@ -18,7 +18,7 @@
     {
       "binding": "DB",
       "database_name": "hands-db",
-      "database_id": "__HANDS_D1_DATABASE_ID__",
+      "database_id": "13d02825-af01-40f8-8f3d-a4356649628f",
       "migrations_dir": "../migrations/sql"
     }
   ],
@@ -47,12 +47,9 @@
     }
   ],
 
-  "triggers": [
-    {
-      "type": "scheduled",
-      "cron": "*/5 * * * *"
-    }
-  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
 
   "vars": {
     "ENVIRONMENT": "production",
