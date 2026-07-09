@@ -88,6 +88,20 @@ jobs:
           set -euo pipefail
           pnpm exec wrangler d1 migrations apply "${HANDS_D1_DATABASE_NAME}" --remote --config wrangler.hands.jsonc
 
+      - name: Configure Hands Worker secrets
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BOTIVERSE_API_TOKEN }}
+          SIGNED_URL_SECRET: ${{ secrets.HANDS_SIGNED_URL_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SIGNED_URL_SECRET:-}" ]]; then
+            echo "Missing GitHub secret HANDS_SIGNED_URL_SECRET." >&2
+            exit 1
+          fi
+          printf '%s' "${SIGNED_URL_SECRET}" | pnpm exec wrangler secret put SIGNED_URL_SECRET --config wrangler.hands.jsonc
+
       - name: Deploy Hands Worker and admin assets
         working-directory: worker
         env:
