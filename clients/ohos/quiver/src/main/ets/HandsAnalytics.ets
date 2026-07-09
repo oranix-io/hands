@@ -50,8 +50,8 @@ export class HandsAnalytics {
           method: http.RequestMethod.POST,
           header: {
             'Content-Type': 'application/json',
-            'X-Quiver-Client-Key': Hands.config.clientKey,
-            'X-Quiver-Device-Id': HandsDeviceId.get(context),
+            'X-Hands-Client-Key': Hands.config.clientKey,
+            'X-Hands-Device-Id': HandsDeviceId.get(context),
           },
           extraData: JSON.stringify(metadata),
           connectTimeout: REQUEST_TIMEOUT_MS,

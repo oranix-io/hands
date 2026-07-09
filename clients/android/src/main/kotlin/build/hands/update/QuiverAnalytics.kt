@@ -76,10 +76,10 @@ object QuiverAnalytics {
         val requestBuilder = Request.Builder()
             .url(url)
             .header("accept", "application/json")
-            .header("X-Quiver-Device-Id", QuiverDeviceId.get(appContext))
+            .header("X-Hands-Device-Id", QuiverDeviceId.get(appContext))
             .post(metadata.toString().toRequestBody("application/json".toMediaTypeOrNull()))
         if (!clientKey.isNullOrBlank()) {
-            requestBuilder.header("X-Quiver-Client-Key", clientKey)
+            requestBuilder.header("X-Hands-Client-Key", clientKey)
         }
 
         runCatching {

@@ -56,7 +56,7 @@ class QuiverClient(
             .header("accept", "application/json")
         if (!deviceId.isNullOrBlank()) {
             // Stable per-install id; the server uses it to bucket staged rollouts.
-            requestBuilder.header("X-Quiver-Device-Id", deviceId)
+            requestBuilder.header("X-Hands-Device-Id", deviceId)
         }
         val request = requestBuilder.build()
 

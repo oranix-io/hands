@@ -292,8 +292,8 @@ static NSError *HandsErrorWithMessage(NSInteger code, NSString *detail) {
     [request setValue:[NSString stringWithFormat:@"multipart/form-data; boundary=%@", boundary]
         forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:(config.clientKey ?: @"") forHTTPHeaderField:@"X-Quiver-Client-Key"];
-    [request setValue:[HandsDeviceId deviceId] forHTTPHeaderField:@"X-Quiver-Device-Id"];
+    [request setValue:(config.clientKey ?: @"") forHTTPHeaderField:@"X-Hands-Client-Key"];
+    [request setValue:[HandsDeviceId deviceId] forHTTPHeaderField:@"X-Hands-Device-Id"];
 
     NSURLSessionUploadTask *task = [NSURLSession.sharedSession
         uploadTaskWithRequest:request
@@ -344,7 +344,7 @@ static NSError *HandsErrorWithMessage(NSInteger code, NSString *detail) {
     request.timeoutInterval = HandsRequestTimeout;
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:(config.clientKey ?: @"") forHTTPHeaderField:@"X-Quiver-Client-Key"];
+    [request setValue:(config.clientKey ?: @"") forHTTPHeaderField:@"X-Hands-Client-Key"];
 
     NSURLSessionUploadTask *task = [NSURLSession.sharedSession
         uploadTaskWithRequest:request

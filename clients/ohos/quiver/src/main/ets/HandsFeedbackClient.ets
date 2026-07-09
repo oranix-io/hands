@@ -217,7 +217,7 @@ export class HandsFeedbackClient {
           header: {
             'Content-Type': 'multipart/form-data',
             'Accept': 'application/json',
-            'X-Quiver-Client-Key': Hands.config.clientKey,
+            'X-Hands-Client-Key': Hands.config.clientKey,
           },
           multiFormDataList: multiFormDataList,
           connectTimeout: REQUEST_TIMEOUT_MS,
@@ -267,7 +267,7 @@ export class HandsFeedbackClient {
         header: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-Quiver-Client-Key': Hands.config.clientKey,
+          'X-Hands-Client-Key': Hands.config.clientKey,
         },
         extraData: JSON.stringify({ files: requestFiles }),
         connectTimeout: REQUEST_TIMEOUT_MS,

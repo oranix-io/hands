@@ -6,7 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// (multipart/form-data) — the iOS counterpart of the Android SDK's
 /// QuiverFeedback and the OHOS QuiverFeedbackClient. App and device
 /// metadata are attached automatically; the per-app client key is sent as
-/// X-Quiver-Client-Key.
+/// X-Hands-Client-Key.
 @interface HandsFeedbackClient : NSObject
 
 /// kind is "feedback", "bug", or "crash". Completion runs on an arbitrary

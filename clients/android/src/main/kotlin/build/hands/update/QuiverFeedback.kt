@@ -144,7 +144,7 @@ class QuiverFeedback(
             .header("accept", "application/json")
             .post(bodyBuilder.build())
         if (!clientKey.isNullOrBlank()) {
-            requestBuilder.header("X-Quiver-Client-Key", clientKey)
+            requestBuilder.header("X-Hands-Client-Key", clientKey)
         }
         val request = requestBuilder.build()
 
@@ -190,7 +190,7 @@ class QuiverFeedback(
                     .toRequestBody("application/json".toMediaTypeOrNull()),
             )
         if (!clientKey.isNullOrBlank()) {
-            presignRequest.header("X-Quiver-Client-Key", clientKey)
+            presignRequest.header("X-Hands-Client-Key", clientKey)
         }
         val uploads = httpClient.newCall(presignRequest.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()

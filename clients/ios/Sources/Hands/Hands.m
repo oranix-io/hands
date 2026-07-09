@@ -98,8 +98,8 @@ static HandsConfig *gHandsConfig = nil;
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 15;
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    [request setValue:config.clientKey forHTTPHeaderField:@"X-Quiver-Client-Key"];
-    [request setValue:[HandsDeviceId deviceId] forHTTPHeaderField:@"X-Quiver-Device-Id"];
+    [request setValue:config.clientKey forHTTPHeaderField:@"X-Hands-Client-Key"];
+    [request setValue:[HandsDeviceId deviceId] forHTTPHeaderField:@"X-Hands-Device-Id"];
 
     NSURLSessionUploadTask *task = [NSURLSession.sharedSession
         uploadTaskWithRequest:request
