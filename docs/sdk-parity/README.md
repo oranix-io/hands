@@ -5,6 +5,22 @@ capability set (task #120, 2026-07-09). Per-platform detail lives in
 [android.md](android.md), [ios.md](ios.md), [ohos.md](ohos.md),
 [electron.md](electron.md); the execution plan is in [roadmap.md](roadmap.md).
 
+Four deep dives compare mechanism-by-mechanism against Sentry's actual docs,
+each rating every gap 关键/重要/可后置/不追 with a top-5 borrow list:
+
+- [deep-sdk-architecture.md](deep-sdk-architecture.md) — scopes/hub, envelope
+  disk queue, beforeSend, rate-limit protocol, client reports, sampling,
+  PII scrubbing, session modes, config surface
+- [deep-issue-pipeline.md](deep-issue-pipeline.md) — grouping/fingerprinting,
+  issue states, debug-ids, gradle/xcode auto symbol upload, sourcemaps,
+  suspect commits, ownership, environments
+- [deep-product-surface.md](deep-product-surface.md) — alert rules/anomaly
+  detection, chat-ops (vs our Raft-native model), VCS integrations,
+  dashboards/query API, quotas/retention, crash-linked feedback, AI/Seer
+- [deep-mobile.md](deep-mobile.md) — ANRv2/tombstones, Mach/App Hangs/
+  watchdog/MetricKit, app start/TTID/frames, 30s session threshold, offline
+  envelope queue, screenshots/view hierarchy, mobile replay
+
 ## Positioning
 
 Hands SDKs are **crash + feedback-ticket + device-stats + update-distribution
