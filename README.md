@@ -121,7 +121,7 @@ Required repository secrets:
 
 - `CLOUDFLARE_API_TOKEN` — Cloudflare API token allowed to deploy the Quiver Worker and its assets.
 - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account id for the Worker deploy.
-- `CLOUDFLARE_API_TOKEN_HANDS` — Cloudflare API token for the Hands account (`a084c4564dfdce5a7775b08ece638a79`). This is intentionally separate from the Quiver production token.
+- `CLOUDFLARE_BOTIVERSE_API_TOKEN` — Cloudflare API token for the Hands/Botiverse account (`a084c4564dfdce5a7775b08ece638a79`). This is intentionally separate from the Quiver production token.
 
 Workflows:
 
