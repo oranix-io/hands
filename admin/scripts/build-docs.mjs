@@ -8,7 +8,7 @@ const docsRoot = path.join(repoRoot, "docs/public");
 const outRoot = path.join(repoRoot, "admin/public/docs");
 
 // Docs are grouped by audience; CATEGORY_ORDER controls section order in the
-// sidebar and on the index. Quiver is agent-native, so "For agents" leads.
+// sidebar and on the index. Hands is agent-native, so "For agents" leads.
 const CATEGORY_ORDER = ["For agents", "Console", "SDKs & API"];
 
 // Lucide "external-link" (24x24), used for the OpenAPI explorer nav entry.
@@ -33,7 +33,7 @@ const pages = [
     slug: "admin-user-guide",
     title: "Admin User Guide",
     category: "Console",
-    description: "Using the Quiver admin console: apps, releases, builds, access, and troubleshooting.",
+    description: "Using the Hands admin console: apps, releases, builds, access, and troubleshooting.",
     source: "admin-user-guide.md",
   },
   {
@@ -54,7 +54,7 @@ const pages = [
     slug: "ios-sdk",
     title: "iOS SDK",
     category: "SDKs & API",
-    description: "Feedback tickets and store-then-send crash reporting for iOS (the Quiver CocoaPod).",
+    description: "Feedback tickets and store-then-send crash reporting for iOS (the Hands CocoaPod).",
     source: "ios-sdk.md",
   },
   {
@@ -357,7 +357,7 @@ function indexPage() {
     .join("");
   return layout({
     title: "Documentation",
-    description: "Product, admin, CLI, and API documentation for Quiver.",
+    description: "Product, admin, CLI, and API documentation for Hands.",
     body,
     activeSlug: "",
   });
@@ -368,7 +368,7 @@ function indexPage() {
 // same pages[] as the HTML, so it never drifts.
 function markdownIndex() {
   const lines = [
-    "# Quiver Documentation",
+    "# Hands Documentation",
     "",
     "Machine-readable index. Every page below has a raw-markdown twin at",
     "`/docs/<slug>.md` (this index is `/docs.md`). Fetch those for clean,",
