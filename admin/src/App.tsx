@@ -126,7 +126,7 @@ function Header({ account }: { account: AuthAccount }) {
 
   return (
     <header className="sticky top-0 h-screen flex w-16 flex-none flex-col items-center border-r border-slate-200 bg-white py-3">
-      <Link to="/" aria-label="Quiver" className="mb-4">
+      <Link to="/" aria-label="Hands" className="mb-4">
         <QuiverMark className="h-9 w-9" />
       </Link>
       <nav className="flex w-full flex-col items-stretch gap-1 px-2">
@@ -437,7 +437,7 @@ function PageTitle() {
   const title = appId && appName ? `${section} - ${appName}` : section;
 
   useEffect(() => {
-    document.title = `${title} - Quiver`;
+    document.title = `${title} - Hands`;
   }, [title]);
 
   return null;
@@ -481,7 +481,7 @@ function AuthGate() {
 
 function PublicLanding({ account }: { account?: AuthAccount }) {
   useEffect(() => {
-    document.title = "Quiver - Client release operations";
+    document.title = "Hands - Client release operations";
   }, []);
 
   return (
@@ -490,7 +490,7 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <a href="/" className="inline-flex items-center gap-2 font-medium">
             <QuiverMark className="h-9 w-9 flex-none" />
-            <span className="text-xl leading-none">Quiver</span>
+            <span className="text-xl leading-none">Hands</span>
           </a>
           <nav className="flex items-center gap-2 text-sm">
             <a
@@ -527,7 +527,7 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
                 Ship it, roll it out, hear it break, fix it.
               </h1>
               <p className="mt-5 text-lg leading-8 text-slate-600">
-                Quiver runs the whole release loop: builds land as drafts,
+                Hands runs the whole release loop: builds land as drafts,
                 agents review and publish with bilingual changelogs, staged
                 rollouts meter exposure, and in-app feedback and crash
                 reports come back as tickets — grouped, deobfuscated, and
@@ -709,13 +709,13 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
       </Routes>
       <footer className="bg-white border-t border-slate-200 py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 text-xs text-slate-500 flex items-center justify-between">
-          <span>Quiver - Login with Raft</span>
+          <span>Hands - Login with Raft</span>
           <a
             href="https://github.com/oranix-io/quiver"
             target="_blank"
             rel="noopener noreferrer"
             className="btn-secondary !py-1 !px-2 !text-xs inline-flex items-center gap-1.5"
-            title="View Quiver source on GitHub"
+            title="View Hands source on GitHub"
           >
             <svg
               viewBox="0 0 24 24"
