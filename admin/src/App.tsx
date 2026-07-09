@@ -801,7 +801,7 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
         <div className="max-w-5xl mx-auto px-4 text-xs text-slate-500 flex items-center justify-between">
           <span>Hands - Login with Raft</span>
           <a
-            href="https://github.com/oranix-io/quiver"
+            href="https://github.com/oranix-io/hands"
             target="_blank"
             rel="noopener noreferrer"
             className="btn-secondary !py-1 !px-2 !text-xs inline-flex items-center gap-1.5"
