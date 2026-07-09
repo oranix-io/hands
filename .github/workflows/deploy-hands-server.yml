@@ -102,6 +102,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BOTIVERSE_API_TOKEN }}
           SIGNED_URL_SECRET: ${{ secrets.HANDS_SIGNED_URL_SECRET }}
           RAFT_CLIENT_SECRET: ${{ secrets.HANDS_RAFT_CLIENT_SECRET }}
+          ASC_CRED_ENC_KEY: ${{ secrets.HANDS_ASC_CRED_ENC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -113,8 +114,13 @@ jobs:
             echo "Missing GitHub secret HANDS_RAFT_CLIENT_SECRET." >&2
             exit 1
           fi
+          if [[ -z "${ASC_CRED_ENC_KEY:-}" ]]; then
+            echo "Missing GitHub secret HANDS_ASC_CRED_ENC_KEY." >&2
+            exit 1
+          fi
           printf '%s' "${SIGNED_URL_SECRET}" | pnpm exec wrangler secret put SIGNED_URL_SECRET --config wrangler.hands.jsonc
           printf '%s' "${RAFT_CLIENT_SECRET}" | pnpm exec wrangler secret put RAFT_CLIENT_SECRET --config wrangler.hands.jsonc
+          printf '%s' "${ASC_CRED_ENC_KEY}" | pnpm exec wrangler secret put ASC_CRED_ENC_KEY --config wrangler.hands.jsonc
 
       - name: Deploy Hands Worker and admin assets
         working-directory: worker
