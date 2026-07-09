@@ -58,7 +58,7 @@ afterEvaluate {
                 pom {
                     name.set("Hands Android SDK")
                     description.set("Android SDK for server-side Hands update checks and APK installation.")
-                    url.set("https://github.com/oranix-io/quiver")
+                    url.set("https://github.com/oranix-io/hands")
                     licenses {
                         license {
                             name.set("MIT License")
@@ -72,9 +72,9 @@ afterEvaluate {
                         }
                     }
                     scm {
-                        connection.set("scm:git:https://github.com/oranix-io/quiver.git")
-                        developerConnection.set("scm:git:ssh://git@github.com/oranix-io/quiver.git")
-                        url.set("https://github.com/oranix-io/quiver")
+                        connection.set("scm:git:https://github.com/oranix-io/hands.git")
+                        developerConnection.set("scm:git:ssh://git@github.com/oranix-io/hands.git")
+                        url.set("https://github.com/oranix-io/hands")
                     }
                 }
             }
