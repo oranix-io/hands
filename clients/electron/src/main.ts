@@ -137,8 +137,8 @@ async function reportMetrics(options: QuiverElectronOptions, force = false): Pro
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "X-Quiver-Client-Key": options.clientKey,
-        "X-Quiver-Device-Id": deviceId,
+        "X-Hands-Client-Key": options.clientKey,
+        "X-Hands-Device-Id": deviceId,
       },
       body: JSON.stringify(metadata),
     });
