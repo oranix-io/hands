@@ -14,7 +14,7 @@ static NSTimeInterval const HandsUploadTimeout = 120.0;
 
 // Hands iOS SDK version — reported in feedback/crash environment metadata.
 // Keep in sync with Hands.podspec on release.
-static NSString *const kHandsSDKVersion = @"0.1.5";
+static NSString *const kHandsSDKVersion = @"0.2.1";
 
 // Server-enforced: at most 9 attachments per ticket.
 static NSUInteger const HandsMaxAttachments = 9;
@@ -130,7 +130,7 @@ static NSError *HandsErrorWithMessage(NSInteger code, NSString *detail) {
     NSString *commit = HandsBuildCommit(info);
     if (commit) metadata[@"commit"] = commit;
     metadata[@"channel"] = (Hands.config.channel ?: @"");
-    metadata[@"quiver_sdk"] = kHandsSDKVersion;
+    metadata[@"hands_sdk"] = kHandsSDKVersion;
 
     // Platform / OS
     metadata[@"platform"] = @"ios";

@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.0
+## 0.2.1
 
-- Initial release of the HarmonyOS Hands SDK.
+- First branded release of the HarmonyOS Hands SDK.
 - Feedback tickets with attachments and automatic device metadata; large
   attachments upload via presigned direct-to-storage URLs (up to the configured
   cap), smaller ones inline.

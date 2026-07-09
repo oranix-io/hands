@@ -16,7 +16,7 @@ repositories {
 }
 
 dependencies {
-    implementation("build.hands:hands-android-sdk:0.10.0")
+    implementation("build.hands:hands-android-sdk:0.10.1")
 }
 ```
 
@@ -53,7 +53,7 @@ Publish to GitHub Packages:
 ```bash
 cd clients/android
 GITHUB_ACTOR=<github-user> GITHUB_TOKEN=<token-with-packages-write> \
-  gradle publish -PVERSION_NAME=0.10.0
+  gradle publish -PVERSION_NAME=0.10.1
 ```
 
-In CI, use the `Publish Android SDK` workflow and a version such as `0.10.0`.
+In CI, use the `Publish Android SDK` workflow and a version such as `0.10.1`.

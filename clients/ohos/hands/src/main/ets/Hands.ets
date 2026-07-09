@@ -10,7 +10,7 @@ import { HandsCrashReporter } from './HandsCrashReporter';
  * from the Hands console).
  */
 export interface HandsConfig {
-  /** Hands server origin, e.g. https://quiver.example.com (no trailing /). */
+  /** Hands server origin, e.g. https://hands.build (no trailing /). */
   baseUrl: string;
   /** App slug in the Hands console. */
   appSlug: string;
