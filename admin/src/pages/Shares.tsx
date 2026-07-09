@@ -132,7 +132,7 @@ export function AppShares({ appId }: { appId: string }) {
         {!shares.isLoading && rows.length === 0 && (
           <p className="text-sm text-slate-500">
             No shares yet. Create one here, from the CLI
-            (<code>quiver releases share</code>), or from the release workflow.
+            (<code>hands releases share</code>), or from the release workflow.
           </p>
         )}
         {rows.length > 0 && (

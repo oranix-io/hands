@@ -65,15 +65,15 @@ export function Settings() {
         </div>
         <div>
           <div className="text-slate-500">Cloudflare Account</div>
-          <div className="font-mono">cfb85626a067371c6e9a75191b5fb09d</div>
+          <div className="font-mono">a084c4564dfdce5a7775b08ece638a79</div>
         </div>
         <div>
           <div className="text-slate-500">D1 Database</div>
-          <div className="font-mono">quiver-db (fdc960cc-d1c5-41ae-96f3-c74df4b97d6b)</div>
+          <div className="font-mono">hands-db (13d02825-af01-40f8-8f3d-a4356649628f)</div>
         </div>
         <div>
           <div className="text-slate-500">R2 Bucket</div>
-          <div className="font-mono">quiver-apks</div>
+          <div className="font-mono">hands-artifacts</div>
         </div>
         <div>
           <div className="text-slate-500">Container</div>
