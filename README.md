@@ -1,17 +1,17 @@
-# Quiver
+# Hands
 
 **Ship it, roll it out, hear it break, fix it.**
 
 The release platform for client apps, full loop.
 
-Quiver runs the whole release loop: CI lands builds as drafts, agents review and publish with bilingual changelogs, staged rollouts meter exposure by device cohort, share pages handle ad-hoc distribution, and in-app feedback and crash reports come back as tickets — grouped by signature, symbolicated, and triageable by humans and AI agents through the same API. Reporting SDKs cover Android, iOS, HarmonyOS, and Electron — fully Cloudflare-native (Workers + Container + D1 + R2).
+Hands runs the whole release loop: CI lands builds as drafts, agents review and publish with bilingual changelogs, staged rollouts meter exposure by device cohort, share pages handle ad-hoc distribution, and in-app feedback and crash reports come back as tickets — grouped by signature, symbolicated, and triageable by humans and AI agents through the same API. Reporting SDKs cover Android, iOS, HarmonyOS, and Electron — fully Cloudflare-native (Workers + Container + D1 + R2).
 
 - **Live instance:** <https://quiver.oranix.io>
 - **Docs:** <https://quiver.oranix.io/docs> · [Admin guide](https://quiver.oranix.io/docs/admin-user-guide/) · [CLI reference](https://quiver.oranix.io/docs/cli-reference/)
 - **API explorer:** <https://quiver.oranix.io/api-docs>
 - **CLI on npm:** [`@botiverse/hands-cli`](https://www.npmjs.com/package/@botiverse/hands-cli)
 
-The "quiver" metaphor: admins load build arrows into channels; clients pick the right one for their channel — and tell you where it landed.
+The "Hands" metaphor: admins load build arrows into channels; clients pick the right one for their channel — and tell you where it landed.
 
 ## Features
 
@@ -25,7 +25,7 @@ The "quiver" metaphor: admins load build arrows into channels; clients pick the 
 - **CI-friendly publishing** — the public npm CLI publishes Android releases and creates share links from GitHub Actions, local packaging lanes, or Raft agents:
 
 ```sh
-$ npm exec --package @botiverse/hands-cli -- quiver builds publish-android raft-android
+$ npm exec --package @botiverse/hands-cli -- hands builds publish-android raft-android
 uploading APK and metadata...
 creating release on channel main...
 release: 14998dba-cfde-4002-8c01-230a2760f662
@@ -72,7 +72,7 @@ share: https://quiver.oranix.io/share/...
 - `admin/` — admin SPA and public landing (React + Vite + Tailwind) served by the Worker
 - `container/` — Cloudflare Container — APK metadata parser (aapt + apksigner)
 - `packages/cli/` — `@botiverse/hands-cli` npm package
-- `clients/android/` — Quiver Android Updater SDK (update checks + APK install)
+- `clients/android/` — Hands Android Updater SDK (update checks + APK install)
 - `docs/` — admin user guide, CLI reference, public API reference, architecture notes
 - `migrations/` — D1 SQL schema migrations
 
@@ -119,7 +119,7 @@ GitHub Actions owns production publishing so local machines do not need long-liv
 
 Required repository secrets:
 
-- `CLOUDFLARE_API_TOKEN` — Cloudflare API token allowed to deploy the Quiver Worker and its assets.
+- `CLOUDFLARE_API_TOKEN` — Cloudflare API token allowed to deploy the Hands Worker and its assets.
 - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account id for the Worker deploy.
 
 Workflows:

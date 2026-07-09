@@ -1,14 +1,14 @@
-# @oranix/quiver (HarmonyOS)
+# @botiverse/hands (HarmonyOS)
 
 Official Hands SDK for HarmonyOS (ArkTS HAR): feedback tickets and
 store-then-send crash reporting against a Hands server's public feedback
-endpoint. Mirrors the Android SDK (`io.quiver:quiver-android-updater`) and
-the iOS `Quiver` pod.
+endpoint. Mirrors the Android SDK (`build.hands:hands-android-updater`) and
+the iOS `Hands` pod.
 
 ## Install
 
 ```bash
-ohpm install @oranix/quiver
+ohpm install @botiverse/hands
 ```
 
 (Until the first ohpm release, consume the HAR from a local build of
@@ -22,7 +22,7 @@ console (Sentry-DSN model: it identifies the app; rotate it from the console
 if it leaks).
 
 ```ts
-import { Hands } from '@oranix/quiver';
+import { Hands } from '@botiverse/hands';
 
 Hands.install({
   baseUrl: 'https://quiver.example.com',
@@ -37,7 +37,7 @@ Call it as early as possible (UIAbility `onCreate`).
 ## Feedback
 
 ```ts
-import { HandsFeedbackClient } from '@oranix/quiver';
+import { HandsFeedbackClient } from '@botiverse/hands';
 
 const ticketId = await HandsFeedbackClient.submit(
   context,                    // common.UIAbilityContext
@@ -57,7 +57,7 @@ At crash time (e.g. an `errorManager` observer), write the crash log and its
 signature sidecar — no network in the dying process:
 
 ```ts
-import { HandsCrashUploader } from '@oranix/quiver';
+import { HandsCrashUploader } from '@botiverse/hands';
 
 HandsCrashUploader.writeMeta(crashLogPath, {
   exception_class: error.name,

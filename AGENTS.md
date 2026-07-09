@@ -1,7 +1,7 @@
-# Quiver Agent Guide
+# Hands Agent Guide
 
-This is the first-page guide for agents working in the Quiver repository.
-Quiver manages APK uploads, release channels, public update checks, share
+This is the first-page guide for agents working in the Hands repository.
+Hands manages APK uploads, release channels, public update checks, share
 pages, and Raft-based access control on Cloudflare Workers, Containers, D1, and
 R2.
 
@@ -47,14 +47,14 @@ ssh -T git@github.com
 ```
 
 Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
-`CLOUDFLARE_API_TOKEN`, Quiver deploy tokens, Raft client secrets, session
+`CLOUDFLARE_API_TOKEN`, Hands deploy tokens, Raft client secrets, session
 cookies, or other credentials into public Raft channels.
 
 ## Repository Map
 
 | Purpose | Local path / package | Notes |
 | --- | --- | --- |
-| Quiver canonical checkout | `/Users/artin/0Workspace/github.com/oranix-io/quiver` | `github.com/oranix-io/quiver` |
+| Hands canonical checkout | `/Users/artin/0Workspace/github.com/oranix-io/quiver` | `github.com/oranix-io/quiver` |
 | Worker | `worker/` | Hono Worker, API routes, Login with Raft, D1/R2 access |
 | Admin UI | `admin/` | React + Vite + Tailwind admin SPA and docs shell |
 | APK parser container | `container/` | Cloudflare Container using `aapt` / `apksigner` |
@@ -125,7 +125,7 @@ docker build -t apk-parser container/
 - Prefer app-scoped deploy tokens for CI and agents instead of reusing human
   browser sessions.
 - Public update-check and download endpoints are intentionally unauthenticated;
-  admin and publishing APIs require Quiver auth or deploy-token auth.
+  admin and publishing APIs require Hands auth or deploy-token auth.
 - Keep APK metadata parsing in the container boundary. Worker routes should call
   the parser service rather than duplicating `aapt` / signing parsing logic.
 - D1 migrations are append-only once shared. Do not edit applied migration
@@ -143,12 +143,12 @@ long-lived npm or Cloudflare credentials.
   admin/docs assets. Choose a container rollout mode only when the APK
   parser container changed.
 
-## Release Policy (mobile app releases through Quiver)
+## Release Policy (mobile app releases through Hands)
 
 **CI never completes a real release.** CI builds, signs, generates a raw
 changelog, and creates a **draft** release. A human or agent reviews the
 draft, writes the final bilingual changelog, and publishes explicitly.
-Follow `docs/release-runbook.md` (`quiver releases show / update /
+Follow `docs/release-runbook.md` (`hands releases show / update /
 publish`).
 
 ## Docs Layout
@@ -163,30 +163,30 @@ publish`).
 
 ## Querying feedback & crashes as an agent
 
-Quiver is a Login-with-Raft **HTTP API service**, so
+Hands is a Login-with-Raft **HTTP API service**, so
 `raft integration invoke --service quiver --list-actions` returns none by
 design — that is not a bug. To read/triage a ticket: `raft integration login
 --service quiver` → `curl` the printed one-time callback URL → export the
 `access_token` as `QUIVER_BEARER_TOKEN`, then use `@botiverse/hands-cli`
-(`quiver feedback list|show|update|comment <appSlug> [ticketId]`) or the
+(`hands feedback list|show|update|comment <appSlug> [ticketId]`) or the
 `/api/apps/:appId/feedback*` REST endpoints. Full walkthrough:
 [/docs/agent-cli-feedback/](https://quiver.oranix.io/docs/agent-cli-feedback/).
 
-Quick lookup when someone gives you a Quiver feedback id. Newer Quiver
+Quick lookup when someone gives you a Hands feedback id. Newer Hands
 feedback references include the full ticket UUID; if you get an older short
 id from chat, expand it first:
 
 ```bash
 # Detail/attachment API routes require the full ticket UUID.
-TICKET_ID="$(quiver feedback list raft-android --json \
+TICKET_ID="$(hands feedback list raft-android --json \
   | python3 -c 'import json,sys; p=sys.argv[1]; print(next(t["id"] for t in json.load(sys.stdin)["tickets"] if t["id"].startswith(p)))' 389d855b)"
 
 # Show message, device context, comments, and attachment ids.
-quiver feedback show raft-android "$TICKET_ID"
+hands feedback show raft-android "$TICKET_ID"
 
-# Logs/diagnostics are ticket attachments. Quiver transports and stores them;
+# Logs/diagnostics are ticket attachments. Hands transports and stores them;
 # the producing app owns the file layout inside the downloaded archive.
-APP_ID="$(quiver apps get raft-android --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+APP_ID="$(hands apps get raft-android --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 curl -s -H "Authorization: Bearer $QUIVER_BEARER_TOKEN" \
   "https://quiver.oranix.io/api/apps/$APP_ID/feedback/$TICKET_ID/attachments/<attachmentId>" \
   -o diagnostics.zip

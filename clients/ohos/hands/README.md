@@ -1,4 +1,4 @@
-# @oranix/quiver (HarmonyOS)
+# @botiverse/hands (HarmonyOS)
 
 Hands feedback + crash reporting SDK for HarmonyOS (ArkTS).
 
@@ -16,7 +16,7 @@ parameters, never compiled in). See the Hands docs at
 ## Install
 
 ```
-ohpm install @oranix/quiver
+ohpm install @botiverse/hands
 ```
 
 ## License

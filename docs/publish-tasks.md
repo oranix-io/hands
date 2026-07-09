@@ -1,4 +1,4 @@
-# Quiver Publish Architecture — Implementation Spec & Tasks
+# Hands Publish Architecture — Implementation Spec & Tasks
 
 > **Status: historical design document (frozen).** Written during the
 > 2026-06 build-out; several sections describe plans that shipped
@@ -188,19 +188,19 @@ Goal: introduce `product_types`, `release_types`, `build_assets`, `releases`, `r
 | P3.3.1 `GET /public/apps/:slug/bundles` (OTA, returns all enabled matching) | 🔵 TODO | 2h | |
 | P3.3.2 Scope resolution logic on `/public/v2/apps/:slug/latest` (full / platform / ip_range / cohort) | ✅ DONE | 4h | commit `ede5627`. New `/public/v2/...` route with priority ordering (ip_range=4, user_cohort=3, platform=2, full=1), CIDR containment for ip_range, CSV match for platform, exact-match for user_cohort header. Tie-break by created_at DESC + release_id ASC. Response includes `scoped` block + optional `fallback_release` for non-full winners. v1 endpoint unchanged (still reads legacy `versions` table). |
 | P3.3.3 IP range → user matching (Cloudflare `cf-connecting-ip`) | ✅ DONE | 2h | covered by P3.3.2; cf.clientIp is the only source (X-Forwarded-For never trusted). |
-| P3.3.4 User cohort matching (cookie / auth) | 🟡 PARTIAL | 4h | P3.3.2 reads cohort from `X-Quiver-Cohort` header; cookie / Raft-session-based cohort lookup deferred to v2 (needs auth at the public edge, which the current edge doesn't have). |
+| P3.3.4 User cohort matching (cookie / auth) | 🟡 PARTIAL | 4h | P3.3.2 reads cohort from `X-Hands-Cohort` header (legacy `X-Quiver-Cohort` still accepted); cookie / Raft-session-based cohort lookup deferred to v2 (needs auth at the public edge, which the current edge doesn't have). |
 
 ### P3.4 — CLI (`@botiverse/hands-cli`)
 
 | Task | Status | Estimate | Notes |
 |---|---|---|---|
 | P3.4.1 npm package scaffold | 🔵 TODO | 2h | `packages/cli/` or separate repo |
-| P3.4.2 `quiver login` (token save + verify) | 🔵 TODO | 4h | |
-| P3.4.3 `quiver build push` (zip + multipart upload + parse + sign) | 🔵 TODO | 1 day | most complex command |
-| P3.4.4 `quiver builds` (list + inspect) | 🔵 TODO | 4h | |
-| P3.4.5 `quiver release create` (full / platform / ip / cohort scopes) | 🔵 TODO | 1 day | |
-| P3.4.6 `quiver release rollback` | 🔵 TODO | 4h | |
-| P3.4.7 `quiver whoami / ops / channels / webhooks` | 🔵 TODO | 1 day | |
+| P3.4.2 `hands login` (token save + verify) | 🔵 TODO | 4h | |
+| P3.4.3 `hands build push` (zip + multipart upload + parse + sign) | 🔵 TODO | 1 day | most complex command |
+| P3.4.4 `hands builds` (list + inspect) | 🔵 TODO | 4h | |
+| P3.4.5 `hands release create` (full / platform / ip / cohort scopes) | 🔵 TODO | 1 day | |
+| P3.4.6 `hands release rollback` | 🔵 TODO | 4h | |
+| P3.4.7 `hands whoami / ops / channels / webhooks` | 🔵 TODO | 1 day | |
 | P3.4.8 CLI docs + README | 🔵 TODO | 4h | |
 
 ### Phase 3 total: ~3 weeks work
