@@ -52,11 +52,11 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 from(components["release"])
                 groupId = "build.hands"
-                artifactId = "hands-android-updater"
+                artifactId = "hands-android-sdk"
                 version = project.version.toString()
 
                 pom {
-                    name.set("Hands Android Updater")
+                    name.set("Hands Android SDK")
                     description.set("Android SDK for server-side Hands update checks and APK installation.")
                     url.set("https://github.com/oranix-io/quiver")
                     licenses {

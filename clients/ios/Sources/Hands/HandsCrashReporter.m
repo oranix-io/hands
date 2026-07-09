@@ -517,7 +517,7 @@ static NSString *HandsZipDiagnostics(NSArray<NSString *> *paths, NSString *stamp
     if (![paths isKindOfClass:NSArray.class] || paths.count == 0) return nil;
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *stageRoot = [NSTemporaryDirectory()
-        stringByAppendingPathComponent:[@"quiver-diag-" stringByAppendingString:NSUUID.UUID.UUIDString]];
+        stringByAppendingPathComponent:[@"hands-diag-" stringByAppendingString:NSUUID.UUID.UUIDString]];
     NSString *stageDir = [stageRoot stringByAppendingPathComponent:@"diagnostics"];
     if (![fm createDirectoryAtPath:stageDir withIntermediateDirectories:YES attributes:nil error:nil]) {
         return nil;
