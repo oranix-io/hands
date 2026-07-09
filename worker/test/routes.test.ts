@@ -24,6 +24,7 @@ import { requireCurrentOrgRole } from "../src/lib/permissions";
 import { httpsRedirectUrl, isSecureRequest, requestOrigin } from "../src/lib/origin";
 import { openApiDocument } from "../src/openapi";
 import { handleCreateApp } from "../src/routes/apps";
+import { handleAuthLogin } from "../src/routes/auth";
 
 // ---------- Test harness ----------
 
@@ -1197,6 +1198,28 @@ describe("quiver route handlers — SQL smoke", () => {
 });
 
 describe("auth origin handling", () => {
+  it("redirects Login with Raft through the current Raft setup route", async () => {
+    const env = makeMockEnv();
+    env.RAFT_CLIENT_ID = "hands-4cc7a2";
+    const app = new Hono<{ Bindings: MockEnv }>();
+    app.get("/api/auth/login", handleAuthLogin);
+
+    const res = await app.request(
+      "https://hands.build/api/auth/login?return=%2F",
+      {},
+      env as any,
+    );
+
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location") ?? "");
+    expect(location.origin).toBe("https://app.raft.build");
+    expect(location.pathname).toBe("/login-with-raft/setup");
+    expect(location.searchParams.get("client_id")).toBe("hands-4cc7a2");
+    expect(location.searchParams.get("return_to")).toBe(
+      "https://hands.build/login/raft/callback",
+    );
+  });
+
   it("canonicalizes public http custom-domain requests to https", () => {
     const ctx = {
       req: {

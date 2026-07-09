@@ -25,7 +25,7 @@ export const openApiDocument = docs.getOpenAPI31Document({
     title: "Hands API",
     version: "0.1.0",
     description:
-      "Interactive API reference for Quiver. Generated from modular Hono/Zod route definitions.",
+      "Interactive API reference for Hands. Generated from modular Hono/Zod route definitions.",
   },
   servers: [
     {
@@ -130,7 +130,7 @@ openApiDocument.components.securitySchemes = {
   bearerAuth: {
     type: "http",
     scheme: "bearer",
-    description: "Quiver bearer token. Use app deploy tokens for CI and agents.",
+    description: "Hands bearer token. Use app deploy tokens for CI and agents.",
   },
   cookieAuth: {
     type: "apiKey",

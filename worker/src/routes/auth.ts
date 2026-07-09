@@ -2,7 +2,7 @@
  * Login with Raft routes.
  *
  * The Raft OAuth code and access token never leave the Worker. The browser
- * only receives Quiver's own HttpOnly session cookie.
+ * only receives Hands's own HttpOnly session cookie.
  */
 
 import type { Context } from "hono";
@@ -391,7 +391,7 @@ async function finalizeRaftLogin(
     token.access_token,
   );
   if (!isUserAllowed(c.env, userinfo)) {
-    return c.text("This Raft server is not allowed for this Quiver admin.", 403);
+    return c.text("This Raft server is not allowed for this Hands admin.", 403);
   }
 
   const account = await upsertRaftAccount(c.env.DB, userinfo);
@@ -504,7 +504,7 @@ export async function handleAuthLogin(c: Context<{ Bindings: Env }>) {
     maxAge: 10 * 60,
   });
 
-  const setup = new URL("/login-with-slock/setup", config.raftOrigin);
+  const setup = new URL("/login-with-raft/setup", config.raftOrigin);
   setup.searchParams.set("client_id", config.clientId);
   setup.searchParams.set("return_to", callbackUrl(c));
   setup.searchParams.set("scope", "openid profile");
@@ -602,7 +602,7 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
     },
     // HTTP API actions an agent can self-serve via `raft integration invoke`.
     // Paths are relative to execution.base_url (`${origin}/api`). Focused on the
-    // feedback-read/log-retrieval flow; Quiver serves raw attachments and does
+    // feedback-read/log-retrieval flow; Hands serves raw attachments and does
     // not interpret their contents.
     actions: [
       {
@@ -634,7 +634,7 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
       {
         name: "download-feedback-attachment",
         description:
-          "Download a raw feedback attachment (bytes as-is; Quiver does not unzip or interpret it).",
+          "Download a raw feedback attachment (bytes as-is; Hands does not unzip or interpret it).",
         endpoint: {
           method: "GET",
           path: "/api/apps/{app_id}/feedback/{ticket_id}/attachments/{attachment_id}",
