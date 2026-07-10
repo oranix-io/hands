@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       sync_d1:
-        description: "Export quiver-db and import it into hands-db."
+        description: "Export the configured source D1 database and import it into the configured Hands D1 database."
         required: true
         type: boolean
         default: true
@@ -18,7 +18,7 @@ on:
         type: boolean
         default: true
       sync_r2:
-        description: "Copy D1-referenced objects from quiver-apks to hands-artifacts."
+        description: "Copy D1-referenced objects between the configured source and Hands R2 buckets."
         required: true
         type: boolean
         default: true
@@ -30,15 +30,20 @@ concurrency:
   group: hands-data-sync
   cancel-in-progress: false
 
-env:
-  SOURCE_D1_DATABASE_NAME: quiver-db
-  TARGET_D1_DATABASE_NAME: hands-db
-  SOURCE_R2_BUCKET_NAME: quiver-apks
-  TARGET_R2_BUCKET_NAME: hands-artifacts
-
 jobs:
   sync:
     runs-on: ubuntu-latest
+    env:
+      SOURCE_D1_DATABASE_NAME: ${{ vars.QUIVER_D1_DATABASE_NAME }}
+      TARGET_D1_DATABASE_NAME: ${{ vars.HANDS_D1_DATABASE_NAME }}
+      SOURCE_R2_BUCKET_NAME: ${{ vars.QUIVER_R2_BUCKET_NAME }}
+      TARGET_R2_BUCKET_NAME: ${{ vars.HANDS_R2_BUCKET_NAME }}
+      HANDS_WORKER_NAME: ${{ vars.HANDS_WORKER_NAME }}
+      HANDS_D1_DATABASE_NAME: ${{ vars.HANDS_D1_DATABASE_NAME }}
+      HANDS_D1_DATABASE_ID: ${{ vars.HANDS_D1_DATABASE_ID }}
+      HANDS_R2_BUCKET_NAME: ${{ vars.HANDS_R2_BUCKET_NAME }}
+      HANDS_BUSINESS_DOMAIN: ${{ vars.HANDS_BUSINESS_DOMAIN }}
+      HANDS_DASHBOARD_DOMAIN: ${{ vars.HANDS_DASHBOARD_DOMAIN }}
     steps:
       - uses: actions/checkout@v6
 
@@ -53,6 +58,10 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Render production Wrangler config
+        working-directory: worker
+        run: node scripts/render-production-config.mjs --output wrangler.hands.generated.jsonc
 
       - name: Confirm one-way sync
         shell: bash
@@ -320,7 +329,7 @@ jobs:
           set -euo pipefail
           pnpm exec wrangler d1 execute "${TARGET_D1_DATABASE_NAME}" \
             --remote \
-            --config wrangler.hands.jsonc \
+            --config wrangler.hands.generated.jsonc \
             --file ../tmp/hands-sync/reset-hands-data.sql \
             --yes
 
@@ -335,7 +344,7 @@ jobs:
           set -euo pipefail
           pnpm exec wrangler d1 execute "${TARGET_D1_DATABASE_NAME}" \
             --remote \
-            --config wrangler.hands.jsonc \
+            --config wrangler.hands.generated.jsonc \
             --file ../tmp/hands-sync/quiver-data-ordered.sql \
             --yes
 
@@ -412,6 +421,6 @@ jobs:
           set -euo pipefail
           pnpm exec wrangler d1 execute "${TARGET_D1_DATABASE_NAME}" \
             --remote \
-            --config wrangler.hands.jsonc \
+            --config wrangler.hands.generated.jsonc \
             --json \
             --command "SELECT COUNT(*) AS apps FROM apps; SELECT COUNT(*) AS builds FROM builds; SELECT COUNT(*) AS build_assets FROM build_assets; SELECT COUNT(*) AS releases FROM releases; SELECT COUNT(*) AS feedback_tickets FROM feedback_tickets; SELECT COUNT(*) AS feedback_attachments FROM feedback_attachments; SELECT COUNT(*) AS device_pings FROM device_pings;"

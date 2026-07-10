@@ -25,16 +25,21 @@ concurrency:
   group: hands-server-production
   cancel-in-progress: false
 
-env:
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_BOTIVERSE_ACCOUNT_ID }}
-  HANDS_D1_DATABASE_NAME: hands-db
-  HANDS_R2_BUCKET_NAME: hands-artifacts
-  HANDS_BUSINESS_DOMAIN: hands.build
-  HANDS_DASHBOARD_DOMAIN: app.hands.build
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_BOTIVERSE_ACCOUNT_ID }}
+      HANDS_WORKER_NAME: ${{ vars.HANDS_WORKER_NAME }}
+      HANDS_D1_DATABASE_NAME: ${{ vars.HANDS_D1_DATABASE_NAME }}
+      HANDS_D1_DATABASE_ID: ${{ vars.HANDS_D1_DATABASE_ID }}
+      HANDS_R2_BUCKET_NAME: ${{ vars.HANDS_R2_BUCKET_NAME }}
+      HANDS_BUSINESS_DOMAIN: ${{ vars.HANDS_BUSINESS_DOMAIN }}
+      HANDS_DASHBOARD_DOMAIN: ${{ vars.HANDS_DASHBOARD_DOMAIN }}
+      HANDS_CORS_ALLOWED_ORIGINS: ${{ vars.HANDS_CORS_ALLOWED_ORIGINS }}
+      HANDS_RAFT_ORIGIN: ${{ vars.HANDS_RAFT_ORIGIN }}
+      HANDS_RAFT_API_ORIGIN: ${{ vars.HANDS_RAFT_API_ORIGIN }}
+      HANDS_RAFT_CLIENT_ID: ${{ vars.HANDS_RAFT_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v6
 
@@ -50,13 +55,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Render production Wrangler config
+        working-directory: worker
+        run: node scripts/render-production-config.mjs --output wrangler.hands.generated.jsonc
+
       - name: Generate Worker types
         working-directory: worker
         # Generate the business worker's Env from the hands config. The default
         # wrangler.jsonc is now the legacy proxy shim (shim-only vars), so
         # without --config the generated Env would lack DB/APK_BUCKET/ASSETS and
         # the src/index.ts typecheck below would fail.
-        run: pnpm exec wrangler types --config wrangler.hands.jsonc
+        run: pnpm exec wrangler types --config wrangler.hands.generated.jsonc
 
       - name: Run checks
         if: ${{ inputs.run_checks }}
@@ -83,7 +92,7 @@ jobs:
             exit 1
           fi
 
-          pnpm exec wrangler d1 info "${HANDS_D1_DATABASE_NAME}" --config wrangler.hands.jsonc >/dev/null
+          pnpm exec wrangler d1 info "${HANDS_D1_DATABASE_NAME}" --config wrangler.hands.generated.jsonc >/dev/null
 
           if ! pnpm exec wrangler r2 bucket info "${HANDS_R2_BUCKET_NAME}" >/dev/null 2>&1; then
             pnpm exec wrangler r2 bucket create "${HANDS_R2_BUCKET_NAME}"
@@ -96,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pnpm exec wrangler d1 migrations apply "${HANDS_D1_DATABASE_NAME}" --remote --config wrangler.hands.jsonc
+          pnpm exec wrangler d1 migrations apply "${HANDS_D1_DATABASE_NAME}" --remote --config wrangler.hands.generated.jsonc
 
       - name: Configure Hands Worker secrets
         working-directory: worker
@@ -125,10 +134,11 @@ jobs:
             echo "Missing GitHub secret CLOUDFLARE_BOTIVERSE_ACCOUNT_ID." >&2
             exit 1
           fi
-          printf '%s' "${SIGNED_URL_SECRET}" | pnpm exec wrangler secret put SIGNED_URL_SECRET --config wrangler.hands.jsonc
-          printf '%s' "${RAFT_CLIENT_SECRET}" | pnpm exec wrangler secret put RAFT_CLIENT_SECRET --config wrangler.hands.jsonc
-          printf '%s' "${ASC_CRED_ENC_KEY}" | pnpm exec wrangler secret put ASC_CRED_ENC_KEY --config wrangler.hands.jsonc
-          printf '%s' "${R2_ACCOUNT_ID}" | pnpm exec wrangler secret put R2_ACCOUNT_ID --config wrangler.hands.jsonc
+          config=wrangler.hands.generated.jsonc
+          printf '%s' "${SIGNED_URL_SECRET}" | pnpm exec wrangler secret put SIGNED_URL_SECRET --config "${config}"
+          printf '%s' "${RAFT_CLIENT_SECRET}" | pnpm exec wrangler secret put RAFT_CLIENT_SECRET --config "${config}"
+          printf '%s' "${ASC_CRED_ENC_KEY}" | pnpm exec wrangler secret put ASC_CRED_ENC_KEY --config "${config}"
+          printf '%s' "${R2_ACCOUNT_ID}" | pnpm exec wrangler secret put R2_ACCOUNT_ID --config "${config}"
 
       - name: Deploy Hands Worker and admin assets
         working-directory: worker
@@ -138,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           pnpm exec wrangler deploy \
-            --config wrangler.hands.jsonc \
+            --config wrangler.hands.generated.jsonc \
             --containers-rollout "${{ inputs.containers_rollout }}"
 
       - name: Summary
@@ -151,10 +161,5 @@ jobs:
             echo "|---|---|"
             echo "| Ref | \`${GITHUB_REF_NAME}\` |"
             echo "| SHA | \`${GITHUB_SHA}\` |"
-            echo "| Account | \`${CLOUDFLARE_ACCOUNT_ID}\` |"
-            echo "| Business domain | \`${HANDS_BUSINESS_DOMAIN}\` |"
-            echo "| Dashboard domain | \`${HANDS_DASHBOARD_DOMAIN}\` |"
-            echo "| D1 | \`${HANDS_D1_DATABASE_NAME}\` |"
-            echo "| R2 | \`${HANDS_R2_BUCKET_NAME}\` |"
             echo "| Containers rollout | \`${{ inputs.containers_rollout }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

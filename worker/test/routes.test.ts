@@ -44,6 +44,8 @@ interface MockEnv {
   RAFT_CLIENT_SECRET: string;
   RAFT_ORIGIN: string;
   RAFT_API_ORIGIN: string;
+  BUSINESS_ORIGIN: string;
+  DASHBOARD_ORIGIN: string;
   SIGNED_URL_SECRET?: string;
   SIGNED_URL_TTL_SECONDS: string;
   R2_ACCOUNT_ID?: string;
@@ -525,8 +527,10 @@ function makeMockEnv(): MockEnv {
     ADMIN_API_TOKEN: "test-token-123",
     RAFT_CLIENT_ID: "quiver-test",
     RAFT_CLIENT_SECRET: "test-secret",
-    RAFT_ORIGIN: "https://app.raft.build",
-    RAFT_API_ORIGIN: "https://api.raft.build",
+    RAFT_ORIGIN: "https://raft.example",
+    RAFT_API_ORIGIN: "https://raft-api.example",
+    BUSINESS_ORIGIN: "https://business.example",
+    DASHBOARD_ORIGIN: "https://dashboard.example",
     SIGNED_URL_SECRET: "test-signed-url-secret",
     SIGNED_URL_TTL_SECONDS: "3600",
     APK_PARSER: null,
@@ -796,7 +800,7 @@ describe("quiver route handlers — SQL smoke", () => {
     expect(viewerBody.next_action as string).toContain("member");
     expect(viewerBody.next_action as string).toContain("/members");
     expect(viewerBody.manage_url).toBe(
-      "https://app.hands.build/orgs/raft_create/members",
+      "https://dashboard.example/orgs/raft_create/members",
     );
 
     const memberResponse = await testApp.request(
@@ -1390,7 +1394,7 @@ describe("auth origin handling", () => {
     expect(parts).toHaveLength(3);
     const payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8"));
     expect(payload).toMatchObject({
-      iss: "https://hands.build",
+      iss: "https://business.example",
       aud: "hands-dashboard",
       sub: "account-1",
       jti: "session-1",
@@ -1402,34 +1406,34 @@ describe("auth origin handling", () => {
 
   it("redirects Login with Raft through the current Raft setup route", async () => {
     const env = makeMockEnv();
-    env.RAFT_CLIENT_ID = "hands-4cc7a2";
+    env.RAFT_CLIENT_ID = "test-client";
     const app = new Hono<{ Bindings: MockEnv }>();
     app.get("/api/auth/login", handleAuthLogin);
 
     const res = await app.request(
-      "https://hands.build/api/auth/login?return=%2F",
+      "https://business.example/api/auth/login?return=%2F",
       {},
       env as any,
     );
 
     expect(res.status).toBe(302);
     const location = new URL(res.headers.get("location") ?? "");
-    expect(location.origin).toBe("https://app.raft.build");
+    expect(location.origin).toBe("https://raft.example");
     expect(location.pathname).toBe("/login-with-raft/setup");
-    expect(location.searchParams.get("client_id")).toBe("hands-4cc7a2");
+    expect(location.searchParams.get("client_id")).toBe("test-client");
     expect(location.searchParams.get("return_to")).toBe(
-      "https://hands.build/login/raft/callback",
+      "https://business.example/login/raft/callback",
     );
   });
 
   it("shares browser login state across the dashboard and registered callback hosts", async () => {
     const env = makeMockEnv();
-    env.RAFT_CLIENT_ID = "hands-4cc7a2";
+    env.RAFT_CLIENT_ID = "test-client";
     const app = new Hono<{ Bindings: MockEnv }>();
     app.get("/api/auth/login", handleAuthLogin);
 
     const res = await app.request(
-      "https://app.hands.build/api/auth/login?return=%2Fapps%2Fapp-1%2Fsettings",
+      "https://dashboard.example/api/auth/login?return=%2Fapps%2Fapp-1%2Fsettings",
       {},
       env as any,
     );
@@ -1437,14 +1441,14 @@ describe("auth origin handling", () => {
     expect(res.status).toBe(302);
     const location = new URL(res.headers.get("location") ?? "");
     expect(location.searchParams.get("return_to")).toBe(
-      "https://hands.build/login/raft/callback",
+      "https://business.example/login/raft/callback",
     );
-    expect(res.headers.get("set-cookie")?.toLowerCase()).toContain("domain=hands.build");
+    expect(res.headers.get("set-cookie")?.toLowerCase()).toContain("domain=business.example");
   });
 
   it("keeps localhost auth callbacks and cookies host-local", async () => {
     const env = makeMockEnv();
-    env.RAFT_CLIENT_ID = "hands-4cc7a2";
+    env.RAFT_CLIENT_ID = "test-client";
     const app = new Hono<{ Bindings: MockEnv }>();
     app.get("/api/auth/login", handleAuthLogin);
 
@@ -1464,13 +1468,13 @@ describe("auth origin handling", () => {
   it("canonicalizes public http custom-domain requests to https", () => {
     const ctx = {
       req: {
-        url: "http://quiver.oranix.io/api/auth/login?return=/apps",
+        url: "http://legacy.example/api/auth/login?return=/apps",
         header: () => null,
       },
     };
-    expect(requestOrigin(ctx as any)).toBe("https://quiver.oranix.io");
+    expect(requestOrigin(ctx as any)).toBe("https://legacy.example");
     expect(isSecureRequest(ctx as any)).toBe(true);
-    expect(httpsRedirectUrl(ctx as any)).toBe("https://quiver.oranix.io/api/auth/login?return=/apps");
+    expect(httpsRedirectUrl(ctx as any)).toBe("https://legacy.example/api/auth/login?return=/apps");
   });
 
   it("preserves localhost http origins for local development", () => {
@@ -1488,11 +1492,11 @@ describe("auth origin handling", () => {
   it("respects forwarded https scheme", () => {
     const ctx = {
       req: {
-        url: "http://quiver.oranix.io/api/auth/login?return=/apps",
+        url: "http://legacy.example/api/auth/login?return=/apps",
         header: (name: string) => (name === "x-forwarded-proto" ? "https" : null),
       },
     };
-    expect(requestOrigin(ctx as any)).toBe("https://quiver.oranix.io");
+    expect(requestOrigin(ctx as any)).toBe("https://legacy.example");
     expect(isSecureRequest(ctx as any)).toBe(true);
     expect(httpsRedirectUrl(ctx as any)).toBeNull();
   });
@@ -4534,7 +4538,7 @@ describe("quiver public API v2 — scope resolution", () => {
     const submitContext = {
       env,
       req: {
-        url: "https://quiver.oranix.io/public/v2/apps/scope-app/feedback",
+        url: "https://legacy.example/public/v2/apps/scope-app/feedback",
         param: (name: string) => (name === "slug" ? "scope-app" : ""),
         header: (name: string) => (name === "X-Quiver-Client-Key" ? "qk_test" : undefined),
         query: () => undefined,
@@ -4552,7 +4556,7 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(submittedBody.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(submittedBody.reference).toContain(`ticket ${submittedBody.id}`);
     expect(submittedBody.ticket_url).toBe(
-      `https://app.hands.build/apps/app-scope/feedback/${submittedBody.id}`,
+      `https://dashboard.example/apps/app-scope/feedback/${submittedBody.id}`,
     );
     expect(putCalls.length).toBe(1);
     expect(putCalls[0]!.key).toContain("feedback/app-scope/");

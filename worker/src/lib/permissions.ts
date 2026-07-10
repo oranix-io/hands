@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { currentActorInfo, type AdminAccount, type AdminEnv } from "../middleware/auth";
 import type { AppDeployToken } from "./deploy_tokens";
-import { DASHBOARD_ORIGIN } from "./origin";
+import { dashboardOrigin } from "./origin";
 
 export type OrgRole = "owner" | "admin" | "member" | "viewer";
 export type AppRole = "admin" | "publisher" | "viewer";
@@ -160,9 +160,9 @@ function forbiddenRole(
     // request URL/method unavailable (e.g. tests) — keep defaults
   }
   const manageUrl = ids.org_id
-    ? `${DASHBOARD_ORIGIN}/orgs/${ids.org_id}/members`
+    ? `${dashboardOrigin(c.env)}/orgs/${ids.org_id}/members`
     : ids.app_id
-      ? `${DASHBOARD_ORIGIN}/apps/${ids.app_id}/settings`
+      ? `${dashboardOrigin(c.env)}/apps/${ids.app_id}/settings`
       : null;
   // Admin-native, actionable error: tell the caller (agent or human) exactly
   // what to do next — who can grant the role, where, and that an admin can
@@ -250,7 +250,7 @@ export async function ensureAppRole(c: AdminContext, appId: string, minimum: App
             `\`raft integration login --service <hands-service>\`. Then an admin must grant you the ` +
             `'${minimum}' role on this app (Access → Members). Admins can perform the release action on your behalf.`,
           login_url: `/api/auth/login?return=${encodeURIComponent("/")}`,
-          manage_url: `${DASHBOARD_ORIGIN}/apps/${appId}/settings`,
+          manage_url: `${dashboardOrigin(c.env)}/apps/${appId}/settings`,
         },
         401,
       ),

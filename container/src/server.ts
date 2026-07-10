@@ -80,7 +80,7 @@ app.post("/generate-patch", async (c) => {
   const outPath = join(dir, "out.patch");
   // Fetch with a timeout so a stuck/blocked egress fails fast with a diagnostic
   // (which URL, timeout vs error) instead of hanging the whole request — the
-  // container reaching back to hands.build is the current unknown.
+  // the container reaching back to the configured business origin is the current unknown.
   const fetchApk = async (url: string, dest: string): Promise<number> => {
     const started = Date.now();
     const ac = new AbortController();

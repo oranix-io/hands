@@ -1,7 +1,5 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "tailwindcss";
-import autoprefixer from "autoprefixer";
 
 // Vite config for quiver admin SPA.
 // Dev: proxies /api to the local Worker (wrangler dev :8787).

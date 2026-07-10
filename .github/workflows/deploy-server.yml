@@ -49,6 +49,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          HANDS_BUSINESS_DOMAIN: ${{ vars.HANDS_BUSINESS_DOMAIN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -56,8 +57,15 @@ jobs:
             echo "Missing GitHub secret CLOUDFLARE_API_TOKEN." >&2
             exit 1
           fi
+          if [[ -z "${HANDS_BUSINESS_DOMAIN:-}" ]]; then
+            echo "Missing GitHub variable HANDS_BUSINESS_DOMAIN." >&2
+            exit 1
+          fi
+          business_origin="https://${HANDS_BUSINESS_DOMAIN}"
           # Default wrangler.jsonc is the shim: no D1 migrations, no containers.
-          pnpm exec wrangler deploy
+          pnpm exec wrangler deploy \
+            --var "PROXY_TARGET:${business_origin}" \
+            --var "REDIRECT_TARGET:${business_origin}"
 
       - name: Summary
         shell: bash
@@ -69,5 +77,5 @@ jobs:
             echo "|---|---|"
             echo "| Ref | \`${GITHUB_REF_NAME}\` |"
             echo "| SHA | \`${GITHUB_SHA}\` |"
-            echo "| Role | \`legacy proxy shim -> hands.build\` |"
+            echo "| Role | \`legacy proxy shim\` |"
           } >> "$GITHUB_STEP_SUMMARY"
