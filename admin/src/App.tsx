@@ -151,7 +151,6 @@ function Header({ account }: { account: AuthAccount }) {
       return false;
     }
   });
-  const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const currentOrg = orgs.data?.orgs.find((org) => org.id === account.org_id);
   const currentApp = apps.data?.apps.find((app) => app.id === appId);
   const otherApps = (apps.data?.apps ?? []).filter(
@@ -210,51 +209,49 @@ function Header({ account }: { account: AuthAccount }) {
           </NavLink>
         )}
         <div className="relative w-full">
-          <button
-            type="button"
-            onClick={() => setShowOrgSwitcher((open) => !open)}
-            onMouseDown={(event) => event.stopPropagation()}
-            className={railItem({ isActive: location.pathname.startsWith("/orgs/") })}
-            aria-haspopup="menu"
-            aria-expanded={showOrgSwitcher}
-            aria-label={`Organization ${currentOrg?.name ?? account.server_slug ?? account.server_id}`}
-            title={collapsed ? currentOrg?.name ?? "Switch organization" : undefined}
-          >
-            <span className="flex h-6 w-6 flex-none items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600">
-              {(currentOrg?.name ?? account.server_slug ?? "O").slice(0, 1).toUpperCase()}
-            </span>
-            {!collapsed && (
-              <>
-                <span className="hidden min-w-0 flex-1 text-left md:block">
-                  <span className="block truncate font-medium text-slate-800">
-                    {currentOrg?.name ?? account.server_slug ?? "Organization"}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className={railItem({ isActive: location.pathname.startsWith("/orgs/") })}
+                  aria-label={`Organization ${currentOrg?.name ?? account.server_slug ?? account.server_id}`}
+                  title={collapsed ? currentOrg?.name ?? "Switch organization" : undefined}
+                >
+                  <span className="flex h-6 w-6 flex-none items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600">
+                    {(currentOrg?.name ?? account.server_slug ?? "O").slice(0, 1).toUpperCase()}
                   </span>
-                  <span className="block truncate text-xs text-slate-400">
-                    {account.org_role ?? "member"}
-                  </span>
-                </span>
-                <ChevronDown className="hidden h-4 w-4 text-slate-400 md:block" aria-hidden="true" />
-              </>
-            )}
-          </button>
-          {showOrgSwitcher && (
-            <div
-              className={`absolute z-40 ${
-                collapsed ? "left-full top-0 ml-2" : "left-0 top-full mt-1"
-              }`}
+                  {!collapsed && (
+                    <>
+                      <span className="hidden min-w-0 flex-1 text-left md:block">
+                        <span className="block truncate font-medium text-slate-800">
+                          {currentOrg?.name ?? account.server_slug ?? "Organization"}
+                        </span>
+                        <span className="block truncate text-xs text-slate-400">
+                          {account.org_role ?? "member"}
+                        </span>
+                      </span>
+                      <ChevronDown className="hidden h-4 w-4 text-slate-400 md:block" aria-hidden="true" />
+                    </>
+                  )}
+                </button>
+              }
+            />
+            <DropdownMenuContent
+              side={collapsed ? "right" : "bottom"}
+              align="start"
+              className="w-72"
             >
               <OrgSwitcher
                 currentOrgId={account.org_id ?? null}
                 buttonLabel="Switch organization"
-                onClose={() => setShowOrgSwitcher(false)}
                 onSwitch={(org) => {
                   switchOrg(org);
-                  setShowOrgSwitcher(false);
                   window.location.assign("/apps");
                 }}
               />
-            </div>
-          )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         {appId && appBase && (
           <>
