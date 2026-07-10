@@ -38,6 +38,7 @@ import {
   type WebhookEventType,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { Button, Input } from "raft-ui";
 
 export const ORG_SETTINGS_TABS = [
   "general",
@@ -454,12 +455,13 @@ function InvitesTab({
             <option value="expired">Expired</option>
           </select>
           {canManage && (
-            <button
-              className="btn-primary text-xs"
+            <Button
+              variant="primary"
+              className="text-xs"
               onClick={() => setShowCreate(true)}
             >
               + Invite link
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -601,9 +603,8 @@ function CreateInviteDialog({
         >
           <div>
             <label className="label">Email</label>
-            <input
+            <Input
               type="email"
-              className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -632,20 +633,20 @@ function CreateInviteDialog({
             />
           </div>
           <div className="flex gap-2 justify-end pt-2">
-            <button
+            <Button
               type="button"
-              className="btn-secondary"
+              variant="outline"
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="btn-primary"
+              variant="primary"
               disabled={create.isPending || !email.trim()}
             >
               {create.isPending ? "Creating…" : "Create invite link"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -843,12 +844,13 @@ function WebhooksTab({
             </p>
           </div>
           {canManage && (
-            <button
-              className="btn-primary text-xs"
+            <Button
+              variant="primary"
+              className="text-xs"
               onClick={() => setShowCreate(true)}
             >
               + Add webhook
-            </button>
+            </Button>
           )}
         </div>
 
@@ -985,24 +987,26 @@ function WebhookRow({
         </div>
         <div className="flex items-center gap-2">
           {canManage && (
-            <button
-              className="btn-secondary text-xs"
+            <Button
+              variant="outline"
+              className="text-xs"
               onClick={() => onToggleEnabled(webhook.enabled !== 1)}
               disabled={!onToggleEnabled}
             >
               {webhook.enabled === 1 ? "Disable" : "Enable"}
-            </button>
+            </Button>
           )}
-          <button
-            className="btn-secondary text-xs"
+          <Button
+            variant="outline"
+            className="text-xs"
             onClick={onToggleExpand}
           >
             {expanded ? "Hide" : "Deliveries"}
-          </button>
+          </Button>
           {canManage && (
-            <button className="btn-secondary text-xs" onClick={onDelete}>
+            <Button variant="outline" className="text-xs" onClick={onDelete}>
               Archive
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1138,9 +1142,8 @@ function CreateWebhookDialog({
         >
           <div>
             <label className="label">URL</label>
-            <input
+            <Input
               type="url"
-              className="input"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://example.com/hooks/quiver"
@@ -1150,9 +1153,9 @@ function CreateWebhookDialog({
           </div>
           <div>
             <label className="label">Secret (HMAC)</label>
-            <input
+            <Input
               type="text"
-              className="input font-mono text-xs"
+              className="font-mono text-xs"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               placeholder="at-least-16-random-bytes"
@@ -1183,22 +1186,22 @@ function CreateWebhookDialog({
             </div>
           </div>
           <div className="flex gap-2 justify-end pt-2">
-            <button
+            <Button
               type="button"
-              className="btn-secondary"
+              variant="outline"
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="btn-primary"
+              variant="primary"
               disabled={
                 create.isPending || !url.trim() || secret.trim().length < 8
               }
             >
               {create.isPending ? "Creating…" : "Create webhook"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

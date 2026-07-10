@@ -18,6 +18,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Input } from "raft-ui";
 import {
   createBuildAsset,
   deleteBuildAsset,
@@ -199,13 +200,14 @@ export function ReleaseAssetUploader(props: Props) {
                   {(a.size_bytes / 1024 / 1024).toFixed(2)} MB
                 </td>
                 <td className="pr-2 py-1">
-                  <button
-                    className="btn-secondary text-[10px]"
+                  <Button
+                    variant="outline"
+                    className="text-[10px]"
                     onClick={() => setRemoveTarget(a)}
                     disabled={remove.isPending}
                   >
                     Remove
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -381,8 +383,8 @@ export function PendingFileRow({
               </option>
             ))}
           </select>
-          <input
-            className="input py-0.5! text-xs!"
+          <Input
+            className="py-0.5! text-xs!"
             placeholder="arch (optional)"
             value={pending.arch ?? ""}
             onChange={(e) => onChange({ arch: e.target.value || null })}

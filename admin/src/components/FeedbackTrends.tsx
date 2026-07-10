@@ -10,6 +10,7 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "raft-ui";
 import { getFeedbackStats } from "../lib/api";
 
 const KINDS = ["feedback", "bug", "crash"] as const;
@@ -84,12 +85,13 @@ export function FeedbackTrends({ appId }: { appId: string }) {
               </span>
             ))}
           </div>
-          <button
-            className="btn-secondary py-0.5! px-2! text-xs!"
+          <Button
+            variant="outline"
+            className="py-0.5! px-2! text-xs!"
             onClick={() => setShowTable((v) => !v)}
           >
             {showTable ? "Chart" : "Table"}
-          </button>
+          </Button>
         </div>
       </div>
 

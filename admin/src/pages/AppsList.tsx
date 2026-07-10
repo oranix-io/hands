@@ -8,6 +8,7 @@ import {
   type App,
 } from "../lib/api";
 import { AppCreationWizard } from "../components/AppCreationWizard";
+import { Button } from "raft-ui";
 
 export function AppsList({ onSelectApp, initialShowCreate }: { onSelectApp: (id: string) => void; initialShowCreate?: boolean }) {
   const qc = useQueryClient();
@@ -36,9 +37,9 @@ export function AppsList({ onSelectApp, initialShowCreate }: { onSelectApp: (id:
             />
             Show archived ({data?.apps.filter((a) => a.archived).length ?? 0})
           </label>
-          <button className="btn-primary" onClick={() => setShowCreate(true)}>
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
             + New app
-          </button>
+          </Button>
         </div>
       </div>
 

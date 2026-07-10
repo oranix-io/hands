@@ -7,6 +7,7 @@
  */
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Input } from "raft-ui";
 import {
   AppShare,
   createReleaseShare,
@@ -99,26 +100,27 @@ export function AppShares({ appId }: { appId: string }) {
             once at creation — tokens are stored hashed.
           </p>
         </div>
-        <button className="btn-primary text-sm" onClick={() => setShowCreate(true)}>
+        <Button variant="primary" className="text-sm" onClick={() => setShowCreate(true)}>
           New share
-        </button>
+        </Button>
       </div>
 
       {createdUrl && (
         <div className="card flex items-center gap-3 text-sm">
           <span className="font-mono break-all flex-1">{createdUrl}</span>
-          <button
-            className="btn-secondary text-xs"
+          <Button
+            variant="outline"
+            className="text-xs"
             onClick={() => {
               navigator.clipboard?.writeText(createdUrl);
               toast.show({ kind: "success", title: "Copied share URL" });
             }}
           >
             Copy
-          </button>
-          <button className="btn-secondary text-xs" onClick={() => setCreatedUrl(null)}>
+          </Button>
+          <Button variant="outline" className="text-xs" onClick={() => setCreatedUrl(null)}>
             Dismiss
-          </button>
+          </Button>
         </div>
       )}
 
@@ -331,36 +333,37 @@ function CreateShareModal({
         </label>
         <label className="block text-xs text-slate-600">
           Lifetime (days)
-          <input
+          <Input
             type="number"
             min={1}
             max={30}
             value={ttlDays}
             onChange={(e) => setTtlDays(Math.min(30, Math.max(1, Number(e.target.value) || 7)))}
-            className="input mt-1 py-1.5!"
+            className="mt-1 py-1.5!"
           />
         </label>
         <label className="block text-xs text-slate-600">
           Password (optional)
-          <input
+          <Input
             type="text"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Leave empty for a public link"
-            className="input mt-1 py-1.5!"
+            className="mt-1 py-1.5!"
           />
         </label>
         <div className="flex justify-end gap-2 pt-2">
-          <button className="btn-secondary text-sm" onClick={onClose} disabled={create.isPending}>
+          <Button variant="outline" className="text-sm" onClick={onClose} disabled={create.isPending}>
             Cancel
-          </button>
-          <button
-            className="btn-primary text-sm"
+          </Button>
+          <Button
+            variant="primary"
+            className="text-sm"
             onClick={() => create.mutate()}
             disabled={create.isPending || !releaseId}
           >
             {create.isPending ? "Creating…" : "Create"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

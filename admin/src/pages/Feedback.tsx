@@ -19,6 +19,7 @@ import {
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { FeedbackTrends } from "../components/FeedbackTrends";
+import { Button, Input } from "raft-ui";
 
 const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 
@@ -622,23 +623,24 @@ export function FeedbackTicketPage({
                 </>
               ) : (
                 <>
-                  <input
+                  <Input
                     className="rounded-sm border border-slate-300 px-2 py-1 text-sm"
                     value={assigneeDraft}
                     autoFocus
                     onChange={(e) => setAssigneeDraft(e.target.value)}
                     placeholder="Name of the person handling this"
                   />
-                  <button
-                    className="btn-primary text-xs"
+                  <Button
+                    variant="primary"
+                    className="text-xs"
                     disabled={update.isPending}
                     onClick={() => update.mutate({ assignee: assigneeDraft.trim() || null })}
                   >
                     Save
-                  </button>
-                  <button className="btn-secondary text-xs" onClick={() => setAssigneeDraft(null)}>
+                  </Button>
+                  <Button variant="outline" className="text-xs" onClick={() => setAssigneeDraft(null)}>
                     Cancel
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -766,7 +768,7 @@ export function FeedbackTicketPage({
               ))}
             </ul>
             <div className="mt-2 flex gap-2">
-              <input
+              <Input
                 className="flex-1 rounded-sm border border-slate-300 px-2 py-1.5 text-sm"
                 placeholder="Add a comment…"
                 value={comment}
@@ -775,13 +777,14 @@ export function FeedbackTicketPage({
                   if (e.key === "Enter" && comment.trim()) addComment.mutate();
                 }}
               />
-              <button
-                className="btn-primary text-sm"
+              <Button
+                variant="primary"
+                className="text-sm"
                 disabled={addComment.isPending || !comment.trim()}
                 onClick={() => addComment.mutate()}
               >
                 Send
-              </button>
+              </Button>
             </div>
           </div>
         </>

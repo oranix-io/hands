@@ -1,4 +1,4 @@
-import { Button } from "raft-ui";
+import { Button, Input, Switch } from "raft-ui";
 import { DeviceAnalytics } from "../components/DeviceAnalytics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -72,19 +72,21 @@ export function AppDetail({ appId }: { appId: string }) {
             </p>
           </div>
           {channels.data?.channels.length ? (
-            <a
-              href={`/apps/${appId}/releases`}
-              className="btn-primary text-sm no-underline"
+            <Button
+              variant="primary"
+              className="text-sm"
+              render={<a href={`/apps/${appId}/releases`} />}
             >
               Publish release →
-            </a>
+            </Button>
           ) : (
-            <a
-              href={`/apps/${appId}/channels`}
-              className="btn-primary text-sm no-underline"
+            <Button
+              variant="primary"
+              className="text-sm"
+              render={<a href={`/apps/${appId}/channels`} />}
             >
               Create channel first
-            </a>
+            </Button>
           )}
         </div>
       </section>
@@ -208,8 +210,8 @@ function AppNamePanel({ appId, app }: { appId: string; app: App }) {
           and CI reference it.
         </div>
       </div>
-      <input
-        className="input h-8! w-56 text-sm!"
+      <Input
+        className="h-8! w-56 text-sm!"
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
@@ -523,8 +525,8 @@ function TestFlightPanel({ appId }: { appId: string }) {
           <div className="flex gap-3">
             <label className="flex-1 text-xs text-slate-600">
               Key ID
-              <input
-                className="input h-8! w-full text-sm! font-mono mt-1"
+              <Input
+                className="h-8! w-full text-sm! font-mono mt-1"
                 placeholder="ABC123DEFG"
                 value={keyId}
                 onChange={(e) => setKeyId(e.target.value)}
@@ -532,8 +534,8 @@ function TestFlightPanel({ appId }: { appId: string }) {
             </label>
             <label className="flex-1 text-xs text-slate-600">
               Issuer ID
-              <input
-                className="input h-8! w-full text-sm! font-mono mt-1"
+              <Input
+                className="h-8! w-full text-sm! font-mono mt-1"
                 placeholder="12345678-90ab-cdef-1234-567890abcdef"
                 value={issuerId}
                 onChange={(e) => setIssuerId(e.target.value)}
@@ -641,13 +643,11 @@ function PublicHistoryToggle({ appId, app }: { appId: string; app: App }) {
           )}
         </div>
       </div>
-      <Button
-        variant="outline"
+      <Switch
+        checked={enabled}
         disabled={toggle.isPending}
-        onClick={() => toggle.mutate()}
-      >
-        {toggle.isPending ? "…" : enabled ? "Disable" : "Enable"}
-      </Button>
+        onCheckedChange={() => toggle.mutate()}
+      />
     </div>
   );
 }
@@ -682,13 +682,11 @@ function DeltaUpdatesToggle({ appId, app }: { appId: string; app: App }) {
             : "Auto-generate differential update patches when a release is published, shrinking update downloads for users on recent versions."}
         </div>
       </div>
-      <Button
-        variant="outline"
+      <Switch
+        checked={enabled}
         disabled={toggle.isPending}
-        onClick={() => toggle.mutate()}
-      >
-        {toggle.isPending ? "…" : enabled ? "Disable" : "Enable"}
-      </Button>
+        onCheckedChange={() => toggle.mutate()}
+      />
     </div>
   );
 }
@@ -1112,8 +1110,7 @@ function CreateChannelDialog({
         >
           <div>
             <label className="label">Slug</label>
-            <input
-              className="input"
+            <Input
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               required
@@ -1121,8 +1118,7 @@ function CreateChannelDialog({
           </div>
           <div>
             <label className="label">Name</label>
-            <input
-              className="input"
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -1130,8 +1126,8 @@ function CreateChannelDialog({
           </div>
           <div>
             <label className="label">Bundle ID override (optional)</label>
-            <input
-              className="input font-mono text-xs"
+            <Input
+              className="font-mono text-xs"
               value={bundleId}
               onChange={(e) => setBundleId(e.target.value)}
               placeholder="com.example.myapp.beta"
@@ -1304,16 +1300,15 @@ function EditChannelDialog({
         >
           <div>
             <label className="label">Slug (immutable)</label>
-            <input
-              className="input font-mono text-xs bg-slate-50"
+            <Input
+              className="font-mono text-xs bg-slate-50"
               value={channel.slug}
               readOnly
             />
           </div>
           <div>
             <label className="label">Name</label>
-            <input
-              className="input"
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -1321,8 +1316,8 @@ function EditChannelDialog({
           </div>
           <div>
             <label className="label">Bundle ID override</label>
-            <input
-              className="input font-mono text-xs"
+            <Input
+              className="font-mono text-xs"
               value={bundleId}
               onChange={(e) => setBundleId(e.target.value)}
               placeholder="com.example.myapp.beta"
@@ -1330,9 +1325,8 @@ function EditChannelDialog({
           </div>
           <div>
             <label className="label">Download password</label>
-            <input
+            <Input
               type="password"
-              className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="leave blank for no gate"
@@ -1340,8 +1334,8 @@ function EditChannelDialog({
           </div>
           <div>
             <label className="label">Git URL</label>
-            <input
-              className="input font-mono text-xs"
+            <Input
+              className="font-mono text-xs"
               value={gitUrl}
               onChange={(e) => setGitUrl(e.target.value)}
               placeholder="https://github.com/foo/bar/tree/beta"

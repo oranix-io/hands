@@ -26,6 +26,7 @@
  */
 
 import type { ReactNode } from "react";
+import { Button, Input } from "raft-ui";
 
 export interface ConfirmActionDialogProps {
   open: boolean;
@@ -105,7 +106,7 @@ function ConfirmActionDialogInner({
   onConfirm,
   onCancel,
 }: Omit<ConfirmActionDialogProps, "open">) {
-  const confirmBtnClass = confirmKind === "danger" ? "btn-danger" : "btn-primary";
+  const confirmVariant = confirmKind === "danger" ? "danger" : "primary";
   return (
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-20"
@@ -141,22 +142,22 @@ function ConfirmActionDialogInner({
         )}
 
         <div className="flex gap-2 justify-end pt-2">
-          <button
+          <Button
             type="button"
-            className="btn-secondary"
+            variant="outline"
             onClick={onCancel}
             disabled={pending}
           >
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={confirmBtnClass}
+            variant={confirmVariant}
             onClick={onConfirm}
             disabled={pending || confirmDisabled}
           >
             {pending ? `${confirmLabel}…` : confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -190,8 +191,7 @@ export function TypedConfirmField({
         </code>{" "}
         to confirm
       </label>
-      <input
-        className="input"
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? required}

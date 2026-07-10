@@ -25,6 +25,7 @@ import {
   type ReleaseScope,
   type ProductType,
 } from "../lib/api";
+import { Button, Input } from "raft-ui";
 import { useToast } from "../components/Toast";
 import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
 import { ReleaseAssetsPanel } from "../components/ReleaseAssetsPanel";
@@ -44,7 +45,7 @@ function RolloutPercentInput({
 }) {
   return (
     <span className="flex items-center gap-1">
-      <input
+      <Input
         type="number"
         min={0}
         max={100}
@@ -148,12 +149,13 @@ export function Releases({ appId }: { appId: string }) {
     <div>
       <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-lg font-semibold">Releases</h2>
-        <button
-          className="btn-primary text-sm"
+        <Button
+          variant="primary"
+          className="text-sm"
           onClick={() => setShowNewRelease(true)}
         >
           + New release
-        </button>
+        </Button>
       </div>
 
       {/* Stats summary */}
@@ -409,70 +411,77 @@ function ReleaseRow({
       )}
       <div className="flex flex-wrap gap-2 mt-2">
         {r.status === "draft" && (
-          <button
-            className="btn-primary text-xs"
+          <Button
+            variant="primary"
+            className="text-xs"
             onClick={() => publish.mutate()}
             disabled={publish.isPending}
           >
             {publish.isPending ? "Publishing..." : "Publish"}
-          </button>
+          </Button>
         )}
         {(r.status === "draft" || r.status === "active") && (
-          <button
-            className="btn-secondary text-xs"
+          <Button
+            variant="outline"
+            className="text-xs"
             onClick={() => setShowEdit(true)}
           >
             Edit
-          </button>
+          </Button>
         )}
         {(r.status === "active" || r.status === "superseded" || r.status === "cancelled") && (
           <>
             {r.status === "active" && (
               <>
-                <button
-                  className="btn-secondary text-xs"
+                <Button
+                  variant="outline"
+                  className="text-xs"
                   onClick={() => setShowRollout(!showRollout)}
                 >
                   Bump rollout
-                </button>
-                <button
-                  className="btn-secondary text-xs"
+                </Button>
+                <Button
+                  variant="outline"
+                  className="text-xs"
                   onClick={() => toggleForce.mutate()}
                   disabled={toggleForce.isPending}
                 >
                   {r.should_force_update ? "Unforce" : "Force"}
-                </button>
+                </Button>
               </>
             )}
-            <button
-              className="btn-secondary text-xs"
+            <Button
+              variant="outline"
+              className="text-xs"
               onClick={() => rollback.mutate()}
               disabled={rollback.isPending}
             >
               {r.status === "active" ? "Roll back" : "Restore as active"}
-            </button>
+            </Button>
           </>
         )}
         {(r.status === "draft" || r.status === "active") && (
-          <button
-            className="btn-danger text-xs"
+          <Button
+            variant="danger"
+            className="text-xs"
             onClick={() => setConfirmCancel(true)}
           >
             {r.status === "draft" ? "Delete draft" : "Cancel release"}
-          </button>
+          </Button>
         )}
       </div>
       {showRollout && (
         <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2 text-xs">
           <label>Rollout %:</label>
           <RolloutPercentInput value={newPercent} onChange={setNewPercent} />
-          <button
-            className="btn-primary text-xs"
+          <Button
+            variant="primary"
+            className="text-xs"
             onClick={() => bump.mutate(newPercent)}
             disabled={bump.isPending}
           >
             {bump.isPending ? "…" : "Set"}
-          </button>
+          </Button>
         </div>
       )}
       {detail.isLoading && (
@@ -671,8 +680,7 @@ function EditReleaseDialog({
             </div>
             <div>
               <label className="label">Scope value</label>
-              <input
-                className="input"
+              <Input
                 value={scopeValue}
                 disabled={scopeType === "full"}
                 onChange={(e) => setScopeValue(e.target.value)}
@@ -694,16 +702,16 @@ function EditReleaseDialog({
           </div>
         </div>
         <div className="flex gap-2 justify-end pt-4 mt-3 border-t border-slate-100">
-          <button className="btn-secondary" onClick={onClose} disabled={save.isPending}>
+          <Button variant="outline" onClick={onClose} disabled={save.isPending}>
             Cancel
-          </button>
-          <button
-            className="btn-primary"
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => save.mutate()}
             disabled={save.isPending || loading || !scopeValid}
           >
             {save.isPending ? "Saving..." : "Save changes"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1001,8 +1009,7 @@ function NewReleaseDialog({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Version name (e.g. 1.2.3)</label>
-                  <input
-                    className="input"
+                  <Input
                     value={versionName}
                     onChange={(e) => setVersionName(e.target.value)}
                     placeholder="1.2.3"
@@ -1011,8 +1018,7 @@ function NewReleaseDialog({
                 </div>
                 <div>
                   <label className="label">Version code (integer)</label>
-                  <input
-                    className="input"
+                  <Input
                     type="number"
                     value={versionCode}
                     onChange={(e) => setVersionCode(e.target.value)}
@@ -1129,24 +1135,24 @@ function NewReleaseDialog({
 
         {/* Wizard nav buttons */}
         <div className="flex gap-2 justify-between items-center pt-4 mt-3 border-t border-slate-100">
-          <button type="button" className="btn-secondary" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
           <div className="flex gap-2">
             {step > 1 && (
-              <button
+              <Button
                 type="button"
-                className="btn-secondary"
+                variant="outline"
                 onClick={() => setStep((step - 1) as Step)}
                 disabled={submitRelease.isPending}
               >
                 Back
-              </button>
+              </Button>
             )}
             {step < 4 && (
-              <button
+              <Button
                 type="button"
-                className="btn-primary"
+                variant="primary"
                 disabled={
                   (step === 1 && !step1Valid) ||
                   (step === 2 && !step2Valid)
@@ -1154,26 +1160,26 @@ function NewReleaseDialog({
                 onClick={() => setStep((step + 1) as Step)}
               >
                 Next
-              </button>
+              </Button>
             )}
             {step === 4 && (
               <>
-                <button
+                <Button
                   type="button"
-                  className="btn-secondary"
+                  variant="outline"
                   disabled={submitRelease.isPending || !step1Valid || !step2Valid}
                   onClick={() => submitRelease.mutate("draft")}
                 >
                   {submitRelease.isPending ? "Saving..." : "Save draft"}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn-primary"
+                  variant="primary"
                   disabled={submitRelease.isPending || !step1Valid || !step2Valid}
                   onClick={() => submitRelease.mutate("publish")}
                 >
                   {submitRelease.isPending ? "Publishing..." : "Publish now"}
-                </button>
+                </Button>
               </>
             )}
           </div>

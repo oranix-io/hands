@@ -8,6 +8,7 @@ import {
   type Operation,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { Button } from "raft-ui";
 
 const STATUS_COLORS: Record<Operation["status"], string> = {
   pending: "badge-gray",
@@ -165,13 +166,14 @@ function OperationRow({
         )}
         <div className="flex-1" />
         {op.status === "failed" && (
-          <button
+          <Button
             onClick={onRetry}
             disabled={busy}
-            className="btn-secondary text-xs"
+            variant="outline"
+            className="text-xs"
           >
             Retry
-          </button>
+          </Button>
         )}
         <button
           onClick={() => setExpanded(!expanded)}

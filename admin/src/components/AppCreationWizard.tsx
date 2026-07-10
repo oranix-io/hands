@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Button, Input } from "raft-ui";
 import { createApp } from "../lib/api";
 import { useToast } from "./Toast";
 
@@ -186,8 +187,7 @@ export function AppCreationWizard({
             <div className="space-y-3">
               <div>
                 <label className="label">Name *</label>
-                <input
-                  className="input"
+                <Input
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value);
@@ -199,8 +199,8 @@ export function AppCreationWizard({
               </div>
               <div>
                 <label className="label">Slug (kebab-case, auto-generated from name)</label>
-                <input
-                  className="input font-mono text-xs"
+                <Input
+                  className="font-mono text-xs"
                   value={slug}
                   onChange={(e) => {
                     setSlug(e.target.value);
@@ -287,26 +287,26 @@ export function AppCreationWizard({
         )}
 
         <div className="flex gap-2 justify-between pt-4 mt-4 border-t border-slate-100">
-          <button
+          <Button
             type="button"
-            className="btn-secondary"
+            variant="outline"
             onClick={() => (step === 1 ? onClose() : setStep((step - 1) as 1 | 2 | 3))}
           >
             {step === 1 ? "Cancel" : "← Back"}
-          </button>
+          </Button>
           {step < 3 ? (
-            <button
+            <Button
               type="button"
-              className="btn-primary"
+              variant="primary"
               onClick={() => setStep((step + 1) as 1 | 2 | 3)}
               disabled={!canAdvance}
             >
               Next →
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
-              className="btn-primary"
+              variant="primary"
               onClick={() => create.mutate()}
               disabled={
                 create.isPending ||
@@ -314,7 +314,7 @@ export function AppCreationWizard({
               }
             >
               {create.isPending ? "Creating…" : "Create app + seed defaults"}
-            </button>
+            </Button>
           )}
         </div>
       </div>

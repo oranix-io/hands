@@ -32,7 +32,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button, Badge } from "raft-ui";
+import { Button, Badge, Input } from "raft-ui";
 import { AppsList } from "./pages/AppsList";
 import { AppChannels, AppDetail, AppSettings } from "./pages/AppDetail";
 import { AuditLog } from "./pages/AuditLog";
@@ -756,7 +756,7 @@ function CliCallback({ token }: { token: string }) {
           </div>
         </div>
         <div className="flex items-stretch gap-2">
-          <input
+          <Input
             readOnly
             value={token}
             aria-label="Hands JWT"
@@ -1101,12 +1101,17 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
       <footer className="bg-white border-t border-slate-200 py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 text-xs text-slate-500 flex items-center justify-between">
           <span>Hands - Login with Raft</span>
-          <a
-            href="https://github.com/oranix-io/hands"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-secondary py-1! px-2! text-xs! inline-flex items-center gap-1.5"
+          <Button
+            variant="outline"
+            className="py-1! px-2! text-xs! inline-flex items-center gap-1.5"
             title="View Hands source on GitHub"
+            render={
+              <a
+                href="https://github.com/oranix-io/hands"
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            }
           >
             <svg
               viewBox="0 0 24 24"
@@ -1121,7 +1126,7 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
               />
             </svg>
             GitHub
-          </a>
+          </Button>
         </div>
       </footer>
       </div>

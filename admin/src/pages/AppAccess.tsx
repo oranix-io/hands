@@ -33,6 +33,7 @@ import {
   type App,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { Button, Input } from "raft-ui";
 
 export function AppAccess({ appId }: { appId: string }) {
   const [showAddServer, setShowAddServer] = useState(false);
@@ -190,9 +191,9 @@ function AppServerGrantList({
             {visibleRowCount} server{visibleRowCount === 1 ? "" : "s"}
           </span>
           {canManage && (
-            <button className="btn-secondary py-1! px-2! text-xs! whitespace-nowrap" onClick={onAdd}>
+            <Button variant="outline" className="py-1! px-2! text-xs! whitespace-nowrap" onClick={onAdd}>
               + Add
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -358,8 +359,7 @@ function AddAppServerGrantDialog({
         >
           <div>
             <label className="label">Server slug</label>
-            <input
-              className="input"
+            <Input
               value={serverSlug}
               onChange={(e) => setServerSlug(e.target.value)}
               placeholder="server slug"
@@ -368,24 +368,23 @@ function AddAppServerGrantDialog({
           </div>
           <div>
             <label className="label">Server ID</label>
-            <input
-              className="input"
+            <Input
               value={serverId}
               onChange={(e) => setServerId(e.target.value)}
               placeholder="optional"
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+            <Button variant="outline" type="button" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="btn-primary"
+              variant="primary"
               disabled={(!serverId.trim() && !serverSlug.trim()) || add.isPending}
             >
               {add.isPending ? "Adding…" : "Add"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -474,9 +473,9 @@ function AppMemberList({
             )}
           </span>
           {canManage && (
-            <button className="btn-secondary py-1! px-2! text-xs! whitespace-nowrap" onClick={onAdd}>
+            <Button variant="outline" className="py-1! px-2! text-xs! whitespace-nowrap" onClick={onAdd}>
               + Add
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -630,9 +629,9 @@ function AppDeployTokenList({
           <span className="text-xs text-slate-500 whitespace-nowrap">
             {rows.length} token{rows.length === 1 ? "" : "s"}
           </span>
-          <button className="btn-secondary py-1! px-2! text-xs! whitespace-nowrap" onClick={onAdd}>
+          <Button variant="outline" className="py-1! px-2! text-xs! whitespace-nowrap" onClick={onAdd}>
             + Add
-          </button>
+          </Button>
         </div>
       </div>
       {tokens.data && rows.length === 0 && (
@@ -789,19 +788,19 @@ function AddAppDeployTokenDialog({
               onFocus={(e) => e.currentTarget.select()}
             />
             <div className="flex justify-end gap-2 pt-2">
-              <button
+              <Button
                 type="button"
-                className="btn-secondary"
+                variant="outline"
                 onClick={() => {
                   navigator.clipboard?.writeText(createdToken).catch(() => {});
                   toast.show({ kind: "success", title: "Token copied" });
                 }}
               >
                 Copy
-              </button>
-              <button type="button" className="btn-primary" onClick={closeAfterCreate}>
+              </Button>
+              <Button type="button" variant="primary" onClick={closeAfterCreate}>
                 Done
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
@@ -814,8 +813,7 @@ function AddAppDeployTokenDialog({
           >
             <div>
               <label className="label">Name</label>
-              <input
-                className="input"
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="github-actions-main"
@@ -857,16 +855,16 @@ function AddAppDeployTokenDialog({
               share pages for this app only.
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="btn-secondary" onClick={onClose}>
+              <Button variant="outline" type="button" onClick={onClose}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
-                className="btn-primary"
+                variant="primary"
                 disabled={!name.trim() || create.isPending}
               >
                 {create.isPending ? "Creating…" : "Create"}
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -960,9 +958,9 @@ function AddAppMemberDialog({
             No eligible org members need a direct app grant.
           </p>
           <div className="flex justify-end pt-4">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+            <Button variant="outline" type="button" onClick={onClose}>
               Close
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1029,16 +1027,16 @@ function AddAppMemberDialog({
             Owners and org admins already inherit app administration.
           </p>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+            <Button variant="outline" type="button" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="btn-primary"
+              variant="primary"
               disabled={!selectedAccount || add.isPending}
             >
               {add.isPending ? "Adding…" : "Add"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -1092,12 +1090,13 @@ function InviteToAppForm({ appId }: { appId: string }) {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-base font-semibold">Create app invite link</h3>
         {!showForm && (
-          <button
-            className="btn-secondary text-xs"
+          <Button
+            variant="outline"
+            className="text-xs"
             onClick={() => setShowForm(true)}
           >
             + Link
-          </button>
+          </Button>
         )}
       </div>
       {showForm ? (
@@ -1109,9 +1108,9 @@ function InviteToAppForm({ appId }: { appId: string }) {
           className="space-y-2"
         >
           <div className="grid grid-cols-2 gap-2">
-            <input
+            <Input
               type="email"
-              className="input text-sm"
+              className="text-sm"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="email@example.com"
@@ -1141,20 +1140,22 @@ function InviteToAppForm({ appId }: { appId: string }) {
             with the role you pick. The URL is copied to clipboard after creation.
           </p>
           <div className="flex gap-2">
-            <button
+            <Button
               type="submit"
-              className="btn-primary text-xs"
+              variant="primary"
+              className="text-xs"
               disabled={invite.isPending || !email.trim()}
             >
               {invite.isPending ? "Creating…" : "Create invite link"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn-secondary text-xs"
+              variant="outline"
+              className="text-xs"
               onClick={() => setShowForm(false)}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
