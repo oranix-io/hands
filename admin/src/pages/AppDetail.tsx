@@ -136,12 +136,12 @@ export function AppChannels({ appId }: { appId: string }) {
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Channels</h2>
-          <button
-            className="btn-secondary text-sm"
+          <Button
+            variant="outline"
             onClick={() => setShowCreateChannel(true)}
           >
             + New channel
-          </button>
+          </Button>
         </div>
         {channels.isLoading && <p className="text-slate-500">Loading…</p>}
         <div className="space-y-2">
@@ -306,25 +306,25 @@ function ClientKeyPanel({ appId }: { appId: string }) {
       </div>
       {key && (
         <>
-          <button
-            className="btn-secondary py-1! px-2! text-xs!"
+          <Button
+            variant="outline"
             onClick={() => setRevealed((v) => !v)}
           >
             {revealed ? "Hide" : "Reveal"}
-          </button>
-          <button
-            className="btn-secondary py-1! px-2! text-xs!"
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => {
               navigator.clipboard?.writeText(key);
               toast.show({ kind: "success", title: "Client key copied" });
             }}
           >
             Copy
-          </button>
+          </Button>
         </>
       )}
-      <button
-        className="btn-secondary py-1! px-2! text-xs!"
+      <Button
+        variant="outline"
         disabled={rotate.isPending}
         onClick={() => {
           if (window.confirm("Rotate the client key? Older client builds stop reporting until they carry the new key.")) {
@@ -333,7 +333,7 @@ function ClientKeyPanel({ appId }: { appId: string }) {
         }}
       >
         {rotate.isPending ? "…" : key ? "Rotate" : "Generate"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -447,22 +447,22 @@ function TestFlightPanel({ appId }: { appId: string }) {
         </div>
         {meta && !editing && (
           <>
-            <button
-              className="btn-secondary py-1! px-2! text-xs!"
+            <Button
+              variant="outline"
               disabled={test.isPending}
               onClick={() => test.mutate()}
               title="Verify the stored key against App Store Connect for this app's bundle id"
             >
               {test.isPending ? "Testing…" : "Test connection"}
-            </button>
-            <button
-              className="btn-secondary py-1! px-2! text-xs!"
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setEditing(true)}
             >
               Replace key
-            </button>
-            <button
-              className="btn-secondary border-red-300! text-red-700! py-1! px-2! text-xs!"
+            </Button>
+            <Button
+              variant="danger"
               disabled={remove.isPending}
               onClick={() => {
                 if (
@@ -475,7 +475,7 @@ function TestFlightPanel({ appId }: { appId: string }) {
               }}
             >
               {remove.isPending ? "…" : "Remove"}
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -561,8 +561,8 @@ function TestFlightPanel({ appId }: { appId: string }) {
             </label>
             <div className="flex-1" />
             {editing && (
-              <button
-                className="btn-secondary py-1! px-2! text-xs!"
+              <Button
+                variant="outline"
                 onClick={() => {
                   setEditing(false);
                   setKeyId("");
@@ -571,15 +571,15 @@ function TestFlightPanel({ appId }: { appId: string }) {
                 }}
               >
                 Cancel
-              </button>
+              </Button>
             )}
-            <button
-              className="btn-secondary py-1! px-2! text-xs!"
+            <Button
+              variant="outline"
               disabled={!formValid || save.isPending}
               onClick={() => save.mutate()}
             >
               {save.isPending ? "…" : meta ? "Replace credentials" : "Save & enable"}
-            </button>
+            </Button>
           </div>
           {p8.trim().length > 0 && !p8.includes("BEGIN PRIVATE KEY") && (
             <p className="text-xs text-amber-700">
@@ -641,13 +641,13 @@ function PublicHistoryToggle({ appId, app }: { appId: string; app: App }) {
           )}
         </div>
       </div>
-      <button
-        className="btn-secondary py-1! px-2! text-xs!"
+      <Button
+        variant="outline"
         disabled={toggle.isPending}
         onClick={() => toggle.mutate()}
       >
         {toggle.isPending ? "…" : enabled ? "Disable" : "Enable"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -682,13 +682,13 @@ function DeltaUpdatesToggle({ appId, app }: { appId: string; app: App }) {
             : "Auto-generate differential update patches when a release is published, shrinking update downloads for users on recent versions."}
         </div>
       </div>
-      <button
-        className="btn-secondary py-1! px-2! text-xs!"
+      <Button
+        variant="outline"
         disabled={toggle.isPending}
         onClick={() => toggle.mutate()}
       >
         {toggle.isPending ? "…" : enabled ? "Disable" : "Enable"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -857,21 +857,21 @@ export function AppSettings({ appId }: { appId: string }) {
             </div>
             {isOrgAdmin && (
               <div className="flex flex-col items-end gap-2">
-                <button
-                  className="btn-secondary text-xs"
+                <Button
+                  variant="outline"
                   onClick={() => setConfirmArchive(true)}
                   disabled={archive.isPending}
                 >
                   {app.archived ? "Restore app" : "Archive app"}
-                </button>
+                </Button>
                 {Boolean(app.archived) && (
-                  <button
-                    className="btn-secondary border-red-300! text-red-700! text-xs"
+                  <Button
+                    variant="danger"
                     disabled={purge.isPending}
                     onClick={() => setConfirmPurge(true)}
                   >
                     Purge permanently
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -1030,13 +1030,13 @@ function DefaultChannelPicker({
           ))}
         </select>
         {isOrgAdmin && (
-          <button
+          <Button
             className="btn-primary text-xs"
             onClick={() => save.mutate()}
             disabled={!dirty || save.isPending}
           >
             {save.isPending ? "Saving…" : "Save"}
-          </button>
+          </Button>
         )}
       </div>
       {!isOrgAdmin && (
@@ -1092,7 +1092,7 @@ function CreateChannelDialog({
       }}
     >
       <div className="card max-w-md w-full relative">
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label="Close"
@@ -1101,7 +1101,7 @@ function CreateChannelDialog({
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
-        </button>
+        </Button>
         <h2 className="text-lg font-bold mb-4 pr-8">New channel</h2>
         <form
           onSubmit={(e) => {
@@ -1138,16 +1138,16 @@ function CreateChannelDialog({
             />
           </div>
           <div className="flex gap-2 justify-end pt-2">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               className="btn-primary"
               disabled={create.isPending}
             >
               {create.isPending ? "Creating..." : "Create"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -1199,13 +1199,13 @@ function ChannelRow({
           )}
         </div>
       </div>
-      <button
-        className="btn-secondary text-sm"
+      <Button
+        variant="outline"
         onClick={onEdit}
         disabled={busy}
       >
         Edit
-      </button>
+      </Button>
     </div>
   );
 }
@@ -1284,7 +1284,7 @@ function EditChannelDialog({
       }}
     >
       <div className="card max-w-md w-full relative">
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label="Close"
@@ -1293,7 +1293,7 @@ function EditChannelDialog({
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
-        </button>
+        </Button>
         <h2 className="text-lg font-bold mb-4 pr-8">Edit channel '{channel.slug}'</h2>
         <form
           onSubmit={(e) => {
@@ -1348,29 +1348,29 @@ function EditChannelDialog({
             />
           </div>
           <div className="flex gap-2 justify-between pt-2 border-t border-slate-100">
-            <button
+            <Button
               type="button"
               className="text-red-600 text-sm hover:underline"
               onClick={() => setConfirmDelete(true)}
               disabled={save.isPending || remove.isPending}
             >
               Delete channel
-            </button>
+            </Button>
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
                 className="btn-secondary"
                 onClick={onClose}
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 className="btn-primary"
                 disabled={save.isPending}
               >
                 {save.isPending ? "Saving…" : "Save"}
-              </button>
+              </Button>
             </div>
           </div>
         </form>
