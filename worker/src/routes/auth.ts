@@ -601,7 +601,7 @@ export async function handleAgentHelp(c: Context<{ Bindings: Env }>) {
     service: "hands",
     start_here: [
       "1. Authenticate (see `auth` below), then GET /api/apps to find your app_id.",
-      "2. Crash triage: list-feedback (kind=crash) → get-feedback (device context + attachments) → download-feedback-attachment (raw bytes).",
+      "2. Crash triage: list-feedback (kind=crash) → get-feedback (device context + attachments) → presign-feedback-attachment, then curl the returned download_url yourself (raw-bytes endpoints get corrupted through agent transports).",
       "3. Update tickets as you work: PATCH status/assignee, POST comments (see `write_endpoints`).",
     ],
     auth: {
@@ -684,9 +684,23 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         },
       },
       {
+        name: "presign-feedback-attachment",
+        description:
+          "Get a short-lived signed download URL for a feedback attachment. USE THIS for binaries (zips, images): fetch the returned download_url yourself with curl/wget — invoking a raw-bytes endpoint through an agent transport corrupts binary data.",
+        endpoint: {
+          method: "GET",
+          path: "/api/apps/{app_id}/feedback/{ticket_id}/attachments/{attachment_id}?presign=1",
+        },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          ticket_id: { type: "string", in: "path", required: true, description: "Ticket UUID or unique short-id prefix." },
+          attachment_id: { type: "string", in: "path", required: true, description: "Attachment UUID from the ticket detail." },
+        },
+      },
+      {
         name: "download-feedback-attachment",
         description:
-          "Download a raw feedback attachment (bytes as-is; Hands does not unzip or interpret it).",
+          "Download raw attachment bytes directly. NOT for agent transports (bytes get UTF-8-mangled) — use presign-feedback-attachment instead and fetch the URL yourself.",
         endpoint: {
           method: "GET",
           path: "/api/apps/{app_id}/feedback/{ticket_id}/attachments/{attachment_id}",
