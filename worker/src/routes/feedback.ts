@@ -11,6 +11,8 @@ import type { Context } from "hono";
 import { currentActor, type AdminEnv } from "../middleware/auth";
 import { emitWebhookEvent } from "./webhooks";
 import { presignR2UploadUrl } from "../lib/r2_presign";
+import { generateSignedR2Url } from "./public_v2";
+import { requestOrigin } from "../lib/origin";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
@@ -1363,14 +1365,37 @@ export async function handleDownloadFeedbackAttachment(c: AdminContext) {
   const ticketId = resolved.id;
   const attachmentId = c.req.param("attachmentId");
   const row = await c.env.DB.prepare(
-    `SELECT fa.r2_key, fa.filename, fa.content_type
+    `SELECT fa.r2_key, fa.filename, fa.content_type, fa.size_bytes
      FROM feedback_attachments fa
      JOIN feedback_tickets t ON t.id = fa.ticket_id
      WHERE t.app_id = ?1 AND t.id = ?2 AND fa.id = ?3`,
   )
     .bind(appId, ticketId, attachmentId)
-    .first<{ r2_key: string; filename: string; content_type: string | null }>();
+    .first<{ r2_key: string; filename: string; content_type: string | null; size_bytes: number | null }>();
   if (!row) return c.json({ error: "attachment not found" }, 404);
+  // ?presign=1 — return a short-lived signed URL instead of streaming bytes.
+  // Agent transports (e.g. `raft integration invoke`) UTF-8-decode response
+  // bodies and corrupt binaries; a URL survives any JSON channel and the
+  // agent downloads the raw bytes itself.
+  if (c.req.query("presign") === "1") {
+    const ttl = Math.max(
+      60,
+      Math.min(Number(c.env.R2_PRESIGNED_DOWNLOAD_TTL_SECONDS ?? "3600"), 24 * 3600),
+    );
+    const downloadUrl = await generateSignedR2Url(
+      c.env,
+      row.r2_key,
+      ttl,
+      requestOrigin(c),
+    );
+    return c.json({
+      download_url: downloadUrl,
+      expires_in: ttl,
+      filename: row.filename,
+      content_type: row.content_type ?? "application/octet-stream",
+      size_bytes: row.size_bytes,
+    });
+  }
   const object = await c.env.APK_BUCKET.get(row.r2_key);
   if (!object) return c.json({ error: "attachment blob missing" }, 404);
   const contentType = row.content_type ?? "application/octet-stream";
