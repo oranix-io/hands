@@ -165,7 +165,6 @@ import {
 } from "./lib/permissions";
 import { openApiDocument } from "./openapi";
 import {
-  canonicalDomainRedirectUrl,
   httpsRedirectUrl,
   requestOrigin,
 } from "./lib/origin";
@@ -325,10 +324,6 @@ app.use("*", async (c, next) => {
   const redirectUrl = httpsRedirectUrl(c);
   if (redirectUrl) {
     return c.redirect(redirectUrl, 308);
-  }
-  const domainRedirectUrl = canonicalDomainRedirectUrl(c);
-  if (domainRedirectUrl) {
-    return c.redirect(domainRedirectUrl, 308);
   }
   return next();
 });
