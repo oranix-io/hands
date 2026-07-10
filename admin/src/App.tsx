@@ -32,6 +32,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Button, Badge } from "raft-ui";
 import { AppsList } from "./pages/AppsList";
 import { AppChannels, AppDetail, AppSettings } from "./pages/AppDetail";
 import { AuditLog } from "./pages/AuditLog";
@@ -811,13 +812,10 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
             >
               API explorer
             </a>
-            <a
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-950 px-4 font-medium text-white hover:bg-slate-800"
-              href={dashboardHref(account)}
-            >
+            <Button variant="primary" render={<a href={dashboardHref(account)} />}>
               <RaftIcon className="h-5 w-5" />
               {account ? "Open dashboard" : "Login"}
-            </a>
+            </Button>
           </nav>
         </div>
       </header>
@@ -826,9 +824,9 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
         <section className="border-b border-slate-200 bg-white">
           <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-[1.1fr_0.9fr] md:items-center md:py-20">
             <div className="max-w-2xl">
-              <div className="mb-4 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+              <Badge className="mb-4">
                 The agent-native platform for Raft-built client apps.
-              </div>
+              </Badge>
               <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
                 Ship it, roll it out, hear it break, fix it.
               </h1>
@@ -844,36 +842,32 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
                   Client platforms:
                 </span>
                 {["Android", "iOS", "HarmonyOS", "Electron"].map((p) => (
-                  <span
-                    key={p}
-                    className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700"
-                  >
+                  <Badge key={p} variant="muted">
                     {p}
-                  </span>
+                  </Badge>
                 ))}
               </div>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <a
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-slate-950 px-5 text-sm font-medium text-white hover:bg-slate-800"
-                  href={dashboardHref(account)}
-                >
+                <Button variant="primary" size="lg" render={<a href={dashboardHref(account)} />}>
                   <RaftIcon className="h-5 w-5" />
                   {account ? "Open dashboard" : "Login with Raft"}
-                </a>
-                <a
-                  className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-5 text-sm font-medium text-slate-800 hover:bg-slate-100"
-                  href="/docs"
-                >
+                </Button>
+                <Button variant="outline" size="lg" render={<a href="/docs" />}>
                   Read docs
-                </a>
-                <a
-                  className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-5 text-sm font-medium text-slate-800 hover:bg-slate-100"
-                  href="https://github.com/oranix-io/hands"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  render={
+                    <a
+                      href="https://github.com/oranix-io/hands"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  }
                 >
                   GitHub
-                </a>
+                </Button>
               </div>
             </div>
 
