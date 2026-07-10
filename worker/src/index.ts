@@ -164,7 +164,11 @@ import {
   requireOrgRole,
 } from "./lib/permissions";
 import { openApiDocument } from "./openapi";
-import { httpsRedirectUrl, requestOrigin } from "./lib/origin";
+import {
+  canonicalDomainRedirectUrl,
+  httpsRedirectUrl,
+  requestOrigin,
+} from "./lib/origin";
 
 // ---------- Container binding (APK parser) ----------
 //
@@ -321,6 +325,10 @@ app.use("*", async (c, next) => {
   const redirectUrl = httpsRedirectUrl(c);
   if (redirectUrl) {
     return c.redirect(redirectUrl, 308);
+  }
+  const domainRedirectUrl = canonicalDomainRedirectUrl(c);
+  if (domainRedirectUrl) {
+    return c.redirect(domainRedirectUrl, 308);
   }
   return next();
 });

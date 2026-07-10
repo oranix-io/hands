@@ -83,14 +83,16 @@ Admin access uses Login with Raft as the only production login path.
 Register the app in Raft with callback URL:
 
 ```text
-https://quiver.oranix.io/login/raft/callback
+https://app.hands.build/login/raft/callback
 ```
 
 Worker configuration:
 
 - `RAFT_CLIENT_ID` in `worker/wrangler.jsonc`
 - `RAFT_CLIENT_SECRET` as a Worker secret (`wrangler secret put RAFT_CLIENT_SECRET`)
-- Public URLs and Raft callback URLs are generated from the incoming request origin. Register each public origin that should support login, for example `https://quiver.oranix.io/login/raft/callback`.
+- `app.hands.build` is the canonical dashboard/login origin. `hands.build` remains the business/API origin for SDKs, CLI/agents, share/download pages, release notes, and docs.
+- Dashboard deep links received on `hands.build` redirect to the same path on `app.hands.build`. Public share/docs/history links received on `app.hands.build` redirect back to `hands.build`.
+- Keep the legacy `https://hands.build/login/raft/callback` registration during the cutover if existing browser logins may still be in flight; new logins use `https://app.hands.build/login/raft/callback`.
 - Optional `RAFT_ALLOWED_SERVER_IDS` / `RAFT_ALLOWED_SERVER_SLUGS` can restrict admin login to specific Raft servers
 
 Do not put Raft client secrets in browser JavaScript, repository files, logs, or public channels.
@@ -124,14 +126,14 @@ Required repository secrets:
 - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account id for the Worker deploy.
 - `CLOUDFLARE_BOTIVERSE_API_TOKEN` — Cloudflare API token for the Hands/Botiverse account (`a084c4564dfdce5a7775b08ece638a79`). This is intentionally separate from the Quiver production token.
 - `HANDS_SIGNED_URL_SECRET` — HMAC signing secret written to the Hands Worker as `SIGNED_URL_SECRET` so migrated release downloads and share pages can generate signed Worker download URLs.
-- `HANDS_RAFT_CLIENT_SECRET` — Raft client secret for the `hands-4cc7a2` connected app, written to the Hands Worker as `RAFT_CLIENT_SECRET`. The app registration must allow the return URL `https://hands.build/login/raft/callback`.
+- `HANDS_RAFT_CLIENT_SECRET` — Raft client secret for the `hands-4cc7a2` connected app, written to the Hands Worker as `RAFT_CLIENT_SECRET`. The app registration must allow the canonical return URL `https://app.hands.build/login/raft/callback`.
 
 Workflows:
 
 - `Publish Hands Node SDK` publishes `@botiverse/hands-node` to npm with the repository `NPM_TOKEN`. Trigger it manually with the package version from `packages/node/package.json`, or push a tag like `node-v0.1.0`.
 - `Publish CLI` publishes `@botiverse/hands-cli` with the repository `NPM_TOKEN`. Publish the package's declared `@botiverse/hands-node` version first; the workflow verifies it exists, packs with pnpm so the workspace range becomes a normal npm semver range, and then publishes the tarball. Trigger it manually with the package version from `packages/cli/package.json`, or push a tag like `cli-v0.5.1`.
 - `Deploy Quiver Server` deploys the Worker plus bundled admin/docs assets. Trigger it manually, or push a tag like `server-v2026.07.04`. The default container rollout is `none`; choose `immediate` or `gradual` only when the APK parser container image changed.
-- `Deploy Hands Server` deploys the same Worker/admin bundle to `hands.build` in the separate Hands Cloudflare account. It bootstraps `hands-db` and `hands-artifacts` if they do not exist, applies D1 migrations, and deploys with `worker/wrangler.hands.jsonc`. This workflow is manual-only so it cannot replace the existing Quiver deploy path accidentally.
+- `Deploy Hands Server` deploys one Worker/admin bundle to the custom domains `hands.build` (business/API) and `app.hands.build` (dashboard/login) in the separate Hands Cloudflare account. It bootstraps `hands-db` and `hands-artifacts` if they do not exist, applies D1 migrations, and deploys with `worker/wrangler.hands.jsonc`. This workflow is manual-only so it cannot replace the existing Quiver deploy path accidentally.
 
 ## Credits
 

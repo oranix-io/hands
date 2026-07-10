@@ -733,6 +733,16 @@ function AuthGate() {
   return <AuthenticatedApp account={me.data.account} />;
 }
 
+function dashboardHref(account?: AuthAccount): string {
+  const dashboardOrigin = window.location.hostname === "hands.build"
+    ? "https://app.hands.build"
+    : "";
+  if (account) return `${dashboardOrigin}/apps`;
+  return dashboardOrigin
+    ? `${dashboardOrigin}/api/auth/login?return=${encodeURIComponent("/apps")}`
+    : loginUrl("/apps");
+}
+
 function PublicLanding({ account }: { account?: AuthAccount }) {
   useEffect(() => {
     document.title = "Hands - Client release operations";
@@ -761,7 +771,7 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
             </a>
             <a
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-950 px-4 font-medium text-white hover:bg-slate-800"
-              href={account ? "/apps" : loginUrl("/apps")}
+              href={dashboardHref(account)}
             >
               <RaftIcon className="h-5 w-5" />
               {account ? "Open dashboard" : "Login"}
@@ -803,7 +813,7 @@ function PublicLanding({ account }: { account?: AuthAccount }) {
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <a
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-slate-950 px-5 text-sm font-medium text-white hover:bg-slate-800"
-                  href={account ? "/apps" : loginUrl("/apps")}
+                  href={dashboardHref(account)}
                 >
                   <RaftIcon className="h-5 w-5" />
                   {account ? "Open dashboard" : "Login with Raft"}
