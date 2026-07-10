@@ -19,7 +19,7 @@ import {
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { FeedbackTrends } from "../components/FeedbackTrends";
-import { Button, Input, Select, SelectTrigger, SelectValue, SelectIcon, SelectContent, SelectItem } from "raft-ui";
+import { Button, Input, Select, SelectTrigger, SelectValue, SelectIcon, SelectContent, SelectItem, Tooltip, TooltipTrigger, TooltipContent } from "raft-ui";
 
 const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 
@@ -486,22 +486,28 @@ function AttachmentImage({
   }, [image.data]);
 
   return (
-    <button
-      type="button"
-      className="group relative h-24 w-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50"
-      onClick={() => image.data && onOpen(image.data)}
-      title={attachment.filename}
-      disabled={!image.data}
-    >
-      {image.data && (
-        <img
-          src={image.data}
-          alt={attachment.filename}
-          loading="lazy"
-          className="h-full w-full object-cover transition group-hover:opacity-90"
-        />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            className="group relative h-24 w-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50"
+            onClick={() => image.data && onOpen(image.data)}
+            disabled={!image.data}
+          >
+            {image.data && (
+              <img
+                src={image.data}
+                alt={attachment.filename}
+                loading="lazy"
+                className="h-full w-full object-cover transition group-hover:opacity-90"
+              />
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>{attachment.filename}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -710,32 +716,44 @@ export function FeedbackTicketPage({
                       <dt className="text-slate-500">{label(k)}</dt>
                       <dd className={mono(k) ? "font-mono break-all" : "break-all"}>
                         {k === "version_code" ? (
-                          <Button
-                            variant="link"
-                            size="sm"
-                            title="All feedback on this version"
-                            onClick={() =>
-                              navigate(
-                                `/apps/${appId}/feedback?version_code=${encodeURIComponent(format(v))}`,
-                              )
-                            }
-                          >
-                            {format(v)}
-                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  onClick={() =>
+                                    navigate(
+                                      `/apps/${appId}/feedback?version_code=${encodeURIComponent(format(v))}`,
+                                    )
+                                  }
+                                >
+                                  {format(v)}
+                                </Button>
+                              }
+                            />
+                            <TooltipContent>All feedback on this version</TooltipContent>
+                          </Tooltip>
                         ) : k === "device_id" ? (
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="font-mono break-all"
-                            title="This device's history"
-                            onClick={() =>
-                              navigate(
-                                `/apps/${appId}/feedback?device_id=${encodeURIComponent(format(v))}`,
-                              )
-                            }
-                          >
-                            {format(v)}
-                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  className="font-mono break-all"
+                                  onClick={() =>
+                                    navigate(
+                                      `/apps/${appId}/feedback?device_id=${encodeURIComponent(format(v))}`,
+                                    )
+                                  }
+                                >
+                                  {format(v)}
+                                </Button>
+                              }
+                            />
+                            <TooltipContent>This device's history</TooltipContent>
+                          </Tooltip>
                         ) : (
                           format(v)
                         )}

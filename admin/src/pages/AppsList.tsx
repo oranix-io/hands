@@ -8,7 +8,13 @@ import {
   type App,
 } from "../lib/api";
 import { AppCreationWizard } from "../components/AppCreationWizard";
-import { Button } from "raft-ui";
+import {
+  Button,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  Checkbox,
+} from "raft-ui";
 
 export function AppsList({ onSelectApp, initialShowCreate }: { onSelectApp: (id: string) => void; initialShowCreate?: boolean }) {
   const qc = useQueryClient();
@@ -29,10 +35,9 @@ export function AppsList({ onSelectApp, initialShowCreate }: { onSelectApp: (id:
         <h1 className="text-2xl font-bold">Apps</h1>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={showArchived}
-              onChange={(e) => setShowArchived(e.target.checked)}
+              onCheckedChange={(v) => setShowArchived(Boolean(v))}
               className="rounded-sm"
             />
             Show archived ({data?.apps.filter((a) => a.archived).length ?? 0})
@@ -113,12 +118,16 @@ function AppRow({ app, onSelect }: { app: App; onSelect: () => void }) {
               <span className="badge-gray text-xs">📦 Archived</span>
             )}
             {!sameOrg && app.org_id && (
-              <span
-                className="badge-orange text-xs"
-                title={`This app belongs to a different org (${app.org_id})`}
-              >
-                ⚠ other org
-              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="badge-orange text-xs">⚠ other org</span>
+                  }
+                />
+                <TooltipContent>
+                  {`This app belongs to a different org (${app.org_id})`}
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
           <div className="text-sm text-slate-500 font-mono">{app.slug}</div>
@@ -128,18 +137,28 @@ function AppRow({ app, onSelect }: { app: App; onSelect: () => void }) {
             </div>
           )}
           <div className="flex flex-wrap gap-2 mt-2 text-xs">
-            <span
-              className="badge-blue"
-              title="Product types (what we ship)"
-            >
-              📦 {ptCount} product type{ptCount === 1 ? "" : "s"}
-            </span>
-            <span
-              className="badge-gray"
-              title="Distribution channels (main / preview / nightly)"
-            >
-              🚀 {chCount} channel{chCount === 1 ? "" : "s"}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="badge-blue">
+                    📦 {ptCount} product type{ptCount === 1 ? "" : "s"}
+                  </span>
+                }
+              />
+              <TooltipContent>Product types (what we ship)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="badge-gray">
+                    🚀 {chCount} channel{chCount === 1 ? "" : "s"}
+                  </span>
+                }
+              />
+              <TooltipContent>
+                Distribution channels (main / preview / nightly)
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
         <span className="badge-blue ml-3">{app.platform}</span>

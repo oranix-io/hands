@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "raft-ui";
+import { ThemeProvider, TooltipProvider } from "raft-ui";
 import { App } from "./App";
 import { ToastProvider } from "./components/Toast";
 import "./index.css";
@@ -21,9 +21,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         components render in the elegant style. Rollout starts here (task #129). */}
     <ThemeProvider theme="elegant" defaultMode="light">
       <QueryClientProvider client={queryClient}>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
+        <TooltipProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
   </React.StrictMode>,

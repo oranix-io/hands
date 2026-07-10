@@ -21,7 +21,15 @@ import {
   type BuildAsset,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
-import { Button, Input } from "raft-ui";
+import {
+  Button,
+  Input,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  RadioGroup,
+  RadioGroupItem,
+} from "raft-ui";
 
 export function Builds({ appId }: { appId: string }) {
   const qc = useQueryClient();
@@ -50,18 +58,24 @@ export function Builds({ appId }: { appId: string }) {
       <div className="mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Builds</h2>
-          <Button
-            variant="primary"
-            className="text-sm"
-            title={
-              !channels.data?.channels.length
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="primary"
+                  className="text-sm"
+                  render={<a href={`/apps/${appId}/releases`} />}
+                >
+                  + New release
+                </Button>
+              }
+            />
+            <TooltipContent>
+              {!channels.data?.channels.length
                 ? "Create a channel first"
-                : "Create a release + attach APK assets"
-            }
-            render={<a href={`/apps/${appId}/releases`} />}
-          >
-            + New release
-          </Button>
+                : "Create a release + attach APK assets"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -202,19 +216,25 @@ function TestflightUploadPanel({ appId, build }: { appId: string; build: Build }
     <div className="mt-2 pt-2 border-t border-slate-100">
       <div className="flex items-center gap-2 flex-wrap text-xs">
         <span className="badge-gray"> TestFlight</span>
-        <Button
-          variant="outline"
-          className="py-1! px-2! text-xs!"
-          disabled={upload.isPending || build.status !== "succeeded"}
-          onClick={() => upload.mutate()}
-          title={
-            build.status !== "succeeded"
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="outline"
+                className="py-1! px-2! text-xs!"
+                disabled={upload.isPending || build.status !== "succeeded"}
+                onClick={() => upload.mutate()}
+              >
+                {upload.isPending ? "Uploading…" : "Upload to TestFlight"}
+              </Button>
+            }
+          />
+          <TooltipContent>
+            {build.status !== "succeeded"
               ? "Build must be succeeded"
-              : "Upload this IPA to App Store Connect / TestFlight"
-          }
-        >
-          {upload.isPending ? "Uploading…" : "Upload to TestFlight"}
-        </Button>
+              : "Upload this IPA to App Store Connect / TestFlight"}
+          </TooltipContent>
+        </Tooltip>
         <Button
           variant="outline"
           className="py-1! px-2! text-xs!"
@@ -410,20 +430,20 @@ function PrepareReleaseDialog({
         <div className="space-y-3">
           <div>
             <label className="label">Release scope</label>
-            <div className="space-y-1">
+            <RadioGroup
+              className="space-y-1"
+              value={scopeType}
+              onValueChange={(v) => setScopeType(v as "full" | "platform" | "ip_range")}
+            >
               {(["full", "platform", "ip_range"] as const).map((t) => (
                 <label key={t} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    checked={scopeType === t}
-                    onChange={() => setScopeType(t)}
-                  />
+                  <RadioGroupItem value={t} />
                   {t === "full" && "Full release — all users"}
                   {t === "platform" && "Platform release — only specified platforms"}
                   {t === "ip_range" && "IP range — only specified CIDR list"}
                 </label>
               ))}
-            </div>
+            </RadioGroup>
           </div>
           {scopeType === "platform" && (
             <div>

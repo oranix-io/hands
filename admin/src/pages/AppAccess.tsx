@@ -42,6 +42,9 @@ import {
   SelectIcon,
   SelectContent,
   SelectItem,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "raft-ui";
 
 export function AppAccess({ appId }: { appId: string }) {
@@ -474,10 +477,17 @@ function AppMemberList({
               setPrincipalFilter(v as "all" | "human" | "agent")
             }
           >
-            <SelectTrigger className="w-auto! text-xs py-0.5 pr-7" title="Filter by principal type">
-              <SelectValue />
-              <SelectIcon />
-            </SelectTrigger>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger className="w-auto! text-xs py-0.5 pr-7">
+                    <SelectValue />
+                    <SelectIcon />
+                  </SelectTrigger>
+                }
+              />
+              <TooltipContent>Filter by principal type</TooltipContent>
+            </Tooltip>
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
               <SelectItem value="human">Humans only</SelectItem>

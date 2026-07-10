@@ -50,6 +50,10 @@ import {
   Avatar,
   AvatarImage,
   AvatarFallback,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  Checkbox,
 } from "raft-ui";
 
 export const ORG_SETTINGS_TABS = [
@@ -255,10 +259,17 @@ function MembersTab({
               setPrincipalFilter(v as "all" | "human" | "agent")
             }
           >
-            <SelectTrigger className="text-xs py-0.5" title="Filter by principal type">
-              <SelectValue />
-              <SelectIcon />
-            </SelectTrigger>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger className="text-xs py-0.5">
+                    <SelectValue />
+                    <SelectIcon />
+                  </SelectTrigger>
+                }
+              />
+              <TooltipContent>Filter by principal type</TooltipContent>
+            </Tooltip>
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
               <SelectItem value="human">Humans only</SelectItem>
@@ -486,10 +497,17 @@ function InvitesTab({
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as string)}
           >
-            <SelectTrigger className="text-xs py-0.5" title="Filter by invite status">
-              <SelectValue />
-              <SelectIcon />
-            </SelectTrigger>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger className="text-xs py-0.5">
+                    <SelectValue />
+                    <SelectIcon />
+                  </SelectTrigger>
+                }
+              />
+              <TooltipContent>Filter by invite status</TooltipContent>
+            </Tooltip>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
@@ -1221,10 +1239,9 @@ function CreateWebhookDialog({
                   key={ev}
                   className="flex items-center gap-2 text-xs cursor-pointer"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={events.includes(ev)}
-                    onChange={() => toggleEvent(ev)}
+                    onCheckedChange={() => toggleEvent(ev)}
                   />
                   <span className="font-mono">{ev}</span>
                 </label>

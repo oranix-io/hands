@@ -34,6 +34,10 @@ import {
   SelectIcon,
   SelectContent,
   SelectItem,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  Checkbox,
 } from "raft-ui";
 import { useToast } from "../components/Toast";
 import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
@@ -423,12 +427,26 @@ function ReleaseRow({
       </div>
       {(r.offered_count || r.current_count) ? (
         <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
-          <span title="Devices already on this version at update check">
-            <strong className="text-slate-700">{r.current_count ?? 0}</strong> on this version
-          </span>
-          <span title="Update-check responses offering this version to older clients">
-            <strong className="text-slate-700">{r.offered_count ?? 0}</strong> offered
-          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span>
+                  <strong className="text-slate-700">{r.current_count ?? 0}</strong> on this version
+                </span>
+              }
+            />
+            <TooltipContent>Devices already on this version at update check</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span>
+                  <strong className="text-slate-700">{r.offered_count ?? 0}</strong> offered
+                </span>
+              }
+            />
+            <TooltipContent>Update-check responses offering this version to older clients</TooltipContent>
+          </Tooltip>
           {r.last_checked_at ? (
             <span className="text-slate-400">
               last check {new Date(r.last_checked_at).toLocaleString()}
@@ -732,10 +750,9 @@ function EditReleaseDialog({
             </div>
           </div>
           <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={shouldForceUpdate}
-              onChange={(e) => setShouldForceUpdate(e.target.checked)}
+              onCheckedChange={(v) => setShouldForceUpdate(Boolean(v))}
             />
             Force update
           </label>
@@ -1175,10 +1192,9 @@ function NewReleaseDialog({
                 {showAdvanced && (
                   <div className="mt-2 p-3 border border-slate-200 rounded-sm space-y-2">
                     <label className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={shouldForceUpdate}
-                        onChange={(e) => setShouldForceUpdate(e.target.checked)}
+                        onCheckedChange={(v) => setShouldForceUpdate(Boolean(v))}
                       />
                       Force update — clients must upgrade on next launch
                     </label>

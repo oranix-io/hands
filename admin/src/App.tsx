@@ -12,7 +12,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import {
   Bug,
-  Check,
   ChevronDown,
   ChevronsUpDown,
   Gauge,
@@ -23,7 +22,6 @@ import {
   PanelLeftOpen,
   Plane,
   Plus,
-  Copy,
   Radio,
   Rocket,
   ScrollText,
@@ -35,7 +33,7 @@ import { useEffect, useState } from "react";
 import {
   Button,
   Badge,
-  Input,
+  CopyableCode,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -45,6 +43,9 @@ import {
   Avatar,
   AvatarImage,
   AvatarFallback,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "raft-ui";
 import { AppsList } from "./pages/AppsList";
 import { AppChannels, AppDetail, AppSettings } from "./pages/AppDetail";
@@ -185,29 +186,43 @@ function Header({ account }: { account: AuthAccount }) {
           {!collapsed && <span className="hidden truncate text-sm font-semibold text-slate-900 md:inline">Hands</span>}
         </Link>
         {!collapsed && (
-          <button
-            type="button"
-            className="icon-button hidden h-8 w-8 md:flex"
-            onClick={() => setCollapsed(true)}
-            title="Collapse sidebar"
-            aria-label="Collapse sidebar"
-          >
-            <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  className="icon-button hidden h-8 w-8 md:flex"
+                  onClick={() => setCollapsed(true)}
+                  aria-label="Collapse sidebar"
+                >
+                  <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>Collapse sidebar</TooltipContent>
+          </Tooltip>
         )}
       </div>
       <nav className="flex min-h-0 w-full flex-1 flex-col items-stretch gap-1 px-2">
-        {!appId && (
-          <NavLink
-            to="/apps"
-            end
-            className={railItem}
-            title={collapsed ? "Apps" : undefined}
-          >
-            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
-            {!collapsed && <span className="hidden md:inline">Apps</span>}
-          </NavLink>
-        )}
+        {!appId &&
+          (collapsed ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <NavLink to="/apps" end className={railItem}>
+                    <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+                    {!collapsed && <span className="hidden md:inline">Apps</span>}
+                  </NavLink>
+                }
+              />
+              <TooltipContent side="right">Apps</TooltipContent>
+            </Tooltip>
+          ) : (
+            <NavLink to="/apps" end className={railItem}>
+              <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+              {!collapsed && <span className="hidden md:inline">Apps</span>}
+            </NavLink>
+          ))}
         <div className="relative w-full">
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -321,17 +336,24 @@ function Header({ account }: { account: AuthAccount }) {
                   <div className="space-y-0.5">
                     {section.items.map((item) => {
                       const Icon = item.icon;
-                      return (
+                      const link = (
                         <NavLink
                           key={item.label}
                           to={item.to ? `${appBase}/${item.to}` : appBase}
                           end={item.end ?? false}
                           className={railItem}
-                          title={collapsed ? item.label : undefined}
                         >
                           <Icon className="h-4 w-4 flex-none" aria-hidden="true" />
                           {!collapsed && <span className="hidden md:inline">{item.label}</span>}
                         </NavLink>
+                      );
+                      return collapsed ? (
+                        <Tooltip key={item.label}>
+                          <TooltipTrigger render={link} />
+                          <TooltipContent side="right">{item.label}</TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        link
                       );
                     })}
                   </div>
@@ -343,15 +365,21 @@ function Header({ account }: { account: AuthAccount }) {
       </nav>
       <div className="relative mt-auto flex w-full flex-col px-2">
         {collapsed && (
-          <button
-            type="button"
-            className="mb-2 hidden h-9 w-full items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-950 md:flex"
-            onClick={() => setCollapsed(false)}
-            title="Expand sidebar"
-            aria-label="Expand sidebar"
-          >
-            <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  className="mb-2 hidden h-9 w-full items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-950 md:flex"
+                  onClick={() => setCollapsed(false)}
+                  aria-label="Expand sidebar"
+                >
+                  <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent side="right">Expand sidebar</TooltipContent>
+          </Tooltip>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -689,7 +717,6 @@ function AuthGate() {
 }
 
 function CliCallback({ token }: { token: string }) {
-  const [copied, setCopied] = useState(false);
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <section className="w-full max-w-xl rounded-md border border-slate-200 bg-white p-6 shadow-xs">
@@ -700,27 +727,15 @@ function CliCallback({ token }: { token: string }) {
             <p className="text-sm text-slate-500">Signed in with Raft</p>
           </div>
         </div>
-        <div className="flex items-stretch gap-2">
-          <Input
-            readOnly
-            value={token}
-            aria-label="Hands JWT"
-            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-slate-50 px-3 font-mono text-xs text-slate-700"
-            onFocus={(event) => event.currentTarget.select()}
-          />
-          <button
-            type="button"
-            className="icon-button h-10 w-10"
-            title="Copy JWT"
-            aria-label="Copy JWT"
-            onClick={async () => {
-              await navigator.clipboard.writeText(token);
-              setCopied(true);
-            }}
-          >
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          </button>
-        </div>
+        <CopyableCode
+          className="w-full"
+          ariaLabel="Copy JWT"
+          copiedAriaLabel="Copied JWT"
+          truncate
+          codeClassName="font-mono text-xs text-slate-700"
+        >
+          {token}
+        </CopyableCode>
       </section>
     </main>
   );
@@ -1042,32 +1057,38 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
       <footer className="bg-white border-t border-slate-200 py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 text-xs text-slate-500 flex items-center justify-between">
           <span>Hands - Login with Raft</span>
-          <Button
-            variant="outline"
-            className="py-1! px-2! text-xs! inline-flex items-center gap-1.5"
-            title="View Hands source on GitHub"
-            render={
-              <a
-                href="https://github.com/oranix-io/hands"
-                target="_blank"
-                rel="noopener noreferrer"
-              />
-            }
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="w-3.5 h-3.5"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"
-                clipRule="evenodd"
-              />
-            </svg>
-            GitHub
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  className="py-1! px-2! text-xs! inline-flex items-center gap-1.5"
+                  render={
+                    <a
+                      href="https://github.com/oranix-io/hands"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="w-3.5 h-3.5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  GitHub
+                </Button>
+              }
+            />
+            <TooltipContent>View Hands source on GitHub</TooltipContent>
+          </Tooltip>
         </div>
       </footer>
       </div>

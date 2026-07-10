@@ -8,6 +8,9 @@ import {
   SelectIcon,
   SelectContent,
   SelectItem,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "raft-ui";
 import { DeviceAnalytics } from "../components/DeviceAnalytics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -459,14 +462,23 @@ function TestFlightPanel({ appId }: { appId: string }) {
         </div>
         {meta && !editing && (
           <>
-            <Button
-              variant="outline"
-              disabled={test.isPending}
-              onClick={() => test.mutate()}
-              title="Verify the stored key against App Store Connect for this app's bundle id"
-            >
-              {test.isPending ? "Testing…" : "Test connection"}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    disabled={test.isPending}
+                    onClick={() => test.mutate()}
+                  >
+                    {test.isPending ? "Testing…" : "Test connection"}
+                  </Button>
+                }
+              />
+              <TooltipContent>
+                Verify the stored key against App Store Connect for this app's
+                bundle id
+              </TooltipContent>
+            </Tooltip>
             <Button
               variant="outline"
               onClick={() => setEditing(true)}
@@ -1191,31 +1203,43 @@ function ChannelRow({
           <span className="font-medium">{c.name}</span>
           <span className="text-xs font-mono text-slate-500">{c.slug}</span>
           {c.bundle_id && (
-            <span
-              className="badge-blue text-xs font-mono"
-              title="Bundle ID override"
-            >
-              {c.bundle_id}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="badge-blue text-xs font-mono">
+                    {c.bundle_id}
+                  </span>
+                }
+              />
+              <TooltipContent>Bundle ID override</TooltipContent>
+            </Tooltip>
           )}
           {c.password && (
-            <span
-              className="badge-orange text-xs"
-              title="Downloads require password"
-            >
-              🔒 gated
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="badge-orange text-xs">🔒 gated</span>
+                }
+              />
+              <TooltipContent>Downloads require password</TooltipContent>
+            </Tooltip>
           )}
           {c.git_url && (
-            <a
-              className="text-xs text-blue-600 hover:underline font-mono truncate max-w-xs"
-              href={c.git_url}
-              target="_blank"
-              rel="noreferrer"
-              title={c.git_url}
-            >
-              {c.git_url}
-            </a>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <a
+                    className="text-xs text-blue-600 hover:underline font-mono truncate max-w-xs"
+                    href={c.git_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {c.git_url}
+                  </a>
+                }
+              />
+              <TooltipContent>{c.git_url}</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>

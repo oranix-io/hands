@@ -10,7 +10,7 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "raft-ui";
+import { Button, Tooltip, TooltipTrigger, TooltipContent } from "raft-ui";
 import { getFeedbackStats } from "../lib/api";
 
 const KINDS = ["feedback", "bug", "crash"] as const;
@@ -209,9 +209,16 @@ export function CrashByVersion({
       <div className="space-y-1.5">
         {rows.map((r) => (
           <div key={`${r.version_name}-${r.version_code}`} className="flex items-center gap-2 text-xs">
-            <span className="w-20 truncate text-slate-600" title={`${r.version_name} (${r.version_code ?? "?"})`}>
-              {r.version_name}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="w-20 truncate text-slate-600">
+                    {r.version_name}
+                  </span>
+                }
+              />
+              <TooltipContent>{`${r.version_name} (${r.version_code ?? "?"})`}</TooltipContent>
+            </Tooltip>
             <div className="flex-1 h-3.5">
               <div
                 className="h-full rounded-r-[4px]"
