@@ -119,6 +119,7 @@ GitHub Actions owns production publishing so local machines do not need long-liv
 
 Required repository secrets:
 
+- `NPM_TOKEN` — npm automation token with publish access to the `@botiverse` scope, used by the Node SDK and CLI publishing workflows.
 - `CLOUDFLARE_API_TOKEN` — Cloudflare API token allowed to deploy the Hands Worker and its assets.
 - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account id for the Worker deploy.
 - `CLOUDFLARE_BOTIVERSE_API_TOKEN` — Cloudflare API token for the Hands/Botiverse account (`a084c4564dfdce5a7775b08ece638a79`). This is intentionally separate from the Quiver production token.
@@ -127,8 +128,8 @@ Required repository secrets:
 
 Workflows:
 
-- `Publish Hands Node SDK` publishes `@botiverse/hands-node` to npm through npm Trusted Publishing / GitHub OIDC. Configure the npm package trusted publisher for `.github/workflows/publish-node.yml`, then trigger it manually with the package version from `packages/node/package.json`, or push a tag like `node-v0.1.0`.
-- `Publish CLI` publishes `@botiverse/hands-cli` to npm through npm Trusted Publishing / GitHub OIDC. Publish the package's declared `@botiverse/hands-node` version first; the workflow verifies it exists, packs with pnpm so the workspace range becomes a normal npm semver range, and then publishes the tarball. Configure the npm package trusted publisher for this repository and workflow, then trigger it manually with the package version from `packages/cli/package.json`, or push a tag like `cli-v0.5.0`.
+- `Publish Hands Node SDK` publishes `@botiverse/hands-node` to npm with the repository `NPM_TOKEN`. Trigger it manually with the package version from `packages/node/package.json`, or push a tag like `node-v0.1.0`.
+- `Publish CLI` publishes `@botiverse/hands-cli` with the repository `NPM_TOKEN`. Publish the package's declared `@botiverse/hands-node` version first; the workflow verifies it exists, packs with pnpm so the workspace range becomes a normal npm semver range, and then publishes the tarball. Trigger it manually with the package version from `packages/cli/package.json`, or push a tag like `cli-v0.5.1`.
 - `Deploy Quiver Server` deploys the Worker plus bundled admin/docs assets. Trigger it manually, or push a tag like `server-v2026.07.04`. The default container rollout is `none`; choose `immediate` or `gradual` only when the APK parser container image changed.
 - `Deploy Hands Server` deploys the same Worker/admin bundle to `hands.build` in the separate Hands Cloudflare account. It bootstraps `hands-db` and `hands-artifacts` if they do not exist, applies D1 migrations, and deploys with `worker/wrangler.hands.jsonc`. This workflow is manual-only so it cannot replace the existing Quiver deploy path accidentally.
 
