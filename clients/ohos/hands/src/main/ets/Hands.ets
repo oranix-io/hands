@@ -11,7 +11,7 @@ import { HandsFaultWatcher } from './HandsFaultWatcher';
  * from the Hands console).
  */
 export interface HandsConfig {
-  /** Hands server origin, e.g. https://hands.build (no trailing /). */
+  /** Hands server origin, e.g. https://your-hands-origin.example (no trailing /). */
   baseUrl: string;
   /** App slug in the Hands console. */
   appSlug: string;

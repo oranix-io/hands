@@ -3,6 +3,7 @@
 
 /** IPC channel renderers use to forward scope updates to the main process. */
 export const CONTEXT_CHANNEL = "hands:context";
+export const DEFAULT_HANDS_ENDPOINT = "https://hands.build";
 
 export interface HandsBreadcrumb {
   message: string;
@@ -24,7 +25,7 @@ export interface HandsElectronOptions {
   appSlug: string;
   /** Public client key (Sentry-DSN model). Safe to ship in the app bundle. */
   clientKey: string;
-  /** Hands business origin. Defaults to https://hands.build. */
+  /** Hands business origin. Defaults to DEFAULT_HANDS_ENDPOINT. */
   endpoint?: string;
   /** Crashpad productName; defaults to appSlug. */
   productName?: string;
@@ -96,7 +97,7 @@ export function buildGlobalExtra(
 
 /** Build the minidump submit URL Crashpad POSTs to (client key in the query). */
 export function buildSubmitURL(options: HandsElectronOptions): string {
-  const endpoint = (options.endpoint ?? "https://hands.build").replace(/\/+$/, "");
+  const endpoint = (options.endpoint ?? DEFAULT_HANDS_ENDPOINT).replace(/\/+$/, "");
   return (
     `${endpoint}/public/v2/apps/${encodeURIComponent(options.appSlug)}/minidump` +
     `?client_key=${encodeURIComponent(options.clientKey)}`

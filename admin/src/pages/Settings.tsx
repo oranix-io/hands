@@ -63,18 +63,6 @@ export function Settings() {
           <div className="text-slate-500">Raft Callback URL</div>
           <div className="font-mono">{raftCallbackUrl}</div>
         </div>
-        <div>
-          <div className="text-slate-500">D1 Database</div>
-          <div className="font-mono">hands-db</div>
-        </div>
-        <div>
-          <div className="text-slate-500">R2 Bucket</div>
-          <div className="font-mono">hands-artifacts</div>
-        </div>
-        <div>
-          <div className="text-slate-500">Container</div>
-          <div className="font-mono">apk-parser (Node 24 + aapt + apksigner)</div>
-        </div>
       </div>
     </div>
   );

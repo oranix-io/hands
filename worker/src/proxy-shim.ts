@@ -1,21 +1,21 @@
 /**
  * Legacy proxy shim for `quiver-worker`.
  *
- * After the Hands migration, `quiver.oranix.io` no longer runs the business
- * worker — all business logic, D1, and R2 live on `hands-worker`
- * (`hands.build`). This shim is the ONLY thing `quiver-worker` deploys going
+ * After the Hands migration, the legacy domain no longer runs the business
+ * worker — all business logic, D1, and R2 live on the Hands worker
+ * (the configured business origin). This shim is the ONLY thing `quiver-worker` deploys going
  * forward. It exists purely to keep the legacy domain working for two very
  * different classes of traffic:
  *
  *   1. Machine / API paths (installed apps + CI): transparently
  *      reverse-proxied to the Hands worker, preserving method, body, query,
  *      and headers. Existing shipped apps POST feedback / crash / metrics and
- *      GET update-checks against `quiver.oranix.io/public/*`; a 302 here would
+ *      GET update-checks against the legacy `/public/*` routes; a 302 here would
  *      drop the POST body/headers (multipart), so these MUST be proxied, never
  *      redirected. Writes land in the Hands DB via the proxy — single source
  *      of truth, no divergence.
  *
- *   2. Human pages (browsers): 302-redirected to `hands.build` so people land
+ *   2. Human pages (browsers): 302-redirected to the configured business origin
  *      on the canonical new domain.
  *
  * The shim holds NO D1 / R2 / Container bindings and never touches the legacy
@@ -26,14 +26,14 @@
 export interface ShimEnv {
   /**
    * Origin serving the Hands business worker, no trailing slash. Points at the
-   * worker's direct `workers.dev` route (NOT `hands.build`) to skip the edge
+   * worker's direct `workers.dev` route to skip the edge
    * cache and avoid any custom-domain loop, e.g.
-   * `https://hands-worker.botiverse.workers.dev`.
+   * a configured direct Worker origin.
    */
   PROXY_TARGET: string;
   /**
    * Origin humans are 302-redirected to, no trailing slash, e.g.
-   * `https://hands.build`.
+   * the configured business origin.
    */
   REDIRECT_TARGET: string;
 }

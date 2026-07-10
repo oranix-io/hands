@@ -68,7 +68,7 @@ export interface DeltaParams {
   buildId: string;
   actor: string;
   keep?: number | undefined;
-  // Public origin the container uses to fetch source APKs (e.g. https://hands.build).
+  // Public origin the container uses to fetch source APKs.
   origin: string;
 }
 

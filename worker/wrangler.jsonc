@@ -3,31 +3,19 @@
   "name": "quiver-worker",
 
   // quiver-worker is now a LEGACY PROXY SHIM, not the business worker.
-  // See src/proxy-shim.ts for the full rationale. It keeps quiver.oranix.io
+  // See src/proxy-shim.ts for the full rationale. It keeps the legacy domain
   // working after the Hands migration:
   //   - machine/API paths  -> reverse-proxied to the Hands worker (writes land
   //                           in the Hands DB; POST bodies preserved)
-  //   - human pages        -> 302 to hands.build
+  //   - human pages        -> 302 to the configured business origin
   // It holds NO D1 / R2 / Container / cron bindings and never touches the
   // legacy database. The business worker + its bindings + the webhook-reaper
-  // cron all live in wrangler.hands.jsonc (name "hands-worker").
+  // cron all live in the rendered Hands production config.
   "main": "src/proxy-shim.ts",
   "compatibility_date": "2025-10-08",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "upload_source_maps": true,
-
-  // Non-secret config for the shim.
-  "vars": {
-    // Origin serving the Hands business worker. hands.build routes to
-    // hands-worker; quiver never appears in that path, so there is no loop.
-    // (The direct hands-worker.botiverse.workers.dev route is not enabled, so
-    // we proxy via the custom domain; GET edge-caching there is benign, POSTs
-    // are not cached.) No trailing slash.
-    "PROXY_TARGET": "https://hands.build",
-    // Canonical domain humans are 302-redirected to. No trailing slash.
-    "REDIRECT_TARGET": "https://hands.build"
-  },
 
   // The business quiver-worker previously bound the ApkParserContainer Durable
   // Object (Cloudflare Container for APK parsing). The shim drops it, but

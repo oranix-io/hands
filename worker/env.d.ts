@@ -13,6 +13,8 @@ declare global {
     RAFT_API_ORIGIN?: string;
     RAFT_CLIENT_ID?: string;
     CORS_ALLOWED_ORIGINS?: string;
+    BUSINESS_ORIGIN?: string;
+    DASHBOARD_ORIGIN?: string;
     SIGNED_URL_SECRET?: string;
     R2_ACCOUNT_ID?: string;
     R2_BUCKET_NAME?: string;

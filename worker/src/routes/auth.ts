@@ -16,10 +16,12 @@ import {
   type AdminAccount,
 } from "../middleware/auth";
 import {
-  BUSINESS_ORIGIN,
-  DASHBOARD_ORIGIN,
+  businessOrigin,
+  configuredProductionHost,
+  dashboardOrigin,
   isSecureRequest,
   requestOrigin,
+  sharedCookieDomain,
 } from "../lib/origin";
 
 const LOGIN_PENDING_COOKIE = "quiver_raft_login_pending";
@@ -67,17 +69,20 @@ function secureCookie(c: Context<{ Bindings: Env }>): boolean {
 
 function isHandsProductionHost(c: Context<{ Bindings: Env }>): boolean {
   const hostname = new URL(c.req.url).hostname;
-  return hostname === "hands.build" || hostname === "app.hands.build";
+  return configuredProductionHost(c.env, hostname);
 }
 
 function sharedCookieDomainOption(
   c: Context<{ Bindings: Env }>,
 ): { domain: string } | Record<string, never> {
-  return isHandsProductionHost(c) ? { domain: "hands.build" } : {};
+  const domain = sharedCookieDomain(c.env);
+  return isHandsProductionHost(c) && domain ? { domain } : {};
 }
 
 function callbackUrl(c: Context<{ Bindings: Env }>): string {
-  const origin = isHandsProductionHost(c) ? BUSINESS_ORIGIN : appOrigin(c);
+  const origin = isHandsProductionHost(c)
+    ? businessOrigin(c.env, () => appOrigin(c))
+    : appOrigin(c);
   return `${origin}/login/raft/callback`;
 }
 
@@ -85,7 +90,9 @@ function browserReturnUrl(
   c: Context<{ Bindings: Env }>,
   returnPath: string,
 ): string {
-  return isHandsProductionHost(c) ? `${DASHBOARD_ORIGIN}${returnPath}` : returnPath;
+  return isHandsProductionHost(c)
+    ? `${dashboardOrigin(c.env, () => appOrigin(c))}${returnPath}`
+    : returnPath;
 }
 
 function requireRaftConfig(c: Context<{ Bindings: Env }>) {
@@ -93,11 +100,15 @@ function requireRaftConfig(c: Context<{ Bindings: Env }>) {
   const clientSecret = c.env.RAFT_CLIENT_SECRET;
   const raftOrigin = c.env.RAFT_ORIGIN;
   const raftApiOrigin = c.env.RAFT_API_ORIGIN;
+  const business = c.env.BUSINESS_ORIGIN;
+  const dashboard = c.env.DASHBOARD_ORIGIN;
   const missing = [
     clientId ? undefined : "RAFT_CLIENT_ID",
     clientSecret ? undefined : "RAFT_CLIENT_SECRET",
     raftOrigin ? undefined : "RAFT_ORIGIN",
     raftApiOrigin ? undefined : "RAFT_API_ORIGIN",
+    business ? undefined : "BUSINESS_ORIGIN",
+    dashboard ? undefined : "DASHBOARD_ORIGIN",
   ].filter((key): key is string => Boolean(key));
   if (missing.length > 0) {
     return {
@@ -170,7 +181,7 @@ export async function createSignedJwt(
   if (!secret) throw new Error("SIGNED_URL_SECRET or RAFT_CLIENT_SECRET is required for auth JWTs");
   const header = base64UrlUtf8(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = base64UrlUtf8(JSON.stringify({
-    iss: "https://hands.build",
+    iss: businessOrigin(env),
     aud: "hands-dashboard",
     sub: accountId,
     jti: jwtId,

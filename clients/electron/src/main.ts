@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTEXT_CHANNEL,
+  DEFAULT_HANDS_ENDPOINT,
   buildGlobalExtra,
   buildSubmitURL,
   toParam,
@@ -114,7 +115,7 @@ async function reportMetrics(options: HandsElectronOptions, force = false): Prom
   if (!force && state.lastPingAt > 0 && now - state.lastPingAt < METRICS_INTERVAL_MS) return false;
 
   const deviceId = state.deviceId || randomUUID();
-  const endpoint = (options.endpoint ?? "https://hands.build").replace(/\/+$/, "");
+  const endpoint = (options.endpoint ?? DEFAULT_HANDS_ENDPOINT).replace(/\/+$/, "");
   const url = `${endpoint}/public/v2/apps/${encodeURIComponent(options.appSlug)}/metrics`;
   const env = options.environment ?? "production";
   const metadata = {

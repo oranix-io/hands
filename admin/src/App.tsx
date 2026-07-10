@@ -781,13 +781,8 @@ function CliCallback({ token }: { token: string }) {
 }
 
 function dashboardHref(account?: AuthAccount): string {
-  const dashboardOrigin = window.location.hostname === "hands.build"
-    ? "https://app.hands.build"
-    : "";
-  if (account) return `${dashboardOrigin}/apps`;
-  return dashboardOrigin
-    ? `${dashboardOrigin}/api/auth/login?return=${encodeURIComponent("/apps")}`
-    : loginUrl("/apps");
+  if (account) return "/apps";
+  return loginUrl("/apps");
 }
 
 function PublicLanding({ account }: { account?: AuthAccount }) {
@@ -978,7 +973,7 @@ const TERMINAL_DEMOS: {
       { text: "uploading APK and metadata...", tone: "muted" },
       { text: "creating release on channel main...", tone: "muted" },
       { text: "release: 14998dba-cfde-4002-8c01-230a2760f662", tone: "ok" },
-      { text: "share: https://hands.build/share/...", tone: "ok" },
+      { text: `share: ${window.location.origin}/share/...`, tone: "ok" },
     ],
   },
   {
@@ -1010,7 +1005,7 @@ const TERMINAL_DEMOS: {
     label: "Metrics",
     badge: "30d",
     lines: [
-      { text: "$ curl https://hands.build/api/apps/$APP_ID/analytics/versions?window_days=30" },
+      { text: `$ curl ${window.location.origin}/api/apps/$APP_ID/analytics/versions?window_days=30` },
       { text: "1.1.0   active devices 1,284   update offers 642", tone: "ok" },
       { text: "1.0.4   active devices   319   crash tickets 3", tone: "muted" },
     ],
