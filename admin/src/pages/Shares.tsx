@@ -7,7 +7,7 @@
  */
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Select, SelectTrigger, SelectValue, SelectIcon, SelectContent, SelectItem } from "raft-ui";
+import { Button, Input, Select, SelectTrigger, SelectValue, SelectIcon, SelectContent, SelectItem, Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from "raft-ui";
 import {
   AppShare,
   createReleaseShare,
@@ -313,57 +313,61 @@ function CreateShareModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="card w-full max-w-md space-y-3 bg-white">
-        <h3 className="text-base font-semibold">New share link</h3>
-        <label className="block text-xs text-slate-600">
-          Release
-          <Select
-            items={{
-              "": "Select a release…",
-              ...Object.fromEntries(
-                options.map((r: any) => [r.id, `${r.version_name ?? r.id.slice(0, 8)} · ${r.status}`]),
-              ),
-            }}
-            value={releaseId}
-            onValueChange={(v) => setReleaseId(v as string)}
-          >
-            <SelectTrigger className="mt-1 py-1.5!">
-              <SelectValue />
-              <SelectIcon />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">Select a release…</SelectItem>
-              {options.map((r: any) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.version_name ?? r.id.slice(0, 8)} · {r.status}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <label className="block text-xs text-slate-600">
-          Lifetime (days)
-          <Input
-            type="number"
-            min={1}
-            max={30}
-            value={ttlDays}
-            onChange={(e) => setTtlDays(Math.min(30, Math.max(1, Number(e.target.value) || 7)))}
-            className="mt-1 py-1.5!"
-          />
-        </label>
-        <label className="block text-xs text-slate-600">
-          Password (optional)
-          <Input
-            type="text"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Leave empty for a public link"
-            className="mt-1 py-1.5!"
-          />
-        </label>
-        <div className="flex justify-end gap-2 pt-2">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>New share link</DialogTitle>
+        </DialogHeader>
+        <DialogBody className="space-y-3">
+          <label className="block text-xs text-slate-600">
+            Release
+            <Select
+              items={{
+                "": "Select a release…",
+                ...Object.fromEntries(
+                  options.map((r: any) => [r.id, `${r.version_name ?? r.id.slice(0, 8)} · ${r.status}`]),
+                ),
+              }}
+              value={releaseId}
+              onValueChange={(v) => setReleaseId(v as string)}
+            >
+              <SelectTrigger className="mt-1 py-1.5!">
+                <SelectValue />
+                <SelectIcon />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Select a release…</SelectItem>
+                {options.map((r: any) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.version_name ?? r.id.slice(0, 8)} · {r.status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="block text-xs text-slate-600">
+            Lifetime (days)
+            <Input
+              type="number"
+              min={1}
+              max={30}
+              value={ttlDays}
+              onChange={(e) => setTtlDays(Math.min(30, Math.max(1, Number(e.target.value) || 7)))}
+              className="mt-1 py-1.5!"
+            />
+          </label>
+          <label className="block text-xs text-slate-600">
+            Password (optional)
+            <Input
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Leave empty for a public link"
+              className="mt-1 py-1.5!"
+            />
+          </label>
+        </DialogBody>
+        <DialogFooter>
           <Button variant="outline" className="text-sm" onClick={onClose} disabled={create.isPending}>
             Cancel
           </Button>
@@ -375,8 +379,8 @@ function CreateShareModal({
           >
             {create.isPending ? "Creating…" : "Create"}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

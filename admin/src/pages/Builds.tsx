@@ -29,6 +29,14 @@ import {
   TooltipContent,
   RadioGroup,
   RadioGroupItem,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+  DialogFooter,
+  DialogClose,
 } from "raft-ui";
 
 export function Builds({ appId }: { appId: string }) {
@@ -414,19 +422,19 @@ function PrepareReleaseDialog({
   });
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="card max-w-lg w-full relative">
-        <h2 className="text-lg font-bold mb-4 pr-8">Prepare release</h2>
-        <p className="text-sm text-slate-500 mb-4">
-          Release build <code className="text-xs">{build.id.slice(0, 8)}…</code> (v
-          {build.version_name})
-        </p>
-
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <div>
+            <DialogTitle>Prepare release</DialogTitle>
+            <DialogDescription>
+              Release build <code className="text-xs">{build.id.slice(0, 8)}…</code> (v
+              {build.version_name})
+            </DialogDescription>
+          </div>
+          <DialogClose />
+        </DialogHeader>
+        <DialogBody>
         <div className="space-y-3">
           <div>
             <label className="label">Release scope</label>
@@ -468,8 +476,8 @@ function PrepareReleaseDialog({
             </div>
           )}
         </div>
-
-        <div className="flex gap-2 justify-end pt-4 mt-4 border-t border-slate-100">
+        </DialogBody>
+        <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -485,8 +493,8 @@ function PrepareReleaseDialog({
           >
             {create.isPending ? "Releasing…" : "Release"}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

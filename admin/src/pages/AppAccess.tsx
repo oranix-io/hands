@@ -45,6 +45,13 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
+  DialogClose,
 } from "raft-ui";
 
 export function AppAccess({ appId }: { appId: string }) {
@@ -345,66 +352,71 @@ function AddAppServerGrantDialog({
   });
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <div className="card max-w-md w-full relative">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+      <DialogContent className="max-w-md">
+        <DialogClose
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close"
+              className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+            />
+          }
         >
           ×
-        </Button>
-        <h2 className="text-lg font-bold mb-4 pr-8">Add Raft server</h2>
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add.mutate();
-          }}
-        >
-          <div>
-            <label className="label">Server slug</label>
-            <Input
-              value={serverSlug}
-              onChange={(e) => setServerSlug(e.target.value)}
-              placeholder="server slug"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="label">Server ID</label>
-            <Input
-              value={serverId}
-              onChange={(e) => setServerId(e.target.value)}
-              placeholder="optional"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={(!serverId.trim() && !serverSlug.trim()) || add.isPending}
-            >
-              {add.isPending ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </DialogClose>
+        <DialogHeader>
+          <DialogTitle>Add Raft server</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <form
+            id="add-app-server-grant-form"
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add.mutate();
+            }}
+          >
+            <div>
+              <label className="label">Server slug</label>
+              <Input
+                value={serverSlug}
+                onChange={(e) => setServerSlug(e.target.value)}
+                placeholder="server slug"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="label">Server ID</label>
+              <Input
+                value={serverId}
+                onChange={(e) => setServerId(e.target.value)}
+                placeholder="optional"
+              />
+            </div>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="add-app-server-grant-form"
+            variant="primary"
+            disabled={(!serverId.trim() && !serverSlug.trim()) || add.isPending}
+          >
+            {add.isPending ? "Adding…" : "Add"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -793,41 +805,45 @@ function AddAppDeployTokenDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          createdToken ? closeAfterCreate() : onClose();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          if (createdToken) closeAfterCreate();
+          else onClose();
         }
       }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") createdToken ? closeAfterCreate() : onClose();
-      }}
     >
-      <div className="card max-w-lg w-full relative text-sm">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          type="button"
-          onClick={createdToken ? closeAfterCreate : onClose}
-          aria-label="Close"
-          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+      <DialogContent className="max-w-lg text-sm">
+        <DialogClose
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close"
+              className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+            />
+          }
         >
           ×
-        </Button>
-        <h2 className="text-lg font-bold mb-4 pr-8">Add deploy token</h2>
+        </DialogClose>
+        <DialogHeader>
+          <DialogTitle>Add deploy token</DialogTitle>
+        </DialogHeader>
         {createdToken ? (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-600">
-              Copy this token now. It will not be shown again.
-            </p>
-            <textarea
-              className="input font-mono text-xs min-h-[96px]"
-              value={createdToken}
-              readOnly
-              onFocus={(e) => e.currentTarget.select()}
-            />
-            <div className="flex justify-end gap-2 pt-2">
+          <>
+            <DialogBody className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Copy this token now. It will not be shown again.
+              </p>
+              <textarea
+                className="input font-mono text-xs min-h-[96px]"
+                value={createdToken}
+                readOnly
+                onFocus={(e) => e.currentTarget.select()}
+              />
+            </DialogBody>
+            <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
@@ -841,87 +857,93 @@ function AddAppDeployTokenDialog({
               <Button type="button" variant="primary" onClick={closeAfterCreate}>
                 Done
               </Button>
-            </div>
-          </div>
+            </DialogFooter>
+          </>
         ) : (
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              create.mutate();
-            }}
-          >
-            <div>
-              <label className="label">Name</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="github-actions-main"
-                autoFocus
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Role</label>
-                <Select
-                  items={{ publisher: "publisher", viewer: "viewer" }}
-                  value={role}
-                  onValueChange={(v) =>
-                    setRole(v as AppDeployToken["app_role"])
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                    <SelectIcon />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="publisher">publisher</SelectItem>
-                    <SelectItem value="viewer">viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="label">Expires</label>
-                <Select
-                  items={{ "30d": "30 days", "90d": "90 days", "365d": "1 year", never: "Never" }}
-                  value={expiry}
-                  onValueChange={(v) =>
-                    setExpiry(v as "30d" | "90d" | "365d" | "never")
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                    <SelectIcon />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="30d">30 days</SelectItem>
-                    <SelectItem value="90d">90 days</SelectItem>
-                    <SelectItem value="365d">1 year</SelectItem>
-                    <SelectItem value="never">Never</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <p className="text-xs text-slate-500">
-              Publisher tokens can upload builds, create releases, and create
-              share pages for this app only.
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
+          <>
+            <DialogBody>
+              <form
+                id="add-app-deploy-token-form"
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  create.mutate();
+                }}
+              >
+                <div>
+                  <label className="label">Name</label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="github-actions-main"
+                    autoFocus
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Role</label>
+                    <Select
+                      items={{ publisher: "publisher", viewer: "viewer" }}
+                      value={role}
+                      onValueChange={(v) =>
+                        setRole(v as AppDeployToken["app_role"])
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                        <SelectIcon />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="publisher">publisher</SelectItem>
+                        <SelectItem value="viewer">viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="label">Expires</label>
+                    <Select
+                      items={{ "30d": "30 days", "90d": "90 days", "365d": "1 year", never: "Never" }}
+                      value={expiry}
+                      onValueChange={(v) =>
+                        setExpiry(v as "30d" | "90d" | "365d" | "never")
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                        <SelectIcon />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="30d">30 days</SelectItem>
+                        <SelectItem value="90d">90 days</SelectItem>
+                        <SelectItem value="365d">1 year</SelectItem>
+                        <SelectItem value="never">Never</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Publisher tokens can upload builds, create releases, and create
+                  share pages for this app only.
+                </p>
+              </form>
+            </DialogBody>
+            <DialogFooter>
               <Button variant="outline" type="button" onClick={onClose}>
                 Cancel
               </Button>
               <Button
                 type="submit"
+                form="add-app-deploy-token-form"
                 variant="primary"
                 disabled={!name.trim() || create.isPending}
               >
                 {create.isPending ? "Creating…" : "Create"}
               </Button>
-            </div>
-          </form>
+            </DialogFooter>
+          </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -990,132 +1012,143 @@ function AddAppMemberDialog({
 
   if (candidates.length === 0) {
     return (
-      <div
-        className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
+      <Dialog
+        open
+        onOpenChange={(open) => {
+          if (!open) onClose();
         }}
       >
-        <div className="card max-w-md w-full relative text-sm">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+        <DialogContent className="max-w-md text-sm">
+          <DialogClose
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close"
+                className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+              />
+            }
           >
             ×
-          </Button>
-          <h2 className="text-lg font-bold mb-3 pr-8">Add direct app member</h2>
-          <p className="text-slate-500">
-            No eligible org members need a direct app grant.
-          </p>
-          <div className="flex justify-end pt-4">
+          </DialogClose>
+          <DialogHeader>
+            <DialogTitle>Add direct app member</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <p className="text-slate-500">
+              No eligible org members need a direct app grant.
+            </p>
+          </DialogBody>
+          <DialogFooter>
             <Button variant="outline" type="button" onClick={onClose}>
               Close
             </Button>
-          </div>
-        </div>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     );
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <div className="card max-w-md w-full relative text-sm">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+      <DialogContent className="max-w-md text-sm">
+        <DialogClose
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close"
+              className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
+            />
+          }
         >
           ×
-        </Button>
-        <h2 className="text-lg font-bold mb-4 pr-8">Add direct app member</h2>
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add.mutate();
-          }}
-        >
-          <div>
-            <label className="label">Principal</label>
-            <Select
-              items={{
-                "": "— select —",
-                ...Object.fromEntries(
-                  candidates.map((m) => [
-                    m.account_id,
-                    `${m.display_name} (${m.username ?? m.provider_subject.slice(0, 8)})`,
-                  ]),
-                ),
-              }}
-              value={selectedAccount}
-              onValueChange={(v) => setSelectedAccount(v as string)}
-            >
-              <SelectTrigger autoFocus>
-                <SelectValue />
-                <SelectIcon />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">— select —</SelectItem>
-                {candidates.map((m) => (
-                  <SelectItem key={m.account_id} value={m.account_id}>
-                    {m.display_name} ({m.username ?? m.provider_subject.slice(0, 8)})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="label">Role</label>
-            <Select
-              items={{ admin: "admin", publisher: "publisher", viewer: "viewer" }}
-              value={role}
-              onValueChange={(v) => setRole(v as AppMember["app_role"])}
-            >
-              <SelectTrigger>
-                <SelectValue />
-                <SelectIcon />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="admin">admin</SelectItem>
-                <SelectItem value="publisher">publisher</SelectItem>
-                <SelectItem value="viewer">viewer</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <p className="text-xs text-slate-500">
-            Direct app members are for org members who need app-scoped access.
-            Owners and org admins already inherit app administration.
-          </p>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={!selectedAccount || add.isPending}
-            >
-              {add.isPending ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </DialogClose>
+        <DialogHeader>
+          <DialogTitle>Add direct app member</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <form
+            id="add-app-member-form"
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add.mutate();
+            }}
+          >
+            <div>
+              <label className="label">Principal</label>
+              <Select
+                items={{
+                  "": "— select —",
+                  ...Object.fromEntries(
+                    candidates.map((m) => [
+                      m.account_id,
+                      `${m.display_name} (${m.username ?? m.provider_subject.slice(0, 8)})`,
+                    ]),
+                  ),
+                }}
+                value={selectedAccount}
+                onValueChange={(v) => setSelectedAccount(v as string)}
+              >
+                <SelectTrigger autoFocus>
+                  <SelectValue />
+                  <SelectIcon />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— select —</SelectItem>
+                  {candidates.map((m) => (
+                    <SelectItem key={m.account_id} value={m.account_id}>
+                      {m.display_name} ({m.username ?? m.provider_subject.slice(0, 8)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="label">Role</label>
+              <Select
+                items={{ admin: "admin", publisher: "publisher", viewer: "viewer" }}
+                value={role}
+                onValueChange={(v) => setRole(v as AppMember["app_role"])}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                  <SelectIcon />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">admin</SelectItem>
+                  <SelectItem value="publisher">publisher</SelectItem>
+                  <SelectItem value="viewer">viewer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-slate-500">
+              Direct app members are for org members who need app-scoped access.
+              Owners and org admins already inherit app administration.
+            </p>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="add-app-member-form"
+            variant="primary"
+            disabled={!selectedAccount || add.isPending}
+          >
+            {add.isPending ? "Adding…" : "Add"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

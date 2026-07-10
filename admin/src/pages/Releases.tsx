@@ -38,6 +38,14 @@ import {
   TooltipTrigger,
   TooltipContent,
   Checkbox,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+  DialogFooter,
+  DialogClose,
 } from "raft-ui";
 import { useToast } from "../components/Toast";
 import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
@@ -691,17 +699,18 @@ function EditReleaseDialog({
   const scopeValid = scopeType === "full" || scopeValue.trim().length > 0;
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="card max-w-lg w-full relative">
-        <h2 className="text-lg font-bold mb-1">Edit release</h2>
-        <p className="text-xs text-slate-500 mb-3 font-mono">{release.id}</p>
-        {loading && <p className="text-sm text-slate-500">Loading release details...</p>}
-        <div className="space-y-3">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <div>
+            <DialogTitle>Edit release</DialogTitle>
+            <DialogDescription className="font-mono">{release.id}</DialogDescription>
+          </div>
+          <DialogClose />
+        </DialogHeader>
+        <DialogBody>
+          {loading && <p className="text-sm text-slate-500">Loading release details...</p>}
+          <div className="space-y-3">
           <div>
             <label className="label">Release notes</label>
             <textarea
@@ -760,8 +769,9 @@ function EditReleaseDialog({
             <label className="flex-1">Rollout cohort %</label>
             <RolloutPercentInput value={rolloutPercent} onChange={setRolloutPercent} />
           </div>
-        </div>
-        <div className="flex gap-2 justify-end pt-4 mt-3 border-t border-slate-100">
+          </div>
+        </DialogBody>
+        <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={save.isPending}>
             Cancel
           </Button>
@@ -772,9 +782,9 @@ function EditReleaseDialog({
           >
             {save.isPending ? "Saving..." : "Save changes"}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -960,18 +970,18 @@ function NewReleaseDialog({
   });
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="card max-w-xl w-full relative max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-bold mb-1">Draft a new release</h2>
-        <p className="text-xs text-slate-500 mb-3">
-          Draft the release, attach binaries, then publish — all in one flow.
-        </p>
-
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <div>
+            <DialogTitle>Draft a new release</DialogTitle>
+            <DialogDescription>
+              Draft the release, attach binaries, then publish — all in one flow.
+            </DialogDescription>
+          </div>
+          <DialogClose />
+        </DialogHeader>
+        <DialogBody>
         {/* Stepper header */}
         <div className="flex items-center gap-1 mb-4 text-xs">
           {STEP_LABELS.map((label, i) => {
@@ -1219,8 +1229,9 @@ function NewReleaseDialog({
           )}
         </div>
 
+        </DialogBody>
         {/* Wizard nav buttons */}
-        <div className="flex gap-2 justify-between items-center pt-4 mt-3 border-t border-slate-100">
+        <DialogFooter className="justify-between">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -1269,9 +1280,9 @@ function NewReleaseDialog({
               </>
             )}
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -1,6 +1,14 @@
 import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Button, Input } from "raft-ui";
+import {
+  Button,
+  Input,
+  Dialog,
+  DialogContent,
+  DialogBody,
+  DialogFooter,
+  DialogClose,
+} from "raft-ui";
 import { createApp } from "../lib/api";
 import { useToast } from "./Toast";
 
@@ -137,28 +145,10 @@ export function AppCreationWizard({
     step === 3;
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <div className="card max-w-2xl w-full relative">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </Button>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogClose className="absolute top-3 right-3 z-10" />
+        <DialogBody>
 
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-6 text-xs text-slate-500">
@@ -288,7 +278,8 @@ export function AppCreationWizard({
           </div>
         )}
 
-        <div className="flex gap-2 justify-between pt-4 mt-4 border-t border-slate-100">
+        </DialogBody>
+        <DialogFooter className="justify-between">
           <Button
             type="button"
             variant="outline"
@@ -318,8 +309,8 @@ export function AppCreationWizard({
               {create.isPending ? "Creating…" : "Create app + seed defaults"}
             </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

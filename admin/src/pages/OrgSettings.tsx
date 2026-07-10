@@ -54,6 +54,12 @@ import {
   TooltipTrigger,
   TooltipContent,
   Checkbox,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
 } from "raft-ui";
 
 export const ORG_SETTINGS_TABS = [
@@ -651,78 +657,79 @@ function CreateInviteDialog({
       }),
   });
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="card max-w-md w-full relative">
-        <h2 className="text-lg font-bold mb-4">Create member invite link</h2>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate();
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <label className="label">Email</label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="label">Role</label>
-            <Select
-              items={{
-                member: "member (default)",
-                viewer: "viewer (read-only)",
-              }}
-              value={role}
-              onValueChange={(v) => setRole(v as "member" | "viewer")}
-            >
-              <SelectTrigger>
-                <SelectValue />
-                <SelectIcon />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="member">member (default)</SelectItem>
-                <SelectItem value="viewer">viewer (read-only)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="label">Message (optional)</label>
-            <textarea
-              className="input text-xs min-h-[60px]"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={create.isPending || !email.trim()}
-            >
-              {create.isPending ? "Creating…" : "Create invite link"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create member invite link</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <form
+            id="create-invite-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate();
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="label">Email</label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="label">Role</label>
+              <Select
+                items={{
+                  member: "member (default)",
+                  viewer: "viewer (read-only)",
+                }}
+                value={role}
+                onValueChange={(v) => setRole(v as "member" | "viewer")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                  <SelectIcon />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">member (default)</SelectItem>
+                  <SelectItem value="viewer">viewer (read-only)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="label">Message (optional)</label>
+              <textarea
+                className="input text-xs min-h-[60px]"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+              />
+            </div>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="create-invite-form"
+            variant="primary"
+            disabled={create.isPending || !email.trim()}
+          >
+            {create.isPending ? "Creating…" : "Create invite link"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1189,85 +1196,86 @@ function CreateWebhookDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="card max-w-lg w-full relative">
-        <h2 className="text-lg font-bold mb-4">Add webhook</h2>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate();
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <label className="label">URL</label>
-            <Input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/hooks/quiver"
-              required
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="label">Secret (HMAC)</label>
-            <Input
-              type="text"
-              className="font-mono text-xs"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="at-least-16-random-bytes"
-              required
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              Used to sign deliveries via{" "}
-              <code className="font-mono">X-Hands-Signature</code>. Choose a
-              strong secret; receivers must verify the signature.
-            </p>
-          </div>
-          <div>
-            <label className="label">Events (empty = all)</label>
-            <div className="grid grid-cols-2 gap-1">
-              {WEBHOOK_EVENT_TYPES.map((ev) => (
-                <label
-                  key={ev}
-                  className="flex items-center gap-2 text-xs cursor-pointer"
-                >
-                  <Checkbox
-                    checked={events.includes(ev)}
-                    onCheckedChange={() => toggleEvent(ev)}
-                  />
-                  <span className="font-mono">{ev}</span>
-                </label>
-              ))}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Add webhook</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <form
+            id="create-webhook-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate();
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="label">URL</label>
+              <Input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com/hooks/quiver"
+                required
+                autoFocus
+              />
             </div>
-          </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={
-                create.isPending || !url.trim() || secret.trim().length < 8
-              }
-            >
-              {create.isPending ? "Creating…" : "Create webhook"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+            <div>
+              <label className="label">Secret (HMAC)</label>
+              <Input
+                type="text"
+                className="font-mono text-xs"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                placeholder="at-least-16-random-bytes"
+                required
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Used to sign deliveries via{" "}
+                <code className="font-mono">X-Hands-Signature</code>. Choose a
+                strong secret; receivers must verify the signature.
+              </p>
+            </div>
+            <div>
+              <label className="label">Events (empty = all)</label>
+              <div className="grid grid-cols-2 gap-1">
+                {WEBHOOK_EVENT_TYPES.map((ev) => (
+                  <label
+                    key={ev}
+                    className="flex items-center gap-2 text-xs cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={events.includes(ev)}
+                      onCheckedChange={() => toggleEvent(ev)}
+                    />
+                    <span className="font-mono">{ev}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="create-webhook-form"
+            variant="primary"
+            disabled={
+              create.isPending || !url.trim() || secret.trim().length < 8
+            }
+          >
+            {create.isPending ? "Creating…" : "Create webhook"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

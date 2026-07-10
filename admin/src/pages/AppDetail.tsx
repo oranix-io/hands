@@ -11,6 +11,12 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
 } from "raft-ui";
 import { DeviceAnalytics } from "../components/DeviceAnalytics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1116,74 +1122,62 @@ function CreateChannelDialog({
   });
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <div className="card max-w-md w-full relative">
-        <Button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-100"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </Button>
-        <h2 className="text-lg font-bold mb-4 pr-8">New channel</h2>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate();
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <label className="label">Slug</label>
-            <Input
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="label">Name</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="label">Bundle ID override (optional)</label>
-            <Input
-              className="font-mono text-xs"
-              value={bundleId}
-              onChange={(e) => setBundleId(e.target.value)}
-              placeholder="com.example.myapp.beta"
-            />
-          </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              className="btn-primary"
-              disabled={create.isPending}
-            >
-              {create.isPending ? "Creating..." : "Create"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>New channel</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <form
+            id="create-channel-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate();
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="label">Slug</label>
+              <Input
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="label">Name</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="label">Bundle ID override (optional)</label>
+              <Input
+                className="font-mono text-xs"
+                value={bundleId}
+                onChange={(e) => setBundleId(e.target.value)}
+                placeholder="com.example.myapp.beta"
+              />
+            </div>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="create-channel-form"
+            className="btn-primary"
+            disabled={create.isPending}
+          >
+            {create.isPending ? "Creating..." : "Create"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1318,78 +1312,72 @@ function EditChannelDialog({
   });
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-10"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <div className="card max-w-md w-full relative">
-        <Button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute top-3 right-3 text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-100"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </Button>
-        <h2 className="text-lg font-bold mb-4 pr-8">Edit channel '{channel.slug}'</h2>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            save.mutate();
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <label className="label">Slug (immutable)</label>
-            <Input
-              className="font-mono text-xs bg-slate-50"
-              value={channel.slug}
-              readOnly
-            />
-          </div>
-          <div>
-            <label className="label">Name</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="label">Bundle ID override</label>
-            <Input
-              className="font-mono text-xs"
-              value={bundleId}
-              onChange={(e) => setBundleId(e.target.value)}
-              placeholder="com.example.myapp.beta"
-            />
-          </div>
-          <div>
-            <label className="label">Download password</label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="leave blank for no gate"
-            />
-          </div>
-          <div>
-            <label className="label">Git URL</label>
-            <Input
-              className="font-mono text-xs"
-              value={gitUrl}
-              onChange={(e) => setGitUrl(e.target.value)}
-              placeholder="https://github.com/foo/bar/tree/beta"
-            />
-          </div>
-          <div className="flex gap-2 justify-between pt-2 border-t border-slate-100">
+    <>
+      <Dialog
+        open
+        onOpenChange={(open) => { if (!open) onClose(); }}
+      >
+        {/* z-10 keeps this dialog below the nested delete-confirm (z-20),
+            matching the original hand-rolled stacking. */}
+        <DialogContent className="max-w-md z-10" overlay={{ className: "z-10" }}>
+          <DialogHeader>
+            <DialogTitle>Edit channel '{channel.slug}'</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <form
+              id="edit-channel-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                save.mutate();
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="label">Slug (immutable)</label>
+                <Input
+                  className="font-mono text-xs bg-slate-50"
+                  value={channel.slug}
+                  readOnly
+                />
+              </div>
+              <div>
+                <label className="label">Name</label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label">Bundle ID override</label>
+                <Input
+                  className="font-mono text-xs"
+                  value={bundleId}
+                  onChange={(e) => setBundleId(e.target.value)}
+                  placeholder="com.example.myapp.beta"
+                />
+              </div>
+              <div>
+                <label className="label">Download password</label>
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="leave blank for no gate"
+                />
+              </div>
+              <div>
+                <label className="label">Git URL</label>
+                <Input
+                  className="font-mono text-xs"
+                  value={gitUrl}
+                  onChange={(e) => setGitUrl(e.target.value)}
+                  placeholder="https://github.com/foo/bar/tree/beta"
+                />
+              </div>
+            </form>
+          </DialogBody>
+          <DialogFooter className="justify-between">
             <Button
               type="button"
               className="text-red-600 text-sm hover:underline"
@@ -1408,15 +1396,16 @@ function EditChannelDialog({
               </Button>
               <Button
                 type="submit"
+                form="edit-channel-form"
                 className="btn-primary"
                 disabled={save.isPending}
               >
                 {save.isPending ? "Saving…" : "Save"}
               </Button>
             </div>
-          </div>
-        </form>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Channel delete confirmation (typed-confirm + default-channel warning) */}
       <ConfirmActionDialog
@@ -1471,6 +1460,6 @@ function EditChannelDialog({
           setTypedConfirm("");
         }}
       />
-    </div>
+    </>
   );
 }
