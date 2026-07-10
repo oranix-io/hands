@@ -7,10 +7,15 @@ users re-download all of it (a 1.3.0 APK is tens of MB). Delta download ships
 only the difference between the installed version and the new one.
 
 Scope boundary with **#245** (Raft Android Steward): #245 owns the
-client-build quick wins (ABI filtering so x86_64 native libs stay out of the
-release APK, `useLegacyPackaging`/.so compression, size-source analysis).
-Those land first and are independent. This doc owns the **delta capability**
-(server produces patches, SDK applies them) — the larger, cross-cutting win.
+client-build wins. Per AD2's measurements on 1.3.0 (correcting an earlier
+estimate): ABI filtering (PR #542) trims ~16% (26.8→22.8 MB) and is
+independent — land it first. Note two things it does *not* buy us: 1.3.0's
+APK no longer carries `libnetworkkmmcurl.so`, and native libs are already
+compressed via `useLegacyPackaging=true` — so the x86/x86_64 redundancy is
+sub-MB (not the ~8 MB first guessed), and turning `useLegacyPackaging` off
+would *increase* download size, not shrink it. The main update-experience
+lever is therefore this **delta capability** (server produces patches, SDK
+applies them) — the larger, cross-cutting win.
 
 ## Recommended tool: Google archive-patcher
 
