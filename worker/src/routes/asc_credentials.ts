@@ -4,8 +4,10 @@ import { insertAuditLog } from "../lib/permissions";
 import {
   storeAscCredentials,
   getAscCredentialsMeta,
+  getAscCredentials,
   deleteAscCredentials,
 } from "../lib/asc_credentials";
+import { resolveAscAppId, AscApiError } from "../lib/asc_api";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
@@ -78,4 +80,45 @@ export async function handleDeleteAscCredentials(c: AdminContext) {
     payload: {},
   });
   return c.json({ ok: true });
+}
+
+/**
+ * POST /verify — prove the stored credentials work end-to-end: decrypt the
+ * .p8, sign a JWT, and ask App Store Connect for the app record matching
+ * the given bundle id. Read-only against Apple; never returns the key.
+ * Body: { bundle_id: string }.
+ */
+export async function handleVerifyAscCredentials(c: AdminContext) {
+  const appId = c.req.param("appId") ?? "";
+  const encKey = c.env.ASC_CRED_ENC_KEY;
+  if (!encKey) {
+    return c.json({ error: "server is missing ASC_CRED_ENC_KEY" }, 500);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as { bundle_id?: unknown };
+  const bundleId = typeof body.bundle_id === "string" ? body.bundle_id.trim() : "";
+  if (!bundleId) return c.json({ error: "bundle_id is required" }, 400);
+
+  const creds = await getAscCredentials(c.env.DB, encKey, appId);
+  if (!creds) return c.json({ error: "no ASC credentials configured for this app" }, 404);
+
+  try {
+    const ascAppId = await resolveAscAppId(creds, bundleId);
+    return c.json({
+      ok: ascAppId !== null,
+      key_id: creds.key_id,
+      bundle_id: bundleId,
+      asc_app_id: ascAppId,
+      detail: ascAppId
+        ? "Credentials valid; App Store Connect app record found."
+        : "Credentials valid, but no App Store Connect app record matches this bundle id — create it under My Apps first.",
+    });
+  } catch (e) {
+    if (e instanceof AscApiError) {
+      return c.json(
+        { ok: false, key_id: creds.key_id, status: e.status, error: e.message, detail: e.detail },
+        502,
+      );
+    }
+    throw e;
+  }
 }
