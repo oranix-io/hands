@@ -12,7 +12,6 @@
  * Idempotent: existing patches for a from-version are replaced.
  */
 import type { Context } from "hono";
-import { getRandom } from "@cloudflare/containers";
 import type { AdminEnv } from "../middleware/auth";
 import { currentActor } from "../middleware/auth";
 import { createOperation, updateOperation } from "./operations";
@@ -141,6 +140,10 @@ export async function generateDeltaPatchesForBuild(
       const form = new FormData();
       form.append("old", new Blob([oldBytes]), "old.apk");
       form.append("new", new Blob([newBytes]), "new.apk");
+      // Dynamic import so this module carries no static @cloudflare/containers
+      // (cloudflare:workers) dependency — releases.ts imports this file, and a
+      // static container import would break the worker's vitest module graph.
+      const { getRandom } = await import("@cloudflare/containers");
       const container = await getRandom(env.APK_PARSER, 1);
       const res = await container.fetch(
         new Request("http://container/generate-patch", { method: "POST", body: form }),
