@@ -22,7 +22,7 @@ import { Releases } from "./pages/Releases";
 import { AppShares } from "./pages/Shares";
 import { AppFeedback, FeedbackTicketPage } from "./pages/Feedback";
 import { AppCrashes } from "./pages/Crashes";
-import { OrgSettings } from "./pages/OrgSettings";
+import { isOrgSettingsTab, OrgSettings } from "./pages/OrgSettings";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { AppAccess } from "./pages/AppAccess";
 import { OrgSwitcher, useClearOrgCache } from "./components/OrgSwitcher";
@@ -386,9 +386,12 @@ function LegacyPublishRedirect() {
 }
 
 function OrgSettingsRoute() {
-  const { orgId } = useParams();
+  const { orgId, tab } = useParams();
   if (!orgId) return null;
-  return <OrgSettings orgId={orgId} />;
+  if (!isOrgSettingsTab(tab)) {
+    return <Navigate to={`/orgs/${orgId}/general`} replace />;
+  }
+  return <OrgSettings orgId={orgId} tab={tab} />;
 }
 
 function SettingsPage() {
@@ -786,7 +789,7 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
         <Route path="/" element={<Navigate to="/apps" replace />} />
         <Route path="/apps" element={<AppsListWithNav />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/orgs/:orgId" element={<OrgSettingsPage />} />
+        <Route path="/orgs/:orgId/:tab?" element={<OrgSettingsPage />} />
         <Route path="/invites/:token" element={<AcceptInviteRoute />} />
         <Route path="/apps/:appId" element={<AppShell />}>
           <Route index element={<AppDetailRoute />} />

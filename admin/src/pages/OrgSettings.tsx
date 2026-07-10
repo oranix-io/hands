@@ -14,6 +14,7 @@
  */
 
 import { useState } from "react";
+import { NavLink } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createOrgInvite,
@@ -38,10 +39,27 @@ import {
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 
-type Tab = "general" | "members" | "invites" | "audit" | "webhooks";
+export const ORG_SETTINGS_TABS = [
+  "general",
+  "members",
+  "invites",
+  "audit",
+  "webhooks",
+] as const;
 
-export function OrgSettings({ orgId }: { orgId: string }) {
-  const [tab, setTab] = useState<Tab>("general");
+export type OrgSettingsTab = (typeof ORG_SETTINGS_TABS)[number];
+
+export function isOrgSettingsTab(tab: string | undefined): tab is OrgSettingsTab {
+  return ORG_SETTINGS_TABS.some((candidate) => candidate === tab);
+}
+
+export function OrgSettings({
+  orgId,
+  tab,
+}: {
+  orgId: string;
+  tab: OrgSettingsTab;
+}) {
   const me = useQuery({ queryKey: ["auth-me"], queryFn: () => getAuthMe() });
   const account = me.data?.account;
   const currentOrgId = account?.org_id ?? null;
@@ -71,12 +89,13 @@ export function OrgSettings({ orgId }: { orgId: string }) {
       )}
 
       <div className="flex gap-2 mb-4 border-b border-slate-200">
-        {(["general", "members", "invites", "audit", "webhooks"] as Tab[]).map((t) => (
-          <button
+        {ORG_SETTINGS_TABS.map((t) => (
+          <NavLink
             key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm ${
-              tab === t
+            to={`/orgs/${orgId}/${t}`}
+            end
+            className={({ isActive }) => `px-3 py-2 text-sm ${
+              isActive
                 ? "border-b-2 border-blue-600 font-medium text-slate-900"
                 : "text-slate-500 hover:text-slate-700"
             }`}
@@ -90,7 +109,7 @@ export function OrgSettings({ orgId }: { orgId: string }) {
                   : t === "audit"
                     ? "Audit"
                     : "Webhooks"}
-          </button>
+          </NavLink>
         ))}
       </div>
 
