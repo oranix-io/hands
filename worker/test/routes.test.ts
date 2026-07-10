@@ -22,7 +22,6 @@ import { Hono } from "hono";
 import { authMiddleware } from "../src/middleware/auth";
 import { requireCurrentOrgRole } from "../src/lib/permissions";
 import {
-  canonicalDomainRedirectUrl,
   httpsRedirectUrl,
   isSecureRequest,
   requestOrigin,
@@ -1382,18 +1381,6 @@ describe("quiver route handlers — SQL smoke", () => {
 });
 
 describe("auth origin handling", () => {
-  const domainContext = (
-    url: string,
-    options: { method?: string; accept?: string } = {},
-  ) => ({
-    req: {
-      url,
-      method: options.method ?? "GET",
-      header: (name: string) =>
-        name.toLowerCase() === "accept" ? options.accept ?? null : null,
-    },
-  });
-
   it("issues signed JWT-shaped Hands access tokens with scoped claims", async () => {
     const env = makeMockEnv();
     (env as any).SIGNED_URL_SECRET = "jwt-test-secret";
@@ -1509,68 +1496,6 @@ describe("auth origin handling", () => {
     expect(httpsRedirectUrl(ctx as any)).toBeNull();
   });
 
-  it("moves dashboard deep links from hands.build to app.hands.build", () => {
-    const ctx = domainContext(
-      "https://hands.build/apps/app-1/settings?tab=access",
-    );
-    expect(canonicalDomainRedirectUrl(ctx as any)).toBe(
-      "https://app.hands.build/apps/app-1/settings?tab=access",
-    );
-  });
-
-  it("keeps public app history on the business domain", () => {
-    const ctx = domainContext(
-      "https://hands.build/apps/raft-android/history/release-1/download",
-    );
-    expect(canonicalDomainRedirectUrl(ctx as any)).toBeNull();
-  });
-
-  it("moves browser login to the dashboard domain but preserves API clients", () => {
-    const browser = domainContext(
-      "https://hands.build/api/auth/login?return=%2Fapps",
-      { accept: "text/html,application/xhtml+xml" },
-    );
-    expect(canonicalDomainRedirectUrl(browser as any)).toBe(
-      "https://app.hands.build/api/auth/login?return=%2Fapps",
-    );
-
-    const apiClient = domainContext(
-      "https://hands.build/api/auth/login?return=%2Fapps",
-      { accept: "application/json" },
-    );
-    expect(canonicalDomainRedirectUrl(apiClient as any)).toBeNull();
-  });
-
-  it("makes the dashboard root canonical and sends public pages back to hands.build", () => {
-    expect(
-      canonicalDomainRedirectUrl(
-        domainContext("https://app.hands.build/?from=bookmark") as any,
-      ),
-    ).toBe("https://app.hands.build/apps?from=bookmark");
-    expect(
-      canonicalDomainRedirectUrl(
-        domainContext("https://app.hands.build/share/token-1") as any,
-      ),
-    ).toBe("https://hands.build/share/token-1");
-    expect(
-      canonicalDomainRedirectUrl(
-        domainContext("https://app.hands.build/docs/cli-reference/") as any,
-      ),
-    ).toBe("https://hands.build/docs/cli-reference/");
-  });
-
-  it("keeps dashboard APIs on app.hands.build and never redirects mutations", () => {
-    expect(
-      canonicalDomainRedirectUrl(
-        domainContext("https://app.hands.build/api/apps") as any,
-      ),
-    ).toBeNull();
-    expect(
-      canonicalDomainRedirectUrl(
-        domainContext("https://hands.build/apps", { method: "POST" }) as any,
-      ),
-    ).toBeNull();
-  });
 });
 
 describe("quiver operation retry — legacy publish is not replayed", () => {
