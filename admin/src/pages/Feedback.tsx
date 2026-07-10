@@ -19,7 +19,7 @@ import {
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { FeedbackTrends } from "../components/FeedbackTrends";
-import { Button, Input } from "raft-ui";
+import { Button, Input, Select, SelectTrigger, SelectValue, SelectIcon, SelectContent, SelectItem } from "raft-ui";
 
 const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 
@@ -115,26 +115,38 @@ export function AppFeedback({ appId }: { appId: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <select
-            className="input w-auto! py-1.5!"
+          <Select
+            items={{ "": "All statuses", ...Object.fromEntries(STATUSES.map((s) => [s, s])) }}
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onValueChange={(v) => setStatusFilter(v as string)}
           >
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <select
-            className="input w-auto! py-1.5!"
+            <SelectTrigger className="w-auto! py-1.5!">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All statuses</SelectItem>
+              {STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            items={{ "": "All kinds", feedback: "feedback", bug: "bug", crash: "crash" }}
             value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value)}
+            onValueChange={(v) => setKindFilter(v as string)}
           >
-            <option value="">All kinds</option>
-            <option value="feedback">feedback</option>
-            <option value="bug">bug</option>
-            <option value="crash">crash</option>
-          </select>
+            <SelectTrigger className="w-auto! py-1.5!">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All kinds</SelectItem>
+              <SelectItem value="feedback">feedback</SelectItem>
+              <SelectItem value="bug">bug</SelectItem>
+              <SelectItem value="crash">crash</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

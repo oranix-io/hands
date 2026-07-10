@@ -38,7 +38,16 @@ import {
   type WebhookEventType,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
-import { Button, Input } from "raft-ui";
+import {
+  Button,
+  Input,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectIcon,
+  SelectContent,
+  SelectItem,
+} from "raft-ui";
 
 export const ORG_SETTINGS_TABS = [
   "general",
@@ -232,18 +241,27 @@ function MembersTab({
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-base font-semibold">Members</h3>
         <div className="flex items-center gap-2">
-          <select
-            className="input text-xs py-0.5"
+          <Select
+            items={{
+              all: "All types",
+              human: "Humans only",
+              agent: "Agents only",
+            }}
             value={principalFilter}
-            onChange={(e) =>
-              setPrincipalFilter(e.target.value as "all" | "human" | "agent")
+            onValueChange={(v) =>
+              setPrincipalFilter(v as "all" | "human" | "agent")
             }
-            title="Filter by principal type"
           >
-            <option value="all">All types</option>
-            <option value="human">Humans only</option>
-            <option value="agent">Agents only</option>
-          </select>
+            <SelectTrigger className="text-xs py-0.5" title="Filter by principal type">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="human">Humans only</SelectItem>
+              <SelectItem value="agent">Agents only</SelectItem>
+            </SelectContent>
+          </Select>
           <span className="text-xs text-slate-500">
             {filteredMembers.length} member{filteredMembers.length === 1 ? "" : "s"}
             {principalFilter !== "all" && (
@@ -313,25 +331,35 @@ function MembersTab({
                 </td>
                 <td className="py-2 pr-2">
                   {isAdmin && m.account_id !== currentAccountId ? (
-                    <select
-                      className="input text-xs py-0.5"
+                    <Select
+                      items={Object.fromEntries(
+                        (["owner", "admin", "member", "viewer"] as const).map(
+                          (r) => [r, r],
+                        ),
+                      )}
                       value={m.org_role}
-                      onChange={(e) =>
+                      onValueChange={(v) =>
                         update.mutate({
                           accountId: m.account_id,
-                          role: e.target.value as OrgMember["org_role"],
+                          role: v as OrgMember["org_role"],
                         })
                       }
                       disabled={update.isPending}
                     >
-                      {(["owner", "admin", "member", "viewer"] as const).map(
-                        (r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ),
-                      )}
-                    </select>
+                      <SelectTrigger className="text-xs py-0.5">
+                        <SelectValue />
+                        <SelectIcon />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(["owner", "admin", "member", "viewer"] as const).map(
+                          (r) => (
+                            <SelectItem key={r} value={r}>
+                              {r}
+                            </SelectItem>
+                          ),
+                        )}
+                      </SelectContent>
+                    </Select>
                   ) : (
                     <span
                       className="text-xs font-medium"
@@ -442,18 +470,29 @@ function InvitesTab({
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-base font-semibold">Invites</h3>
         <div className="flex items-center gap-2">
-          <select
-            className="input text-xs py-0.5"
+          <Select
+            items={{
+              all: "All statuses",
+              pending: "Pending",
+              accepted: "Accepted",
+              revoked: "Revoked",
+              expired: "Expired",
+            }}
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            title="Filter by invite status"
+            onValueChange={(v) => setStatusFilter(v as string)}
           >
-            <option value="all">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="accepted">Accepted</option>
-            <option value="revoked">Revoked</option>
-            <option value="expired">Expired</option>
-          </select>
+            <SelectTrigger className="text-xs py-0.5" title="Filter by invite status">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="accepted">Accepted</SelectItem>
+              <SelectItem value="revoked">Revoked</SelectItem>
+              <SelectItem value="expired">Expired</SelectItem>
+            </SelectContent>
+          </Select>
           {canManage && (
             <Button
               variant="primary"
@@ -613,16 +652,23 @@ function CreateInviteDialog({
           </div>
           <div>
             <label className="label">Role</label>
-            <select
-              className="input"
+            <Select
+              items={{
+                member: "member (default)",
+                viewer: "viewer (read-only)",
+              }}
               value={role}
-              onChange={(e) =>
-                setRole(e.target.value as "member" | "viewer")
-              }
+              onValueChange={(v) => setRole(v as "member" | "viewer")}
             >
-              <option value="member">member (default)</option>
-              <option value="viewer">viewer (read-only)</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+                <SelectIcon />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">member (default)</SelectItem>
+                <SelectItem value="viewer">viewer (read-only)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="label">Message (optional)</label>

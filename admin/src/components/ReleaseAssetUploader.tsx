@@ -18,7 +18,16 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "raft-ui";
+import {
+  Button,
+  Input,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectIcon,
+  SelectContent,
+  SelectItem,
+} from "raft-ui";
 import {
   createBuildAsset,
   deleteBuildAsset,
@@ -372,34 +381,46 @@ export function PendingFileRow({
 
       {editing && canEdit && (
         <div className="grid grid-cols-3 gap-2 mt-2">
-          <select
-            className="input py-0.5! text-xs!"
+          <Select
+            items={Object.fromEntries(KNOWN_PLATFORMS.map((p) => [p, p]))}
             value={pending.platform}
-            onChange={(e) => onChange({ platform: e.target.value })}
+            onValueChange={(v) => onChange({ platform: v as string })}
           >
-            {KNOWN_PLATFORMS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="py-0.5! text-xs!">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              {KNOWN_PLATFORMS.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             className="py-0.5! text-xs!"
             placeholder="arch (optional)"
             value={pending.arch ?? ""}
             onChange={(e) => onChange({ arch: e.target.value || null })}
           />
-          <select
-            className="input py-0.5! text-xs!"
+          <Select
+            items={Object.fromEntries(KNOWN_FILETYPES.map((f) => [f, f]))}
             value={pending.filetype}
-            onChange={(e) => onChange({ filetype: e.target.value })}
+            onValueChange={(v) => onChange({ filetype: v as string })}
           >
-            {KNOWN_FILETYPES.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="py-0.5! text-xs!">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              {KNOWN_FILETYPES.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {f}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
     </div>

@@ -7,7 +7,7 @@
  */
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "raft-ui";
+import { Button, Input, Select, SelectTrigger, SelectValue, SelectIcon, SelectContent, SelectItem } from "raft-ui";
 import {
   AppShare,
   createReleaseShare,
@@ -318,18 +318,29 @@ function CreateShareModal({
         <h3 className="text-base font-semibold">New share link</h3>
         <label className="block text-xs text-slate-600">
           Release
-          <select
-            className="input mt-1 py-1.5!"
+          <Select
+            items={{
+              "": "Select a release…",
+              ...Object.fromEntries(
+                options.map((r: any) => [r.id, `${r.version_name ?? r.id.slice(0, 8)} · ${r.status}`]),
+              ),
+            }}
             value={releaseId}
-            onChange={(e) => setReleaseId(e.target.value)}
+            onValueChange={(v) => setReleaseId(v as string)}
           >
-            <option value="">Select a release…</option>
-            {options.map((r: any) => (
-              <option key={r.id} value={r.id}>
-                {r.version_name ?? r.id.slice(0, 8)} · {r.status}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="mt-1 py-1.5!">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Select a release…</SelectItem>
+              {options.map((r: any) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.version_name ?? r.id.slice(0, 8)} · {r.status}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <label className="block text-xs text-slate-600">
           Lifetime (days)

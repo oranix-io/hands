@@ -33,7 +33,16 @@ import {
   type App,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
-import { Button, Input } from "raft-ui";
+import {
+  Button,
+  Input,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectIcon,
+  SelectContent,
+  SelectItem,
+} from "raft-ui";
 
 export function AppAccess({ appId }: { appId: string }) {
   const [showAddServer, setShowAddServer] = useState(false);
@@ -454,18 +463,23 @@ function AppMemberList({
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-base font-semibold">Direct app members</h3>
         <div className="flex items-center gap-2">
-          <select
-            className="input w-auto! text-xs py-0.5 pr-7"
+          <Select
+            items={{ all: "All types", human: "Humans only", agent: "Agents only" }}
             value={principalFilter}
-            onChange={(e) =>
-              setPrincipalFilter(e.target.value as "all" | "human" | "agent")
+            onValueChange={(v) =>
+              setPrincipalFilter(v as "all" | "human" | "agent")
             }
-            title="Filter by principal type"
           >
-            <option value="all">All types</option>
-            <option value="human">Humans only</option>
-            <option value="agent">Agents only</option>
-          </select>
+            <SelectTrigger className="w-auto! text-xs py-0.5 pr-7" title="Filter by principal type">
+              <SelectValue />
+              <SelectIcon />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="human">Humans only</SelectItem>
+              <SelectItem value="agent">Agents only</SelectItem>
+            </SelectContent>
+          </Select>
           <span className="text-xs text-slate-500 whitespace-nowrap">
             {filteredMembers.length} member{filteredMembers.length === 1 ? "" : "s"}
             {principalFilter !== "all" && (
@@ -530,23 +544,29 @@ function AppMemberList({
                 </td>
                 <td className="py-2 pr-2">
                   {canManage && m.account_id !== currentAccountId ? (
-                    <select
-                      className="input text-xs py-0.5"
+                    <Select
+                      items={{ admin: "admin", publisher: "publisher", viewer: "viewer" }}
                       value={m.app_role}
-                      onChange={(e) =>
+                      onValueChange={(v) =>
                         update.mutate({
                           accountId: m.account_id,
-                          role: e.target.value as AppMember["app_role"],
+                          role: v as AppMember["app_role"],
                         })
                       }
                       disabled={update.isPending}
                     >
-                      {(["admin", "publisher", "viewer"] as const).map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="text-xs py-0.5">
+                        <SelectValue />
+                        <SelectIcon />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(["admin", "publisher", "viewer"] as const).map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {r}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : (
                     <span className="text-xs font-medium">{m.app_role}</span>
                   )}
@@ -823,31 +843,43 @@ function AddAppDeployTokenDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">Role</label>
-                <select
-                  className="input"
+                <Select
+                  items={{ publisher: "publisher", viewer: "viewer" }}
                   value={role}
-                  onChange={(e) =>
-                    setRole(e.target.value as AppDeployToken["app_role"])
+                  onValueChange={(v) =>
+                    setRole(v as AppDeployToken["app_role"])
                   }
                 >
-                  <option value="publisher">publisher</option>
-                  <option value="viewer">viewer</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                    <SelectIcon />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="publisher">publisher</SelectItem>
+                    <SelectItem value="viewer">viewer</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="label">Expires</label>
-                <select
-                  className="input"
+                <Select
+                  items={{ "30d": "30 days", "90d": "90 days", "365d": "1 year", never: "Never" }}
                   value={expiry}
-                  onChange={(e) =>
-                    setExpiry(e.target.value as "30d" | "90d" | "365d" | "never")
+                  onValueChange={(v) =>
+                    setExpiry(v as "30d" | "90d" | "365d" | "never")
                   }
                 >
-                  <option value="30d">30 days</option>
-                  <option value="90d">90 days</option>
-                  <option value="365d">1 year</option>
-                  <option value="never">Never</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                    <SelectIcon />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30d">30 days</SelectItem>
+                    <SelectItem value="90d">90 days</SelectItem>
+                    <SelectItem value="365d">1 year</SelectItem>
+                    <SelectItem value="never">Never</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <p className="text-xs text-slate-500">
@@ -996,31 +1028,50 @@ function AddAppMemberDialog({
         >
           <div>
             <label className="label">Principal</label>
-            <select
-              className="input"
+            <Select
+              items={{
+                "": "— select —",
+                ...Object.fromEntries(
+                  candidates.map((m) => [
+                    m.account_id,
+                    `${m.display_name} (${m.username ?? m.provider_subject.slice(0, 8)})`,
+                  ]),
+                ),
+              }}
               value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              autoFocus
+              onValueChange={(v) => setSelectedAccount(v as string)}
             >
-              <option value="">— select —</option>
-              {candidates.map((m) => (
-                <option key={m.account_id} value={m.account_id}>
-                  {m.display_name} ({m.username ?? m.provider_subject.slice(0, 8)})
-                </option>
-              ))}
-            </select>
+              <SelectTrigger autoFocus>
+                <SelectValue />
+                <SelectIcon />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">— select —</SelectItem>
+                {candidates.map((m) => (
+                  <SelectItem key={m.account_id} value={m.account_id}>
+                    {m.display_name} ({m.username ?? m.provider_subject.slice(0, 8)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="label">Role</label>
-            <select
-              className="input"
+            <Select
+              items={{ admin: "admin", publisher: "publisher", viewer: "viewer" }}
               value={role}
-              onChange={(e) => setRole(e.target.value as AppMember["app_role"])}
+              onValueChange={(v) => setRole(v as AppMember["app_role"])}
             >
-              <option value="admin">admin</option>
-              <option value="publisher">publisher</option>
-              <option value="viewer">viewer</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+                <SelectIcon />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">admin</SelectItem>
+                <SelectItem value="publisher">publisher</SelectItem>
+                <SelectItem value="viewer">viewer</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <p className="text-xs text-slate-500">
             Direct app members are for org members who need app-scoped access.
@@ -1117,16 +1168,22 @@ function InviteToAppForm({ appId }: { appId: string }) {
               required
               autoFocus
             />
-            <select
-              className="input text-sm"
+            <Select
+              items={{ publisher: "publisher", viewer: "viewer" }}
               value={role}
-              onChange={(e) =>
-                setRole(e.target.value as "publisher" | "viewer")
+              onValueChange={(v) =>
+                setRole(v as "publisher" | "viewer")
               }
             >
-              <option value="publisher">publisher</option>
-              <option value="viewer">viewer</option>
-            </select>
+              <SelectTrigger className="text-sm">
+                <SelectValue />
+                <SelectIcon />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="publisher">publisher</SelectItem>
+                <SelectItem value="viewer">viewer</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <textarea
             className="input text-xs min-h-[40px]"

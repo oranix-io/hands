@@ -1,4 +1,14 @@
-import { Button, Input, Switch } from "raft-ui";
+import {
+  Button,
+  Input,
+  Switch,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectIcon,
+  SelectContent,
+  SelectItem,
+} from "raft-ui";
 import { DeviceAnalytics } from "../components/DeviceAnalytics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -1014,19 +1024,33 @@ function DefaultChannelPicker({
         back to the first channel (by created_at) if unset.
       </p>
       <div className="flex items-center gap-2">
-        <select
-          className="input text-sm flex-1"
+        <Select
+          items={{
+            "": "— none (use first channel) —",
+            ...Object.fromEntries(
+              (channels.data?.channels ?? []).map((c: Channel) => [
+                c.id,
+                `${c.slug} (${c.name})`,
+              ]),
+            ),
+          }}
           value={selected ?? ""}
-          onChange={(e) => setSelected(e.target.value || null)}
+          onValueChange={(v) => setSelected((v as string) || null)}
           disabled={!isOrgAdmin || save.isPending}
         >
-          <option value="">— none (use first channel) —</option>
-          {channels.data?.channels.map((c: Channel) => (
-            <option key={c.id} value={c.id}>
-              {c.slug} ({c.name})
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="text-sm flex-1">
+            <SelectValue />
+            <SelectIcon />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">— none (use first channel) —</SelectItem>
+            {channels.data?.channels.map((c: Channel) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.slug} ({c.name})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {isOrgAdmin && (
           <Button
             className="btn-primary text-xs"

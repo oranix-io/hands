@@ -25,7 +25,16 @@ import {
   type ReleaseScope,
   type ProductType,
 } from "../lib/api";
-import { Button, Input } from "raft-ui";
+import {
+  Button,
+  Input,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectIcon,
+  SelectContent,
+  SelectItem,
+} from "raft-ui";
 import { useToast } from "../components/Toast";
 import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
 import { ReleaseAssetsPanel } from "../components/ReleaseAssetsPanel";
@@ -177,29 +186,52 @@ export function Releases({ appId }: { appId: string }) {
 
       {/* Filters */}
       <div className="card p-3! mb-4 flex flex-wrap gap-3 items-center">
-        <select
-          className="input w-40"
+        <Select
+          items={{
+            all: "All channels",
+            ...Object.fromEntries(
+              (channels.data?.channels ?? []).map((c) => [c.slug, c.slug]),
+            ),
+          }}
           value={channelFilter}
-          onChange={(e) => setChannelFilter(e.target.value)}
+          onValueChange={(v) => setChannelFilter(v as string)}
         >
-          <option value="all">All channels</option>
-          {channels.data?.channels.map((c) => (
-            <option key={c.id} value={c.slug}>
-              {c.slug}
-            </option>
-          ))}
-        </select>
-        <select
-          className="input w-40"
+          <SelectTrigger className="w-40">
+            <SelectValue />
+            <SelectIcon />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All channels</SelectItem>
+            {channels.data?.channels.map((c) => (
+              <SelectItem key={c.id} value={c.slug}>
+                {c.slug}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          items={{
+            all: "All statuses",
+            draft: "Draft",
+            active: "Active",
+            superseded: "Superseded",
+            cancelled: "Cancelled",
+          }}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onValueChange={(v) => setStatusFilter(v as string)}
         >
-          <option value="all">All statuses</option>
-          <option value="draft">Draft</option>
-          <option value="active">Active</option>
-          <option value="superseded">Superseded</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+            <SelectIcon />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="superseded">Superseded</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {releases.isLoading && <p className="text-slate-500">Loading…</p>}
@@ -663,20 +695,31 @@ function EditReleaseDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Scope type</label>
-              <select
-                className="input"
+              <Select
+                items={{
+                  full: "Full",
+                  platform: "Platform",
+                  user_cohort: "User cohort",
+                  ip_range: "IP range",
+                }}
                 value={scopeType}
-                onChange={(e) => {
-                  const next = e.target.value as typeof scopeType;
+                onValueChange={(v) => {
+                  const next = v as typeof scopeType;
                   setScopeType(next);
                   setScopeValue(next === "full" ? "all" : "");
                 }}
               >
-                <option value="full">Full</option>
-                <option value="platform">Platform</option>
-                <option value="user_cohort">User cohort</option>
-                <option value="ip_range">IP range</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                  <SelectIcon />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full">Full</SelectItem>
+                  <SelectItem value="platform">Platform</SelectItem>
+                  <SelectItem value="user_cohort">User cohort</SelectItem>
+                  <SelectItem value="ip_range">IP range</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="label">Scope value</label>
@@ -957,35 +1000,62 @@ function NewReleaseDialog({
               <div className={showProductTypePicker ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
                 <div>
                   <label className="label">Channel</label>
-                  <select
-                    className="input"
+                  <Select
+                    items={{
+                      "": "— pick —",
+                      ...Object.fromEntries(
+                        (channels.data?.channels ?? []).map((c) => [
+                          c.slug,
+                          c.slug,
+                        ]),
+                      ),
+                    }}
                     value={channelSlug}
-                    onChange={(e) => setChannelSlug(e.target.value)}
-                    autoFocus
+                    onValueChange={(v) => setChannelSlug(v as string)}
                   >
-                    <option value="">— pick —</option>
-                    {channels.data?.channels.map((c) => (
-                      <option key={c.id} value={c.slug}>
-                        {c.slug}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger autoFocus>
+                      <SelectValue />
+                      <SelectIcon />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— pick —</SelectItem>
+                      {channels.data?.channels.map((c) => (
+                        <SelectItem key={c.id} value={c.slug}>
+                          {c.slug}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 {showProductTypePicker && (
                   <div>
                     <label className="label">Package type</label>
-                    <select
-                      className="input"
+                    <Select
+                      items={{
+                        "": "— pick —",
+                        ...Object.fromEntries(
+                          targetProductTypes.map((p) => [
+                            p.name,
+                            p.display_name,
+                          ]),
+                        ),
+                      }}
                       value={productType}
-                      onChange={(e) => setProductType(e.target.value)}
+                      onValueChange={(v) => setProductType(v as string)}
                     >
-                      <option value="">— pick —</option>
-                      {targetProductTypes.map((p) => (
-                        <option key={p.name} value={p.name}>
-                          {p.display_name}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger>
+                        <SelectValue />
+                        <SelectIcon />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">— pick —</SelectItem>
+                        {targetProductTypes.map((p) => (
+                          <SelectItem key={p.name} value={p.name}>
+                            {p.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
               </div>
