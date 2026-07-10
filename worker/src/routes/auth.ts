@@ -697,20 +697,6 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
           attachment_id: { type: "string", in: "path", required: true, description: "Attachment UUID from the ticket detail." },
         },
       },
-      {
-        name: "download-feedback-attachment",
-        description:
-          "Download raw attachment bytes directly. NOT for agent transports (bytes get UTF-8-mangled) — use presign-feedback-attachment instead and fetch the URL yourself.",
-        endpoint: {
-          method: "GET",
-          path: "/api/apps/{app_id}/feedback/{ticket_id}/attachments/{attachment_id}",
-        },
-        parameters: {
-          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
-          ticket_id: { type: "string", in: "path", required: true, description: "Ticket UUID or unique short-id prefix." },
-          attachment_id: { type: "string", in: "path", required: true, description: "Attachment UUID from the ticket detail." },
-        },
-      },
     ],
   });
 }
