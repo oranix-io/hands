@@ -34,6 +34,7 @@ jobs:
         with:
           node-version: "22"
           cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Use npm with trusted publishing support
         run: |
@@ -90,10 +91,14 @@ jobs:
       - name: Publish dry run
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: npm publish "${{ steps.pack.outputs.path }}" --access public --dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         run: npm publish "${{ steps.pack.outputs.path }}" --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Summary
         shell: bash
