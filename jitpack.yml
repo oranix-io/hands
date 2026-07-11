@@ -1,0 +1,9 @@
+# JitPack build config for the Hands Android SDK (clients/android).
+# Lets consumers pull the SDK from https://jitpack.io without a GitHub Packages
+# read:packages token. JitPack builds the subdirectory module and publishes it
+# to the local Maven repo; it then serves it as
+#   com.github.botiverse.hands:hands-android-sdk:<tag>
+jdk:
+  - openjdk17
+install:
+  - cd clients/android && gradle --no-daemon -PVERSION_NAME=$VERSION publishToMavenLocal
