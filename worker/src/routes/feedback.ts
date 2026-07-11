@@ -849,9 +849,22 @@ export function parseOhosNativeFrames(logText: string): NativeFrame[] {
   const frames: NativeFrame[] = [];
   const seen = new Set<number>();
 
-  // Lane A — debuggerd-style text backtrace (the canonical HarmonyOS DFX form).
-  const frameRe = /#0*(\d+)\s+pc\s+([0-9a-fA-F]{1,16})\s+(\S+?\.so)\b/i;
-  const buildIdRe = /\bBuildId:\s*([0-9a-fA-F]{8,64})/i;
+  // Lane A — `#NN pc <off> <path>.so …` text backtrace. Covers both the
+  // Kotlin/Native runtime form `… .so (0) [arm64-v8a::<buildid>]` (what our
+  // KMP libshared.so emits — validated against the Kuikly/Bugly OHOS format)
+  // and the HarmonyOS system cppcrash form `… .so(sym+off)(BuildId: <id>)`.
+  const frameRe = /#0*(\d+)\s+pc\s+([0-9a-fA-F]{1,16})\s+(\S+?\.so(?:\.\d+)?)\b/i;
+  // Build id appears in one of three forms across HarmonyOS backtrace sources:
+  //   `(BuildId: <hex>)`        — labeled (some system cppcrash dumps)
+  //   `.so(<hex>)`              — bare hex in parens after the lib (system
+  //                               faultlogger fault-log file form)
+  //   `[<arch>::<hex>]`         — Kotlin/Native runtime backtrace
+  // (a `(symbol+offset)` group is not pure hex, so it never matches these.)
+  const buildIdRes = [
+    /\bBuildId:\s*([0-9a-fA-F]{8,64})/i,
+    /\.so(?:\.\d+)?\(([0-9a-fA-F]{8,64})\)/i,
+    /\[[^\]]*::([0-9a-fA-F]{8,64})\]/,
+  ];
   for (const rawLine of normalized.split("\n")) {
     if (frames.length >= 256) break;
     const line = rawLine.trim();
@@ -866,8 +879,13 @@ export function parseOhosNativeFrames(logText: string): NativeFrame[] {
       offset: `0x${m[2]!.toLowerCase()}`,
       soname: soname.slice(0, 200),
     };
-    const bid = buildIdRe.exec(line);
-    if (bid) frame.build_id = bid[1]!.toLowerCase();
+    for (const re of buildIdRes) {
+      const bid = re.exec(line);
+      if (bid) {
+        frame.build_id = bid[1]!.toLowerCase();
+        break;
+      }
+    }
     frames.push(frame);
     seen.add(index);
   }

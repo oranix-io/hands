@@ -3995,6 +3995,34 @@ describe("quiver public API v2 — scope resolution", () => {
     ]);
   });
 
+  it("parseOhosNativeFrames handles the Kotlin/Native runtime backtrace (Kuikly/Bugly OHOS form)", async () => {
+    const { parseOhosNativeFrames } = await import("../src/routes/feedback");
+    // Real OHOS KN format: build id lives inside [arch::buildid], not (BuildId:).
+    const log = [
+      "Hands OHOS fault log (hiAppEvent)",
+      "--- exception ---",
+      "#00 pc 0000000000168f0b /data/storage/el1/bundle/libs/arm64/libshared.so (0) [arm64-v8a::914bbb25df0b98d1395de2ba65b9274b]",
+      "#01 pc 0000000000012345 /system/lib/ld-musl-aarch64.so.1 (0) [arm64-v8a::deadbeefcafe0011]",
+    ].join("\n");
+    expect(parseOhosNativeFrames(log)).toEqual([
+      { index: 0, offset: "0x0000000000168f0b", soname: "libshared.so", build_id: "914bbb25df0b98d1395de2ba65b9274b" },
+      { index: 1, offset: "0x0000000000012345", soname: "ld-musl-aarch64.so.1", build_id: "deadbeefcafe0011" },
+    ]);
+  });
+
+  it("parseOhosNativeFrames handles the system faultlogger form `.so(<buildid>)`", async () => {
+    const { parseOhosNativeFrames } = await import("../src/routes/feedback");
+    // hiAppEvent external_log fault-file form: bare hex build id in parens.
+    const log =
+      "Hands OHOS fault log (hiAppEvent)\n--- system fault log files (on device) ---\n" +
+      "#00 pc 0000000000006f98 /data/storage/el1/bundle/libs/arm64/libentry.so(996f532bb3d4b6a1a911675ec4a018291d3038c5)\n" +
+      "#01 pc 000000000004a1b8 /system/lib/ld-musl-aarch64.so.1(abort+164)";
+    expect(parseOhosNativeFrames(log)).toEqual([
+      { index: 0, offset: "0x0000000000006f98", soname: "libentry.so", build_id: "996f532bb3d4b6a1a911675ec4a018291d3038c5" },
+      { index: 1, offset: "0x000000000004a1b8", soname: "ld-musl-aarch64.so.1" },
+    ]);
+  });
+
   it("parseOhosNativeFrames handles JSON-escaped newlines and structured frames", async () => {
     const { parseOhosNativeFrames } = await import("../src/routes/feedback");
     // Backtrace embedded as a JSON-stringified string (real newlines escaped).
