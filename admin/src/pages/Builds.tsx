@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  buildAssetDownloadUrl,
+  getBuildAssetDownloadUrl,
   getBuild,
   listBuildAssets,
   listBuilds,
@@ -318,6 +318,7 @@ function BuildStatusBadge({ status }: { status: string }) {
 }
 
 function BuildAssetList({ appId, buildId }: { appId: string; buildId: string }) {
+  const toast = useToast();
   const assets = useQuery({
     queryKey: ["build-assets", appId, buildId],
     queryFn: () => listBuildAssets(appId, buildId),
@@ -357,7 +358,22 @@ function BuildAssetList({ appId, buildId }: { appId: string; buildId: string }) 
                   <Button
                     variant="outline"
                     className="text-xs inline-flex"
-                    render={<a href={buildAssetDownloadUrl(appId, buildId, a.id)} />}
+                    onClick={async () => {
+                      try {
+                        const { download_url } = await getBuildAssetDownloadUrl(
+                          appId,
+                          buildId,
+                          a.id,
+                        );
+                        window.location.href = download_url;
+                      } catch (e) {
+                        toast.show({
+                          kind: "error",
+                          title: "Download failed",
+                          description: (e as Error).message,
+                        });
+                      }
+                    }}
                   >
                     Download
                   </Button>
