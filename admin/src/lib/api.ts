@@ -1057,6 +1057,22 @@ export const buildAssetDownloadUrl = (
 ) =>
   `${API_BASE}/api/apps/${encodeURIComponent(appId)}/builds/${encodeURIComponent(buildId)}/assets/${encodeURIComponent(assetId)}/download`;
 
+/**
+ * Fetch a browser-navigable signed download URL for a build asset. The raw
+ * /download endpoint is Bearer-gated, so a direct <a href> would 401 in the
+ * browser; this authenticated call returns a short-lived signed URL the browser
+ * can open directly.
+ */
+export const getBuildAssetDownloadUrl = (
+  appId: string,
+  buildId: string,
+  assetId: string,
+) =>
+  request<{ download_url: string }>(
+    `/api/apps/${appId}/builds/${buildId}/assets/${assetId}/download?presign=1`,
+    { admin: true },
+  );
+
 export const listReleases = (appId: string) =>
   request<{ releases: Release[] }>(`/api/apps/${appId}/releases`, { admin: true });
 

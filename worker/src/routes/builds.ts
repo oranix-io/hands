@@ -1,6 +1,8 @@
 import type { Context } from "hono";
 import { currentActor, type AdminEnv } from "../middleware/auth";
 import { presignR2DownloadUrl } from "../lib/r2_presign";
+import { generateSignedR2Url } from "./public_v2";
+import { requestOrigin } from "../lib/origin";
 import { emitWebhookEvent } from "./webhooks";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
@@ -521,17 +523,28 @@ export async function handleDownloadBuildAsset(c: Context<{ Bindings: Env }>) {
     contentDisposition,
   }, Number(c.env.R2_PRESIGNED_DOWNLOAD_TTL_SECONDS ?? c.env.SIGNED_URL_TTL_SECONDS ?? "3600"));
   if (c.req.query("presign") === "1") {
-    if (!directUrl) {
-      return c.json({ error: "presigned downloads are unavailable" }, 503);
-    }
     const objectHead = await c.env.APK_BUCKET.head(asset.r2_key);
     if (!objectHead) return c.json({ error: "object not found" }, 404);
+    // Prefer an S3-style presign when R2 S3 credentials are configured; otherwise
+    // fall back to the Worker-signed /public/r2 URL (HMAC over key+expiry with
+    // SIGNED_URL_SECRET — the same mechanism share-page downloads use). Both are
+    // browser-navigable without an Authorization header, so the console can hand
+    // a real download link to the browser even though the API is Bearer-only.
+    const ttl = Number(
+      c.env.R2_PRESIGNED_DOWNLOAD_TTL_SECONDS ?? c.env.SIGNED_URL_TTL_SECONDS ?? "3600",
+    );
+    const downloadUrl =
+      directUrl ?? (await generateSignedR2Url(c.env, asset.r2_key, ttl, requestOrigin(c)));
+    if (!downloadUrl) {
+      return c.json({ error: "presigned downloads are unavailable" }, 503);
+    }
+    // Presign just hands out a link; the download itself isn't counted here.
     return c.json({
       asset_id: asset.id,
       artifact_kind: asset.artifact_kind,
       filetype: asset.filetype,
       size_bytes: asset.size_bytes,
-      download_url: directUrl,
+      download_url: downloadUrl,
     });
   }
   if (directUrl) {
