@@ -784,6 +784,47 @@ export const getTestflightUploadStatus = (appId: string, buildUploadId: string) 
     uploaded_at: string | null;
   }>(`/api/apps/${appId}/testflight-uploads/${buildUploadId}`, { admin: true });
 
+// ---------- App Store review status (read-only) ----------
+
+export interface AppStoreVersionSummary {
+  versionString: string | null;
+  appStoreState: string | null;
+  platform: string | null;
+  createdDate: string | null;
+}
+
+export interface BetaReviewSummary {
+  version: string | null;
+  processingState: string | null;
+  uploadedDate: string | null;
+  betaReviewState: string | null;
+}
+
+/**
+ * Read-only App Store / TestFlight review status for an iOS app. The worker
+ * returns one of a few shapes; the optional fields distinguish them:
+ *  - { applicable: false }                          → non-iOS, hide the panel
+ *  - { configured: false }                          → no ASC credentials
+ *  - { configured: true, bundle_id: null, error }   → no iOS bundle id
+ *  - { configured: true, error }                    → Apple/ASC call failed
+ *  - { configured: true, applicable: true, … }      → data present
+ */
+export interface AppStoreReview {
+  applicable?: boolean;
+  configured?: boolean;
+  platform?: string;
+  bundle_id?: string | null;
+  asc_app_id?: string;
+  app_store_versions?: AppStoreVersionSummary[];
+  testflight_builds?: BetaReviewSummary[];
+  error?: string;
+}
+
+export const getAppStoreReview = (appId: string) =>
+  request<AppStoreReview>(`/api/apps/${appId}/appstore-review`, {
+    admin: true,
+  });
+
 export const listAppDeployTokens = (appId: string) =>
   request<{ deploy_tokens: AppDeployToken[] }>(
     `/api/apps/${appId}/deploy-tokens`,

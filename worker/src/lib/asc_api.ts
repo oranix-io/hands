@@ -275,3 +275,107 @@ export async function getBuildUpload(
   );
   return res.data;
 }
+
+// ---------- App Store review status (read-only) ----------
+
+/**
+ * A version's App Store review lifecycle state, e.g. PREPARE_FOR_SUBMISSION,
+ * WAITING_FOR_REVIEW, IN_REVIEW, PENDING_DEVELOPER_RELEASE,
+ * PENDING_APPLE_RELEASE, READY_FOR_SALE, REJECTED, METADATA_REJECTED,
+ * DEVELOPER_REJECTED, … (Apple keeps adding to this enum; keep it a string).
+ */
+export interface AppStoreVersionSummary {
+  versionString: string | null;
+  appStoreState: string | null;
+  platform: string | null;
+  createdDate: string | null;
+}
+
+/** Recent App Store versions with their review state (newest first, per Apple). */
+export async function getAppStoreVersions(
+  creds: AscApiCredentials,
+  ascAppId: string,
+): Promise<AppStoreVersionSummary[]> {
+  const res = await ascRequest<{
+    data: Array<{
+      attributes?: {
+        versionString?: string | null;
+        appStoreState?: string | null;
+        platform?: string | null;
+        createdDate?: string | null;
+      };
+    }>;
+  }>(
+    creds,
+    "GET",
+    `/v1/apps/${ascAppId}/appStoreVersions?limit=5&fields[appStoreVersions]=versionString,appStoreState,platform,createdDate`,
+  );
+  return (res.data ?? []).map((v) => ({
+    versionString: v.attributes?.versionString ?? null,
+    appStoreState: v.attributes?.appStoreState ?? null,
+    platform: v.attributes?.platform ?? null,
+    createdDate: v.attributes?.createdDate ?? null,
+  }));
+}
+
+/**
+ * A build's TestFlight beta-review state. betaReviewState is
+ * WAITING_FOR_REVIEW / IN_REVIEW / APPROVED / REJECTED, or null when the
+ * build has no beta review submission (e.g. internal-only builds).
+ */
+export interface BetaReviewSummary {
+  version: string | null;
+  processingState: string | null;
+  uploadedDate: string | null;
+  betaReviewState: string | null;
+}
+
+/** Recent builds joined to their betaAppReviewSubmission state (newest first). */
+export async function getBetaReviewStates(
+  creds: AscApiCredentials,
+  ascAppId: string,
+): Promise<BetaReviewSummary[]> {
+  const res = await ascRequest<{
+    data: Array<{
+      attributes?: {
+        version?: string | null;
+        processingState?: string | null;
+        uploadedDate?: string | null;
+      };
+      relationships?: {
+        betaAppReviewSubmission?: {
+          data?: { type: string; id: string } | null;
+        };
+      };
+    }>;
+    included?: Array<{
+      type: string;
+      id: string;
+      attributes?: { betaReviewState?: string | null };
+    }>;
+  }>(
+    creds,
+    "GET",
+    `/v1/apps/${ascAppId}/builds?limit=5&include=betaAppReviewSubmission&fields[builds]=version,processingState,uploadedDate&fields[betaAppReviewSubmissions]=betaReviewState`,
+  );
+
+  // Index the included betaAppReviewSubmissions by id so each build can look
+  // up its submission via the relationship pointer (JSON:API compound doc).
+  const submissions = new Map<string, string | null>();
+  for (const inc of res.included ?? []) {
+    if (inc.type === "betaAppReviewSubmissions") {
+      submissions.set(inc.id, inc.attributes?.betaReviewState ?? null);
+    }
+  }
+
+  return (res.data ?? []).map((b) => {
+    const rel = b.relationships?.betaAppReviewSubmission?.data;
+    const betaReviewState = rel ? submissions.get(rel.id) ?? null : null;
+    return {
+      version: b.attributes?.version ?? null,
+      processingState: b.attributes?.processingState ?? null,
+      uploadedDate: b.attributes?.uploadedDate ?? null,
+      betaReviewState,
+    };
+  });
+}
