@@ -176,7 +176,7 @@ function Header({ account }: { account: AuthAccount }) {
 
   return (
     <header
-      className={`sticky top-0 hidden md:flex h-screen flex-none flex-col border-r border-slate-200 bg-white py-3 transition-[width] duration-150 ${
+      className={`sticky top-0 z-30 hidden h-screen flex-none flex-col border-r border-slate-200 bg-white py-3 transition-[width] duration-150 md:flex ${
         collapsed ? "w-16 items-center" : "w-16 items-stretch md:w-60"
       }`}
     >
@@ -186,21 +186,15 @@ function Header({ account }: { account: AuthAccount }) {
           {!collapsed && <span className="hidden truncate text-sm font-semibold text-slate-900 md:inline">Hands</span>}
         </Link>
         {!collapsed && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-950 md:flex"
-                  onClick={() => setCollapsed(true)}
-                  aria-label="Collapse sidebar"
-                >
-                  <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent>Collapse sidebar</TooltipContent>
-          </Tooltip>
+          <button
+            type="button"
+            className="relative z-10 hidden h-10 w-10 flex-none touch-manipulation items-center justify-center rounded-md text-slate-500 outline-hidden hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-sky-500 md:flex"
+            onClick={() => setCollapsed(true)}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+          </button>
         )}
       </div>
       <nav className="flex min-h-0 w-full flex-1 flex-col items-stretch gap-1 px-2">
@@ -370,21 +364,15 @@ function Header({ account }: { account: AuthAccount }) {
       </nav>
       <div className="relative mt-auto flex w-full flex-col px-2">
         {collapsed && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  className="mb-2 hidden h-9 w-full items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-950 md:flex"
-                  onClick={() => setCollapsed(false)}
-                  aria-label="Expand sidebar"
-                >
-                  <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent side="right">Expand sidebar</TooltipContent>
-          </Tooltip>
+          <button
+            type="button"
+            className="relative z-10 mb-2 hidden h-10 w-full touch-manipulation items-center justify-center rounded-md text-slate-500 outline-hidden hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-sky-500 md:flex"
+            onClick={() => setCollapsed(false)}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+          </button>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger
