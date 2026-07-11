@@ -802,6 +802,34 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         },
       },
       {
+        name: "get-agc-credentials",
+        description:
+          "Get metadata for an OHOS app's encrypted AppGallery Connect credential. Never returns the client secret.",
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/agc-credentials" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
+        },
+      },
+      {
+        name: "set-agc-credentials",
+        description:
+          "Upload or rotate an OHOS app's AGC API client JSON. Requires app admin; the entire document is encrypted and secret fields are never returned.",
+        endpoint: { method: "PUT", path: "/api/apps/{app_id}/agc-credentials" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
+          credential_json: { type: "string", in: "body", required: true, description: "Contents of the AGC api_client JSON file." },
+        },
+      },
+      {
+        name: "verify-agc-credentials",
+        description:
+          "Test the stored AGC API client with an OAuth token exchange. Returns metadata and expiry only, never the access token.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/agc-credentials/verify" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
+        },
+      },
+      {
         name: "list-build-assets",
         description:
           "List every asset attached to a build, including installables, metadata, and symbols.",
