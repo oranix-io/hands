@@ -191,7 +191,7 @@ function Header({ account }: { account: AuthAccount }) {
               render={
                 <button
                   type="button"
-                  className="icon-button hidden h-8 w-8 md:flex"
+                  className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-950 md:flex"
                   onClick={() => setCollapsed(true)}
                   aria-label="Collapse sidebar"
                 >
