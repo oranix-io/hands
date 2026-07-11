@@ -8,6 +8,12 @@ describe("AGC credentials", () => {
   it("parses the real api_client shape without dropping metadata", () => {
     expect(parseAgcCredential(raw)).toMatchObject({ type: "api_client", client_id: "client", region: "CN" });
   });
+  it("accepts Huawei's project_client_id discriminator", () => {
+    expect(parseAgcCredential(raw.replace("api_client", "project_client_id"))).toMatchObject({
+      type: "project_client_id",
+      client_id: "client",
+    });
+  });
   it("rejects malformed and unsupported credentials", () => {
     expect(() => parseAgcCredential("not json")).toThrow(/valid JSON/);
     expect(() => parseAgcCredential({ type: "service_account" })).toThrow(/unsupported/);

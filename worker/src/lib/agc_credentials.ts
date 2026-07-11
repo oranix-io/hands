@@ -38,7 +38,9 @@ export function parseAgcCredential(input: string | unknown): AgcApiClientCredent
   }
   const obj = value as Record<string, unknown>;
   const type = requiredString(obj.type, "type");
-  if (type !== "api_client") throw new Error(`unsupported AGC credential type: ${type}`);
+  if (type !== "api_client" && type !== "project_client_id") {
+    throw new Error(`unsupported AGC credential type: ${type}`);
+  }
   const credential: AgcApiClientCredential = {
     type,
     developer_id: requiredString(obj.developer_id, "developer_id"),
