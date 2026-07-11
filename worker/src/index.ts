@@ -93,6 +93,7 @@ import {
   handleTestflightUpload,
   handleTestflightUploadStatus,
 } from "./routes/testflight";
+import { handleAppStoreReview } from "./routes/appstore_review";
 import { handleGenerateDeltaPatches, handleDeltaSources } from "./routes/delta";
 import { handleUploadApk } from "./routes/upload";
 import {
@@ -787,6 +788,7 @@ admin.get("/api/apps/:appId/asc-credentials", requireAppRole("admin"), handleGet
 admin.post("/api/apps/:appId/asc-credentials/verify", requireAppRole("admin"), handleVerifyAscCredentials);
 admin.post("/api/apps/:appId/builds/:buildId/testflight-upload", requireAppRole("admin"), handleTestflightUpload);
 admin.get("/api/apps/:appId/testflight-uploads/:buildUploadId", requireAppRole("viewer"), handleTestflightUploadStatus);
+admin.get("/api/apps/:appId/appstore-review", requireAppRole("viewer"), handleAppStoreReview);
 admin.put("/api/apps/:appId/asc-credentials", requireAppRole("admin"), handleSetAscCredentials);
 admin.delete("/api/apps/:appId/asc-credentials", requireAppRole("admin"), handleDeleteAscCredentials);
 admin.post(

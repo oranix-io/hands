@@ -19,7 +19,10 @@ import {
   DialogFooter,
   EmptyState,
   EmptyStateTitle,
+  EmptyStateDescription,
   Skeleton,
+  Badge,
+  type BadgeProps,
 } from "raft-ui";
 import { DeviceAnalytics } from "../components/DeviceAnalytics";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -47,6 +50,7 @@ import {
   setAscCredentials,
   deleteAscCredentials,
   verifyAscCredentials,
+  getAppStoreReview,
 } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { Operations } from "./Operations";
@@ -640,6 +644,194 @@ function TestFlightPanel({ appId }: { appId: string }) {
   );
 }
 
+// --- App Store review status (read-only) ---------------------------------
+
+type BadgeVariant = NonNullable<BadgeProps["variant"]>;
+
+/** Map an appStoreState enum to a Badge variant + a human label. */
+function appStoreStateBadge(state: string | null): {
+  variant: BadgeVariant;
+  label: string;
+} {
+  switch (state) {
+    case "READY_FOR_SALE":
+      return { variant: "success", label: "Ready for sale" };
+    case "IN_REVIEW":
+      return { variant: "information", label: "In review" };
+    case "WAITING_FOR_REVIEW":
+      return { variant: "warning", label: "Waiting for review" };
+    case "PENDING_DEVELOPER_RELEASE":
+      return { variant: "accent", label: "Pending developer release" };
+    case "PENDING_APPLE_RELEASE":
+      return { variant: "accent", label: "Pending Apple release" };
+    case "PREPARE_FOR_SUBMISSION":
+      return { variant: "muted", label: "Preparing" };
+    case "REJECTED":
+      return { variant: "danger", label: "Rejected" };
+    case "METADATA_REJECTED":
+      return { variant: "danger", label: "Metadata rejected" };
+    case "DEVELOPER_REJECTED":
+      return { variant: "danger", label: "Developer rejected" };
+    default:
+      // Unknown/other states (e.g. PROCESSING_FOR_APP_STORE): show verbatim.
+      return {
+        variant: "muted",
+        label: state ? state.replace(/_/g, " ").toLowerCase() : "Unknown",
+      };
+  }
+}
+
+/** Map a TestFlight betaReviewState to a Badge variant + label. */
+function betaReviewStateBadge(state: string | null): {
+  variant: BadgeVariant;
+  label: string;
+} {
+  switch (state) {
+    case "APPROVED":
+      return { variant: "success", label: "Approved" };
+    case "IN_REVIEW":
+      return { variant: "information", label: "In review" };
+    case "WAITING_FOR_REVIEW":
+      return { variant: "warning", label: "Waiting for review" };
+    case "REJECTED":
+      return { variant: "danger", label: "Rejected" };
+    default:
+      return { variant: "muted", label: "No beta review" };
+  }
+}
+
+function AppStoreReviewPanel({ appId }: { appId: string; app: App }) {
+  // Non-iOS apps never render this panel — the parent guards on
+  // app.platform === "ios" (mirrors the worker's applicable:false response).
+  const review = useQuery({
+    queryKey: ["appstore-review", appId],
+    queryFn: () => getAppStoreReview(appId),
+  });
+
+  const data = review.data;
+  const versions = data?.app_store_versions ?? [];
+  const builds = data?.testflight_builds ?? [];
+  const current = versions[0];
+  const currentBadge = current ? appStoreStateBadge(current.appStoreState) : null;
+
+  return (
+    <div className="border-t border-slate-100 pt-3">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-medium">App Store review status</div>
+            {currentBadge && (
+              <Badge variant={currentBadge.variant}>{currentBadge.label}</Badge>
+            )}
+          </div>
+          <div className="text-xs text-slate-500">
+            Live review state of this app's recent App Store versions and
+            TestFlight builds, from App Store Connect. Read-only.
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        {review.isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : data?.configured === false ? (
+          <EmptyState>
+            <EmptyStateTitle>App Store Connect not configured</EmptyStateTitle>
+            <EmptyStateDescription>
+              Add ASC credentials in the TestFlight settings above to see review
+              status.
+            </EmptyStateDescription>
+          </EmptyState>
+        ) : data?.bundle_id === null ? (
+          <EmptyState>
+            <EmptyStateTitle>No iOS bundle ID</EmptyStateTitle>
+            <EmptyStateDescription>
+              Set a bundle ID on one of this app's channels to resolve its App
+              Store Connect record.
+            </EmptyStateDescription>
+          </EmptyState>
+        ) : data?.error ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Could not load review status from App Store Connect: {data.error}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <div className="text-xs font-medium text-slate-600 mb-1">
+                Recent App Store versions
+              </div>
+              {versions.length === 0 ? (
+                <div className="text-xs text-slate-400">
+                  No App Store versions yet.
+                </div>
+              ) : (
+                <ul className="space-y-1">
+                  {versions.map((v, i) => {
+                    const b = appStoreStateBadge(v.appStoreState);
+                    return (
+                      <li
+                        key={`${v.versionString}-${i}`}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <span className="font-mono">
+                          {v.versionString ?? "—"}
+                        </span>
+                        <Badge variant={b.variant}>{b.label}</Badge>
+                        {(v.appStoreState === "REJECTED" ||
+                          v.appStoreState === "METADATA_REJECTED" ||
+                          v.appStoreState === "DEVELOPER_REJECTED") && (
+                          <span className="text-xs text-slate-400">
+                            (see App Store Connect for the rejection details)
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <div className="text-xs font-medium text-slate-600 mb-1">
+                Recent TestFlight builds — beta review
+              </div>
+              {builds.length === 0 ? (
+                <div className="text-xs text-slate-400">
+                  No builds on App Store Connect yet.
+                </div>
+              ) : (
+                <ul className="space-y-1">
+                  {builds.map((bld, i) => {
+                    const b = betaReviewStateBadge(bld.betaReviewState);
+                    return (
+                      <li
+                        key={`${bld.version}-${i}`}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <span className="font-mono">{bld.version ?? "—"}</span>
+                        <Badge variant={b.variant}>{b.label}</Badge>
+                        {bld.processingState &&
+                          bld.processingState !== "VALID" && (
+                            <span className="text-xs text-slate-400">
+                              {bld.processingState.toLowerCase()}
+                            </span>
+                          )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PublicHistoryToggle({ appId, app }: { appId: string; app: App }) {
   const toast = useToast();
   const qc = useQueryClient();
@@ -861,6 +1053,9 @@ export function AppSettings({ appId }: { appId: string }) {
 
         {/* TestFlight upload credentials — iOS apps only */}
         {app.platform === "ios" && <TestFlightPanel appId={appId} />}
+
+        {/* App Store review status (read-only) — iOS apps only */}
+        {app.platform === "ios" && <AppStoreReviewPanel appId={appId} app={app} />}
 
         {/* Default release channel picker */}
         <DefaultChannelPicker appId={appId} app={app} isOrgAdmin={isOrgAdmin} />
