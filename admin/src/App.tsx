@@ -715,7 +715,12 @@ function AuditRoute() {
 
 function TestflightRoute() {
   const { appId } = useParams();
+  const apps = useQuery({ queryKey: ["apps"], queryFn: listApps });
+  const app = apps.data?.apps.find((candidate) => candidate.id === appId);
   if (!appId) return null;
+  if (app && app.platform !== "ios") {
+    return <Navigate to={`/apps/${appId}/builds`} replace />;
+  }
   return <Testflight key={appId} appId={appId} />;
 }
 
@@ -1308,7 +1313,7 @@ const APP_NAV_SECTIONS: Array<{
       { to: "channels", label: "Channels", icon: Radio },
       { to: "releases", label: "Releases", icon: Rocket },
       { to: "builds", label: "Builds", icon: Package },
-      { to: "testflight", label: "TestFlight", icon: Plane },
+      { to: "testflight", label: "TestFlight", icon: Plane, platform: "ios" },
       { to: "appstore", label: "App Store", icon: Store, platform: "ios" },
       { to: "shares", label: "Shares", icon: Share2 },
     ],
