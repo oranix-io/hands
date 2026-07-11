@@ -63,7 +63,19 @@ import {
   EmptyState,
   EmptyStateTitle,
   Skeleton,
+  Tabs,
+  TabsList,
+  TabsTab,
+  TabsIndicator,
 } from "raft-ui";
+
+const ORG_SETTINGS_TAB_LABELS: Record<OrgSettingsTab, string> = {
+  general: "General",
+  members: "Members",
+  invites: "Invites",
+  audit: "Audit",
+  webhooks: "Webhooks",
+};
 
 export const ORG_SETTINGS_TABS = [
   "general",
@@ -114,30 +126,23 @@ export function OrgSettings({
         </div>
       )}
 
-      <div className="flex gap-2 mb-4 border-b border-slate-200">
-        {ORG_SETTINGS_TABS.map((t) => (
-          <NavLink
-            key={t}
-            to={`/orgs/${orgId}/${t}`}
-            end
-            className={({ isActive }) => `px-3 py-2 text-sm ${
-              isActive
-                ? "border-b-2 border-blue-600 font-medium text-slate-900"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {t === "general"
-              ? "General"
-              : t === "members"
-                ? "Members"
-                : t === "invites"
-                  ? "Invites"
-                  : t === "audit"
-                    ? "Audit"
-                    : "Webhooks"}
-          </NavLink>
-        ))}
-      </div>
+      {/* Visual-only Tabs: navigation stays with NavLink; the controlled
+          `value` is the active tab (already resolved from the route by the
+          parent route component) so the sliding indicator tracks it. */}
+      <Tabs value={tab} className="mb-4">
+        <TabsList>
+          {ORG_SETTINGS_TABS.map((t) => (
+            <TabsTab
+              key={t}
+              value={t}
+              render={<NavLink to={`/orgs/${orgId}/${t}`} end />}
+            >
+              {ORG_SETTINGS_TAB_LABELS[t]}
+            </TabsTab>
+          ))}
+          <TabsIndicator />
+        </TabsList>
+      </Tabs>
 
       {tab === "general" && (
         <div className="card p-4! text-sm space-y-2">

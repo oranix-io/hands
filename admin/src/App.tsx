@@ -46,6 +46,10 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  Tabs,
+  TabsList,
+  TabsTab,
+  TabsIndicator,
 } from "raft-ui";
 import { AppsList } from "./pages/AppsList";
 import { AppChannels, AppDetail, AppSettings } from "./pages/AppDetail";
@@ -450,67 +454,48 @@ function Header({ account }: { account: AuthAccount }) {
 
 function AppContextNav() {
   const { appId } = useParams();
+  const location = useLocation();
   if (!appId) return null;
   const base = `/apps/${appId}`;
-  const tabClass = ({ isActive }: { isActive: boolean }) =>
-    `inline-flex h-9 items-center rounded-md px-3 text-sm ${
-      isActive
-        ? "bg-slate-100 font-medium text-slate-950"
-        : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-    }`;
+  // Derive the active tab (visual only) from the current route. The first path
+  // segment after the app base maps to a tab value; the bare base is "overview".
+  // Sub-routes without a tab (testflight/crashes/access) resolve to a value that
+  // matches no tab, so no indicator shows — matching the old NavLink behavior.
+  const rest = location.pathname.slice(base.length).replace(/^\//, "");
+  const currentValue = rest === "" ? "overview" : (rest.split("/")[0] ?? "overview");
 
   return (
     <div className="bg-white border-b border-slate-200 -mt-px">
-      <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-1 overflow-x-auto">
-        <NavLink
-          to={base}
-          end
-          className={tabClass}
-        >
-          Overview
-        </NavLink>
-        <NavLink
-          to={`${base}/channels`}
-          className={tabClass}
-        >
-          Channels
-        </NavLink>
-        <NavLink
-          to={`${base}/releases`}
-          className={tabClass}
-        >
-          Releases
-        </NavLink>
-        <NavLink
-          to={`${base}/shares`}
-          className={tabClass}
-        >
-          Shares
-        </NavLink>
-        <NavLink
-          to={`${base}/feedback`}
-          className={tabClass}
-        >
-          Feedback
-        </NavLink>
-        <NavLink
-          to={`${base}/builds`}
-          className={tabClass}
-        >
-          Builds
-        </NavLink>
-        <NavLink
-          to={`${base}/audit`}
-          className={tabClass}
-        >
-          Audit
-        </NavLink>
-        <NavLink
-          to={`${base}/settings`}
-          className={tabClass}
-        >
-          Settings
-        </NavLink>
+      <div className="max-w-5xl mx-auto px-4 py-2 overflow-x-auto">
+        <Tabs value={currentValue}>
+          <TabsList>
+            <TabsTab value="overview" render={<NavLink to={base} end />}>
+              Overview
+            </TabsTab>
+            <TabsTab value="channels" render={<NavLink to={`${base}/channels`} />}>
+              Channels
+            </TabsTab>
+            <TabsTab value="releases" render={<NavLink to={`${base}/releases`} />}>
+              Releases
+            </TabsTab>
+            <TabsTab value="shares" render={<NavLink to={`${base}/shares`} />}>
+              Shares
+            </TabsTab>
+            <TabsTab value="feedback" render={<NavLink to={`${base}/feedback`} />}>
+              Feedback
+            </TabsTab>
+            <TabsTab value="builds" render={<NavLink to={`${base}/builds`} />}>
+              Builds
+            </TabsTab>
+            <TabsTab value="audit" render={<NavLink to={`${base}/audit`} />}>
+              Audit
+            </TabsTab>
+            <TabsTab value="settings" render={<NavLink to={`${base}/settings`} />}>
+              Settings
+            </TabsTab>
+            <TabsIndicator />
+          </TabsList>
+        </Tabs>
       </div>
     </div>
   );
