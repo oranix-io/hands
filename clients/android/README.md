@@ -4,7 +4,11 @@ Android SDK for Hands server-side update checks and APK installation.
 
 ## Coordinates
 
-Pulled from JitPack — no token, no registry credentials.
+Two ways to consume the SDK. **JitPack needs no token** — prefer it unless you
+already have GitHub Packages set up. (GitHub Packages' Maven registry requires a
+`read:packages` token for every request, even though the package is public.)
+
+### JitPack (no token)
 
 ```kotlin
 repositories {
@@ -13,6 +17,24 @@ repositories {
 
 dependencies {
     implementation("com.github.botiverse:hands:android-sdk-v0.10.2")
+}
+```
+
+### GitHub Packages (needs a `read:packages` token)
+
+```kotlin
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/botiverse/hands")
+        credentials {
+            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+            password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+
+dependencies {
+    implementation("build.hands:hands-android-sdk:0.10.2")
 }
 ```
 
@@ -44,7 +66,8 @@ The server resolves release scope, rollout, version comparison, and APK asset se
 
 ## Release
 
-Push a tag `android-sdk-v<version>` (e.g. `android-sdk-v0.10.2`). JitPack builds
-that tag on the first request for it, so consumers can immediately pull
-`com.github.botiverse:hands:android-sdk-v<version>` — no publish step or token
-needed.
+Push a tag `android-sdk-v<version>` (e.g. `android-sdk-v0.10.2`). That publishes to
+GitHub Packages (`build.hands:hands-android-sdk:<version>`) and, on the first
+request, builds the same version on JitPack
+(`com.github.botiverse:hands:android-sdk-v<version>`) — so both channels stay in
+sync from one tag. Or run the `Publish Android SDK` workflow manually.
