@@ -230,7 +230,7 @@ function AppNamePanel({ appId, app }: { appId: string; app: App }) {
   });
   const dirty = name.trim().length > 0 && name.trim() !== app.name;
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium">App name</div>
         <div className="text-xs text-slate-500">
@@ -240,7 +240,7 @@ function AppNamePanel({ appId, app }: { appId: string; app: App }) {
         </div>
       </div>
       <Input
-        className="h-8! w-56 text-sm!"
+        className="h-8! w-full md:w-56 text-sm!"
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
@@ -274,7 +274,7 @@ function AppDescriptionPanel({ appId, app }: { appId: string; app: App }) {
   });
   const dirty = description.trim() !== (app.description ?? "");
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-3">
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium">Description</div>
         <div className="text-xs text-slate-500">
@@ -283,7 +283,7 @@ function AppDescriptionPanel({ appId, app }: { appId: string; app: App }) {
         </div>
       </div>
       <textarea
-        className="input w-72 text-sm! h-16! resize-y"
+        className="input w-full md:w-72 text-sm! h-16! resize-y"
         value={description}
         placeholder="What is this app?"
         onChange={(e) => setDescription(e.target.value)}
@@ -319,7 +319,7 @@ function ClientKeyPanel({ appId }: { appId: string }) {
   });
   const key = keyQuery.data?.client_key ?? null;
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium">Client key</div>
         <div className="text-xs text-slate-500">
@@ -335,36 +335,38 @@ function ClientKeyPanel({ appId }: { appId: string }) {
           </div>
         )}
       </div>
-      {key && (
-        <>
-          <Button
-            variant="outline"
-            onClick={() => setRevealed((v) => !v)}
-          >
-            {revealed ? "Hide" : "Reveal"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              navigator.clipboard?.writeText(key);
-              toast.show({ kind: "success", title: "Client key copied" });
-            }}
-          >
-            Copy
-          </Button>
-        </>
-      )}
-      <Button
-        variant="outline"
-        disabled={rotate.isPending}
-        onClick={() => {
-          if (window.confirm("Rotate the client key? Older client builds stop reporting until they carry the new key.")) {
-            rotate.mutate();
-          }
-        }}
-      >
-        {rotate.isPending ? "…" : key ? "Rotate" : "Generate"}
-      </Button>
+      <div className="flex flex-wrap gap-2 md:contents">
+        {key && (
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setRevealed((v) => !v)}
+            >
+              {revealed ? "Hide" : "Reveal"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard?.writeText(key);
+                toast.show({ kind: "success", title: "Client key copied" });
+              }}
+            >
+              Copy
+            </Button>
+          </>
+        )}
+        <Button
+          variant="outline"
+          disabled={rotate.isPending}
+          onClick={() => {
+            if (window.confirm("Rotate the client key? Older client builds stop reporting until they carry the new key.")) {
+              rotate.mutate();
+            }
+          }}
+        >
+          {rotate.isPending ? "…" : key ? "Rotate" : "Generate"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -456,7 +458,7 @@ function TestFlightPanel({ appId }: { appId: string }) {
 
   return (
     <div className="border-t border-slate-100 pt-3">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium">TestFlight</div>
           <div className="text-xs text-slate-500">
@@ -477,7 +479,7 @@ function TestFlightPanel({ appId }: { appId: string }) {
           )}
         </div>
         {meta && !editing && (
-          <>
+          <div className="flex flex-wrap gap-2 md:contents">
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -516,7 +518,7 @@ function TestFlightPanel({ appId }: { appId: string }) {
             >
               {remove.isPending ? "…" : "Remove"}
             </Button>
-          </>
+          </div>
         )}
       </div>
 
@@ -560,7 +562,7 @@ function TestFlightPanel({ appId }: { appId: string }) {
               <li>Paste all three below and save.</li>
             </ol>
           )}
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 md:flex-row">
             <label className="flex-1 text-xs text-slate-600">
               Key ID
               <Input
@@ -746,7 +748,7 @@ function AppIconUploader({ appId, slug }: { appId: string; slug: string }) {
       }),
   });
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <img
         src={`${publicAppIconUrl(slug)}${bust ? `?v=${bust}` : ""}`}
         alt=""
@@ -760,7 +762,7 @@ function AppIconUploader({ appId, slug }: { appId: string; slug: string }) {
           (e.target as HTMLImageElement).style.visibility = "visible";
         }}
       />
-      <div>
+      <div className="min-w-0">
         <div className="text-sm font-medium">App icon</div>
         <div className="text-xs text-slate-500">
           Shown on share/download pages. PNG/WebP/JPEG, max 1MB.
@@ -1051,7 +1053,7 @@ function DefaultChannelPicker({
         Pre-fills the channel dropdown in the New Release dialog. Falls
         back to the first channel (by created_at) if unset.
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <Select
           items={{
             "": "— none (use first channel) —",

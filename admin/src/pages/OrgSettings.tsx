@@ -802,6 +802,7 @@ function AuditTab({
         </EmptyState>
       )}
       {audit.data && audit.data.logs.length > 0 && (
+        <div className="overflow-x-auto max-w-full">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-slate-500 text-left border-b border-slate-100">
@@ -861,6 +862,7 @@ function AuditTab({
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

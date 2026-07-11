@@ -41,7 +41,7 @@ function AuditEntry({ entry }: { entry: AuditLogEntry }) {
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
           <span className="badge-blue">{entry.action}</span>
           <ActorBadge
             displayName={actorName}
@@ -54,7 +54,7 @@ function AuditEntry({ entry }: { entry: AuditLogEntry }) {
           {new Date(entry.created_at).toLocaleString()}
         </span>
       </div>
-      <pre className="text-xs bg-slate-50 p-2 rounded-sm overflow-x-auto">
+      <pre className="text-xs bg-slate-50 p-2 rounded-sm overflow-x-auto max-w-full whitespace-pre">
         {JSON.stringify(payload, null, 2)}
       </pre>
     </div>
@@ -75,12 +75,12 @@ function ActorBadge({
   const isAgent = actorType === "agent";
   const isSystem = actorType === "system";
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-1.5 flex-wrap min-w-0">
       <Avatar size="xs" type={isAgent ? "agent" : "human"}>
         {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
         <AvatarFallback>{displayName.slice(0, 1).toUpperCase()}</AvatarFallback>
       </Avatar>
-      <span className="text-sm font-medium">{displayName}</span>
+      <span className="text-sm font-medium min-w-0 break-words">{displayName}</span>
       {isAgent && <span className="badge-purple text-[10px]">agent</span>}
       {isSystem && <span className="badge-gray text-[10px]">system</span>}
       {username && (
