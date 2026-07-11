@@ -206,7 +206,7 @@ function AgcTestingPanel({ appId, build, packageName }: { appId: string; build: 
     mutationFn: () => startAgcInvitationTest(appId, build.id, packageName!),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agc-build-submission", appId, build.id] });
-      toast.show({ kind: "success", title: "Uploaded to AppGallery testing", description: "Huawei is compiling the App Pack." });
+      toast.show({ kind: "success", title: "Build uploaded to AppGallery", description: "Huawei is compiling the App Pack. Testing has not been submitted." });
     },
     onError: (e) => toast.show({ kind: "error", title: "AppGallery upload failed", description: (e as Error).message }),
   });
@@ -226,7 +226,7 @@ function AgcTestingPanel({ appId, build, packageName }: { appId: string; build: 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agc-submission", appId, submission?.id] });
       qc.invalidateQueries({ queryKey: ["agc-build-submission", appId, build.id] });
-      toast.show({ kind: "success", title: "Submitted for invitation testing review" });
+      toast.show({ kind: "success", title: "Submitted to invitation testing" });
     },
     onError: (e) => toast.show({ kind: "error", title: "Review submission failed", description: (e as Error).message }),
   });
@@ -236,7 +236,7 @@ function AgcTestingPanel({ appId, build, packageName }: { appId: string; build: 
   return (
     <div className="mt-2 pt-2 border-t border-slate-100">
       <div className="flex items-center gap-2 flex-wrap text-xs">
-        <span className="badge-gray">AppGallery testing</span>
+        <span className="badge-gray">AppGallery</span>
         {!submission || state === "failed" ? (
           <Tooltip>
             <TooltipTrigger
@@ -247,12 +247,12 @@ function AgcTestingPanel({ appId, build, packageName }: { appId: string; build: 
                   disabled={upload.isPending || build.status !== "succeeded" || !packageName}
                   onClick={() => upload.mutate()}
                 >
-                  {upload.isPending ? "Uploading…" : state === "failed" ? "Retry upload" : "Upload to AppGallery testing"}
+                  {upload.isPending ? "Uploading build…" : state === "failed" ? "Retry build upload" : "Upload build to AppGallery"}
                 </Button>
               }
             />
             <TooltipContent>
-              {!packageName ? "Set the channel bundle ID first" : build.status !== "succeeded" ? "Build must be succeeded" : "Upload the signed .app and create an invitation-test version"}
+              {!packageName ? "Set the channel bundle ID first" : build.status !== "succeeded" ? "Build must be succeeded" : "Upload the signed .app and wait for Huawei build processing"}
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -262,17 +262,17 @@ function AgcTestingPanel({ appId, build, packageName }: { appId: string; build: 
             className="py-1! px-2! text-xs!"
             disabled={submit.isPending}
             onClick={() => {
-              if (window.confirm("Submit this AppGallery invitation-test version for review?")) submit.mutate();
+              if (window.confirm("Submit this uploaded build to AppGallery invitation testing?")) submit.mutate();
             }}
           >
-            {submit.isPending ? "Submitting…" : "Submit testing review"}
+            {submit.isPending ? "Submitting…" : "Submit to invitation testing"}
           </Button>
         )}
-        {state && <span className={`font-medium ${stateClass}`}>{state === "processing" ? "Huawei processing…" : state.replaceAll("_", " ")}</span>}
+        {state && <span className={`font-medium ${stateClass}`}>{state === "processing" ? "Huawei processing build…" : state === "ready" ? "Build uploaded" : state.replaceAll("_", " ")}</span>}
       </div>
       {submission?.error_message && <p className="mt-1 text-xs text-red-700">{submission.error_message}</p>}
-      {state === "ready" && <p className="mt-1 text-xs text-slate-500">Package compiled and bound. Review submission remains a separate confirmation.</p>}
-      {state === "testing_review" && <p className="mt-1 text-xs text-green-700">Submitted to AppGallery invitation testing review.</p>}
+      {state === "ready" && <p className="mt-1 text-xs text-slate-500">Build compiled and ready. Invitation testing has not been submitted.</p>}
+      {state === "testing_review" && <p className="mt-1 text-xs text-green-700">Build submitted to AppGallery invitation testing review.</p>}
     </div>
   );
 }

@@ -838,7 +838,7 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
       },
       {
         name: "start-agc-invitation-test",
-        description: "Upload a signed OHOS App Pack from a Hands build to a new AGC invitation-test version. Creates a draft operation and does not submit review.",
+        description: "Upload a signed OHOS App Pack from a Hands build and wait for Huawei package processing. Creates an unsubmitted draft version; it does not enter testing or submit review.",
         endpoint: { method: "POST", path: "/api/apps/{app_id}/builds/{build_id}/agc-invitation-test" },
         parameters: {
           app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
@@ -859,7 +859,7 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
       },
       {
         name: "submit-agc-invitation-test",
-        description: "Explicitly submit a ready AGC invitation-test version for review. This is the human approval gate.",
+        description: "Explicitly submit a previously uploaded, ready build to AGC invitation testing review. This is the human approval gate.",
         endpoint: { method: "POST", path: "/api/apps/{app_id}/agc-submissions/{submission_id}/submit" },
         parameters: {
           app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
