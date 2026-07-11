@@ -16,7 +16,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.botiverse:hands:android-sdk-v0.10.2")
+    implementation("com.github.botiverse:hands:android-sdk-v0.11.0")
 }
 ```
 
@@ -34,7 +34,7 @@ repositories {
 }
 
 dependencies {
-    implementation("build.hands:hands-android-sdk:0.10.2")
+    implementation("build.hands:hands-android-sdk:0.11.0")
 }
 ```
 
@@ -66,7 +66,7 @@ The server resolves release scope, rollout, version comparison, and APK asset se
 
 ## Release
 
-Push a tag `android-sdk-v<version>` (e.g. `android-sdk-v0.10.2`). That publishes to
+Push a tag `android-sdk-v<version>` (e.g. `android-sdk-v0.11.0`). That publishes to
 GitHub Packages (`build.hands:hands-android-sdk:<version>`) and, on the first
 request, builds the same version on JitPack
 (`com.github.botiverse:hands:android-sdk-v<version>`) — so both channels stay in
