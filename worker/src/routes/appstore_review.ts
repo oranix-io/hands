@@ -44,22 +44,24 @@ export async function handleAppStoreReview(c: AdminContext) {
   const creds = await getAscCredentials(c.env.DB, encKey, appId);
   if (!creds) return c.json({ configured: false });
 
-  // Resolve the iOS bundle id from this app's channels. Prefer the "main"
-  // channel; otherwise take the earliest-created channel that carries one.
+  // Use the production ("main") channel's bundle id — the App Store record is the
+  // production app. We deliberately do NOT fall back to preview/nightly channels:
+  // those carry beta bundle ids (e.g. foo.preview) that are not real App Store
+  // records, and silently guessing one is misleading. If main has no bundle id,
+  // report that it needs configuring rather than inventing one.
   const bundleRow = await c.env.DB.prepare(
-    `SELECT bundle_id FROM channels
-     WHERE app_id = ?1 AND bundle_id IS NOT NULL AND bundle_id != ''
-     ORDER BY CASE WHEN slug = 'main' THEN 0 ELSE 1 END, created_at ASC
-     LIMIT 1`,
+    `SELECT bundle_id FROM channels WHERE app_id = ?1 AND slug = 'main' LIMIT 1`,
   )
     .bind(appId)
-    .first<{ bundle_id: string }>();
-  const bundleId = bundleRow?.bundle_id ?? null;
+    .first<{ bundle_id: string | null }>();
+  const bundleId = (bundleRow?.bundle_id ?? "").trim() || null;
   if (!bundleId) {
     return c.json({
       configured: true,
+      applicable: true,
       bundle_id: null,
-      error: "no iOS bundle id on any channel",
+      needs_bundle_id: true,
+      error: "No App Store bundle id is set on the main channel.",
     });
   }
 
