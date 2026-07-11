@@ -837,6 +837,36 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         },
       },
       {
+        name: "start-agc-invitation-test",
+        description: "Upload a signed OHOS App Pack from a Hands build to a new AGC invitation-test version. Creates a draft operation and does not submit review.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/builds/{build_id}/agc-invitation-test" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
+          build_id: { type: "string", in: "path", required: true, description: "Hands build UUID." },
+          package_name: { type: "string", in: "body", required: true, description: "HarmonyOS bundle name, for example build.raft.mobile." },
+          test_desc: { type: "string", in: "body", required: false, description: "Invitation-test description, up to 50 characters." },
+          onshelf_self_detect: { type: "boolean", in: "body", required: false, description: "Run Huawei store self-check in addition to invitation-test review." },
+        },
+      },
+      {
+        name: "get-agc-submission",
+        description: "Refresh AGC package compilation state and bind the package when ready.",
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/agc-submissions/{submission_id}" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
+          submission_id: { type: "string", in: "path", required: true, description: "Hands market submission UUID." },
+        },
+      },
+      {
+        name: "submit-agc-invitation-test",
+        description: "Explicitly submit a ready AGC invitation-test version for review. This is the human approval gate.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/agc-submissions/{submission_id}/submit" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "OHOS app UUID." },
+          submission_id: { type: "string", in: "path", required: true, description: "Hands market submission UUID." },
+        },
+      },
+      {
         name: "list-build-assets",
         description:
           "List every asset attached to a build, including installables, metadata, and symbols.",
