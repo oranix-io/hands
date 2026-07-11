@@ -46,10 +46,6 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-  Tabs,
-  TabsList,
-  TabsTab,
-  TabsIndicator,
 } from "raft-ui";
 import { AppsList } from "./pages/AppsList";
 import { AppChannels, AppDetail, AppSettings } from "./pages/AppDetail";
@@ -180,7 +176,7 @@ function Header({ account }: { account: AuthAccount }) {
 
   return (
     <header
-      className={`sticky top-0 flex h-screen flex-none flex-col border-r border-slate-200 bg-white py-3 transition-[width] duration-150 ${
+      className={`sticky top-0 hidden md:flex h-screen flex-none flex-col border-r border-slate-200 bg-white py-3 transition-[width] duration-150 ${
         collapsed ? "w-16 items-center" : "w-16 items-stretch md:w-60"
       }`}
     >
@@ -452,52 +448,200 @@ function Header({ account }: { account: AuthAccount }) {
   );
 }
 
-function AppContextNav() {
-  const { appId } = useParams();
+// Mobile-only top navigation. Below `md` the vertical sidebar (`Header`) is
+// hidden, so this horizontal bar provides the same navigation: org/app
+// switchers + account menu on one row, and the section links (sourced from the
+// SAME `APP_NAV_SECTIONS` const the desktop rail uses) as a horizontally
+// scrollable chip row. It is `md:hidden` and sticky at the top on mobile.
+function MobileTopNav({ account }: { account: AuthAccount }) {
+  const navigate = useNavigate();
   const location = useLocation();
-  if (!appId) return null;
-  const base = `/apps/${appId}`;
-  // Derive the active tab (visual only) from the current route. The first path
-  // segment after the app base maps to a tab value; the bare base is "overview".
-  // Sub-routes without a tab (testflight/crashes/access) resolve to a value that
-  // matches no tab, so no indicator shows — matching the old NavLink behavior.
-  const rest = location.pathname.slice(base.length).replace(/^\//, "");
-  const currentValue = rest === "" ? "overview" : (rest.split("/")[0] ?? "overview");
+  const appId = location.pathname.startsWith("/apps/")
+    ? location.pathname.split("/")[2] ?? null
+    : null;
+  const orgs = useQuery({
+    queryKey: ["orgs"],
+    queryFn: () => listOrgs(),
+    enabled: !!account.id,
+  });
+  const apps = useQuery({ queryKey: ["apps"], queryFn: listApps });
+  const switchOrg = useClearOrgCache();
+  const currentOrg = orgs.data?.orgs.find((org) => org.id === account.org_id);
+  const currentApp = apps.data?.apps.find((app) => app.id === appId);
+  const otherApps = (apps.data?.apps ?? []).filter(
+    (app) => app.id !== appId && !app.archived,
+  );
+  const appBase = appId ? `/apps/${appId}` : null;
+  const onLogout = async () => {
+    await logout();
+    clearActiveOrgId();
+    window.location.assign("/");
+  };
+
+  const chip = ({ isActive }: { isActive: boolean }) =>
+    `inline-flex flex-none items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ${
+      isActive
+        ? "bg-slate-100 font-medium text-slate-950"
+        : "text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+    }`;
 
   return (
-    <div className="bg-white border-b border-slate-200 -mt-px">
-      <div className="max-w-5xl mx-auto px-4 py-2 overflow-x-auto">
-        <Tabs value={currentValue}>
-          <TabsList>
-            <TabsTab value="overview" render={<NavLink to={base} end />}>
-              Overview
-            </TabsTab>
-            <TabsTab value="channels" render={<NavLink to={`${base}/channels`} />}>
-              Channels
-            </TabsTab>
-            <TabsTab value="releases" render={<NavLink to={`${base}/releases`} />}>
-              Releases
-            </TabsTab>
-            <TabsTab value="shares" render={<NavLink to={`${base}/shares`} />}>
-              Shares
-            </TabsTab>
-            <TabsTab value="feedback" render={<NavLink to={`${base}/feedback`} />}>
-              Feedback
-            </TabsTab>
-            <TabsTab value="builds" render={<NavLink to={`${base}/builds`} />}>
-              Builds
-            </TabsTab>
-            <TabsTab value="audit" render={<NavLink to={`${base}/audit`} />}>
-              Audit
-            </TabsTab>
-            <TabsTab value="settings" render={<NavLink to={`${base}/settings`} />}>
-              Settings
-            </TabsTab>
-            <TabsIndicator />
-          </TabsList>
-        </Tabs>
+    <header className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200 bg-white px-3 py-2 md:hidden">
+      <div className="flex items-center gap-2">
+        <Link to="/" aria-label="Hands" className="flex flex-none items-center">
+          <QuiverMark className="h-8 w-8" />
+        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left hover:bg-slate-100"
+                aria-label={`Organization ${currentOrg?.name ?? account.server_slug ?? account.server_id}`}
+              >
+                <span className="flex h-6 w-6 flex-none items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600">
+                  {(currentOrg?.name ?? account.server_slug ?? "O").slice(0, 1).toUpperCase()}
+                </span>
+                <span className="truncate text-sm font-medium text-slate-800">
+                  {currentOrg?.name ?? account.server_slug ?? "Organization"}
+                </span>
+                <ChevronDown className="h-4 w-4 flex-none text-slate-400" aria-hidden="true" />
+              </button>
+            }
+          />
+          <DropdownMenuContent side="bottom" align="start" className="w-72">
+            <OrgSwitcher
+              currentOrgId={account.org_id ?? null}
+              buttonLabel="Switch organization"
+              onSwitch={(org) => {
+                switchOrg(org);
+                window.location.assign("/apps");
+              }}
+            />
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {appId && appBase && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left hover:bg-slate-100"
+                  aria-label="Switch app"
+                >
+                  <span className="flex h-6 w-6 flex-none items-center justify-center rounded-md bg-sky-50 text-[10px] font-semibold text-sky-700">
+                    {(currentApp?.name ?? "A").slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="truncate text-sm font-medium text-slate-800">
+                    {currentApp?.name ?? "Loading app…"}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 flex-none text-slate-400" aria-hidden="true" />
+                </button>
+              }
+            />
+            <DropdownMenuContent side="bottom" align="start" className="w-64">
+              {otherApps.map((app) => (
+                <DropdownMenuItem
+                  key={app.id}
+                  onClick={() => {
+                    const section = location.pathname.split("/")[3] ?? "";
+                    navigate(section ? `/apps/${app.id}/${section}` : `/apps/${app.id}`);
+                  }}
+                >
+                  <span className="truncate">{app.name}</span>
+                  <span className="badge-blue ml-auto">{app.platform}</span>
+                </DropdownMenuItem>
+              ))}
+              {otherApps.length === 0 && (
+                <div className="px-3 py-2 text-xs text-slate-400">No other apps</div>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem render={<Link to="/apps?new=1" />}>
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" /> New app
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link to="/apps?all=1" />}>
+                <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> All apps
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <div className="ml-auto flex-none">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="flex items-center rounded-md p-1 hover:bg-slate-100"
+                  title={`${account.display_name} · ${account.server_slug || account.server_id}`}
+                >
+                  <Avatar
+                    size="sm"
+                    type={account.principal_type === "agent" ? "agent" : "human"}
+                    className="border border-slate-200"
+                  >
+                    {account.avatar_url ? (
+                      <AvatarImage src={account.avatar_url} alt="" />
+                    ) : null}
+                    <AvatarFallback>
+                      {account.display_name.slice(0, 1).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              }
+            />
+            <DropdownMenuContent side="bottom" align="end" className="w-64">
+              <DropdownMenuLabel>
+                <div className="font-medium text-slate-900 flex items-center gap-1">
+                  {account.display_name}
+                  {account.principal_type === "agent" && (
+                    <span className="badge-purple text-xs" title="Raft agent principal">
+                      agent
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {account.server_slug || account.server_id}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {account.principal_type === "agent" ? "Raft agent" : "Raft user"}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem render={<Link to="/settings" />}>
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-red-600" onClick={onLogout}>
+                <span>Logout</span>
+                <span aria-hidden="true">↗</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
-    </div>
+      <nav className="flex gap-1 overflow-x-auto">
+        {appId && appBase ? (
+          APP_NAV_SECTIONS.flatMap((section) => section.items).map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.label}
+                to={item.to ? `${appBase}/${item.to}` : appBase}
+                end={item.end ?? false}
+                className={chip}
+              >
+                <Icon className="h-4 w-4 flex-none" aria-hidden="true" />
+                <span className="whitespace-nowrap">{item.label}</span>
+              </NavLink>
+            );
+          })
+        ) : (
+          <NavLink to="/apps" end className={chip}>
+            <LayoutGrid className="h-4 w-4 flex-none" aria-hidden="true" />
+            <span className="whitespace-nowrap">Apps</span>
+          </NavLink>
+        )}
+      </nav>
+    </header>
   );
 }
 
@@ -1009,6 +1153,7 @@ function AuthenticatedApp({ account }: { account: AuthAccount }) {
     <div className="min-h-screen flex">
       <Header account={account} />
       <div className="min-w-0 flex-1 flex flex-col">
+      <MobileTopNav account={account} />
       <Routes>
         <Route path="/" element={<Navigate to="/apps" replace />} />
         <Route path="/apps" element={<AppsListWithNav />} />
@@ -1160,9 +1305,6 @@ function AppShell() {
   return (
     <div className="flex flex-1 min-h-0 items-stretch">
       <div className="min-w-0 flex-1">
-        <div className="md:hidden">
-          <AppContextNav />
-        </div>
         <main className="w-full px-8 py-6">
         <Routes>
           <Route index element={<AppDetailRoute />} />
