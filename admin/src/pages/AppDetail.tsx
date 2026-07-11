@@ -747,15 +747,37 @@ function AppStoreReviewPanel({ appId }: { appId: string; app: App }) {
           </EmptyState>
         ) : data?.bundle_id === null ? (
           <EmptyState>
-            <EmptyStateTitle>No iOS bundle ID</EmptyStateTitle>
+            <EmptyStateTitle>No App Store bundle ID configured</EmptyStateTitle>
             <EmptyStateDescription>
-              Set a bundle ID on one of this app's channels to resolve its App
-              Store Connect record.
+              Set the production App Store bundle ID on the{" "}
+              <a
+                href={`/apps/${appId}/channels`}
+                className="underline font-medium"
+              >
+                main channel
+              </a>{" "}
+              (Channels tab). Only the main channel's bundle ID is used —
+              preview/nightly channels are ignored, so their beta bundle IDs won't
+              be picked up here.
             </EmptyStateDescription>
           </EmptyState>
         ) : data?.error ? (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Could not load review status from App Store Connect: {data.error}
+            {data.bundle_id && (
+              <div className="mt-1">
+                Bundle ID{" "}
+                <span className="font-mono">{data.bundle_id}</span> is set on the
+                main channel. If it doesn't match your App Store app, update it in{" "}
+                <a
+                  href={`/apps/${appId}/channels`}
+                  className="underline font-medium"
+                >
+                  Channels
+                </a>
+                .
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
