@@ -296,51 +296,20 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
   ];
   await c.env.DB.batch(statements);
 
-  // Crash tickets: deobfuscate the stack in the background using the
-  // proguard-mapping asset stored for this version_code.
-  if (kind === "crash" && attachmentRows.length > 0) {
-    const logKey = attachmentRows[0]!.r2Key;
-    const run = () => retraceCrashTicket(c.env, app.id, ticketId, versionCode, logKey);
-    try {
-      c.executionCtx.waitUntil(run());
-    } catch {
-      run().catch(() => {});
-    }
-  }
-
-  // Native crashes: symbolicate frames against the native-symbols asset.
-  const nativeFrames = parseNativeFrames(metadata["crash_native_frames"]);
-  if (kind === "crash" && nativeFrames.length > 0) {
+  // Crash tickets: symbolicate in the background (retrace / native / OHOS / dSYM
+  // lanes) and record the result on the ticket's symbolicated_stack /
+  // symbolication_status fields. See dispatchSymbolication.
+  if (kind === "crash") {
+    const logKey = attachmentRows.length > 0 ? attachmentRows[0]!.r2Key : null;
     const run = () =>
-      symbolicateNativeCrashTicket(c.env, app.id, ticketId, versionCode, nativeFrames);
-    try {
-      c.executionCtx.waitUntil(run());
-    } catch {
-      run().catch(() => {});
-    }
-  }
-
-  // OHOS crashes: the HarmonyOS SDK captures cppcrash/NativeCrash faults via
-  // hiAppEvent and uploads them as a text fault log (no structured
-  // crash_native_frames). Parse the debuggerd-style backtrace out of that log
-  // server-side into native frames, then reuse the native-symbols lane. Gated
-  // on platform so non-OHOS crashes don't pay for the extra log fetch.
-  if (kind === "crash" && app.platform === "ohos" && attachmentRows.length > 0) {
-    const logKey = attachmentRows[0]!.r2Key;
-    const run = () => symbolicateOhosCrashTicket(c.env, app.id, ticketId, versionCode, logKey);
-    try {
-      c.executionCtx.waitUntil(run());
-    } catch {
-      run().catch(() => {});
-    }
-  }
-
-  // iOS crashes: symbolicate frames against the dSYM asset.
-  const dsymImages = parseBinaryImages(metadata["crash_binary_images"]);
-  const dsymFrames = parseCrashFrames(metadata["crash_frames"]);
-  if (kind === "crash" && dsymImages.length > 0 && dsymFrames.length > 0) {
-    const run = () =>
-      symbolicateDsymCrashTicket(c.env, app.id, ticketId, versionCode, dsymImages, dsymFrames);
+      dispatchSymbolication(
+        c.env,
+        { id: app.id, platform: app.platform },
+        ticketId,
+        versionCode,
+        metadata,
+        logKey,
+      );
     try {
       c.executionCtx.waitUntil(run());
     } catch {
@@ -623,6 +592,76 @@ function crashSignature(metadata: Record<string, unknown>): string | null {
   return `${exc || "UnknownException"}@${normFrame}`.slice(0, 300);
 }
 
+export type SymbolicationStatus =
+  | "pending"
+  | "symbolicated"
+  | "no_symbols"
+  | "unsymbolicated"
+  | "failed"
+  | "not_applicable";
+
+// Higher rank wins when several lanes touch one ticket (e.g. an Android crash
+// with both a Java stack and native frames): a real symbolicated stack must
+// never be downgraded to "no_symbols".
+const SYMBOLICATION_RANK: Record<SymbolicationStatus, number> = {
+  pending: 0,
+  not_applicable: 1,
+  failed: 2,
+  unsymbolicated: 3,
+  no_symbols: 4,
+  symbolicated: 5,
+};
+
+/** Clear a ticket's symbolication fields before a fresh run (ingest or re-run). */
+export async function resetSymbolication(env: Env, ticketId: string): Promise<void> {
+  const now = Date.now();
+  await env.DB.prepare(
+    `UPDATE feedback_tickets
+     SET symbolication_status = 'pending', symbolicated_stack = NULL,
+         symbolicated_at = ?1, updated_at = ?2
+     WHERE id = ?3`,
+  )
+    .bind(now, now, ticketId)
+    .run();
+}
+
+/**
+ * Persist one lane's symbolication result on the ticket — the first-class
+ * replacement for the old synthetic `quiver-symbolicate` comments (#136).
+ * Appends the labeled block to `symbolicated_stack` (lanes run sequentially, so
+ * this read-modify-write is race-free) and raises `symbolication_status` to the
+ * best result seen so far.
+ */
+export async function appendSymbolication(
+  env: Env,
+  ticketId: string,
+  label: string,
+  status: SymbolicationStatus,
+  text: string | null,
+): Promise<void> {
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    "SELECT symbolicated_stack, symbolication_status FROM feedback_tickets WHERE id = ?1",
+  )
+    .bind(ticketId)
+    .first<{ symbolicated_stack: string | null; symbolication_status: string | null }>();
+  if (!row) return;
+  const prev = (row.symbolication_status as SymbolicationStatus | null) ?? "pending";
+  const nextStatus = SYMBOLICATION_RANK[status] >= SYMBOLICATION_RANK[prev] ? status : prev;
+  let stack = row.symbolicated_stack;
+  if (text && text.trim()) {
+    const block = `[${label}]\n${text.trim()}`;
+    stack = (stack ? `${stack}\n\n${block}` : block).slice(0, 40_000);
+  }
+  await env.DB.prepare(
+    `UPDATE feedback_tickets
+     SET symbolication_status = ?1, symbolicated_stack = ?2, symbolicated_at = ?3, updated_at = ?4
+     WHERE id = ?5`,
+  )
+    .bind(nextStatus, stack, now, now, ticketId)
+    .run();
+}
+
 /**
  * Best-effort deobfuscation: find the proguard-mapping build asset for the
  * crash's version_code, fetch the crash log, run the container retrace tool,
@@ -646,7 +685,17 @@ export async function retraceCrashTicket(
     )
       .bind(appId, versionCode)
       .first<{ r2_key: string }>();
-    if (!mapping) return;
+    if (!mapping) {
+      await appendSymbolication(
+        env,
+        ticketId,
+        "android-r8",
+        "no_symbols",
+        `No proguard-mapping asset for version_code ${versionCode}. ` +
+          "Publish the build with its R8 mapping (quiver builds publish-android --mapping).",
+      );
+      return;
+    }
 
     const [mappingObj, logObj] = await Promise.all([
       env.APK_BUCKET.get(mapping.r2_key),
@@ -671,19 +720,13 @@ export async function retraceCrashTicket(
     const { retraced } = (await res.json()) as { retraced?: string };
     if (!retraced || !retraced.trim()) return;
 
-    const body =
-      "Deobfuscated stack trace (auto-retraced from build mapping):\n\n" +
-      retraced.trim().slice(0, 20_000);
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO feedback_comments (id, ticket_id, author_actor, body, internal, created_at)
-         VALUES (?1, ?2, 'quiver-retrace', ?3, 1, ?4)`,
-      ).bind(crypto.randomUUID(), ticketId, body, Date.now()),
-      env.DB.prepare("UPDATE feedback_tickets SET updated_at = ?1 WHERE id = ?2").bind(
-        Date.now(),
-        ticketId,
-      ),
-    ]);
+    await appendSymbolication(
+      env,
+      ticketId,
+      "android-r8",
+      "symbolicated",
+      retraced.trim().slice(0, 20_000),
+    );
   } catch (err) {
     console.error(
       `[retrace] failed for ticket ${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -749,18 +792,6 @@ export async function symbolicateNativeCrashTicket(
 ): Promise<void> {
   try {
     if (versionCode === null || frames.length === 0) return;
-    const appendComment = async (body: string) => {
-      await env.DB.batch([
-        env.DB.prepare(
-          `INSERT INTO feedback_comments (id, ticket_id, author_actor, body, internal, created_at)
-           VALUES (?1, ?2, 'quiver-symbolicate', ?3, 1, ?4)`,
-        ).bind(crypto.randomUUID(), ticketId, body, Date.now()),
-        env.DB.prepare("UPDATE feedback_tickets SET updated_at = ?1 WHERE id = ?2").bind(
-          Date.now(),
-          ticketId,
-        ),
-      ]);
-    };
 
     const symbols = await env.DB.prepare(
       `SELECT ba.r2_key FROM build_assets ba
@@ -773,9 +804,13 @@ export async function symbolicateNativeCrashTicket(
       .first<{ r2_key: string }>();
     if (!symbols) {
       const ids = [...new Set(frames.map((f) => f.build_id).filter(Boolean))].join(", ");
-      await appendComment(
-        `Native crash could not be symbolicated: no 'native-symbols' build asset ` +
-          `for version_code ${versionCode}${ids ? ` (crash BuildId: ${ids})` : ""}. ` +
+      await appendSymbolication(
+        env,
+        ticketId,
+        "native",
+        "no_symbols",
+        `No 'native-symbols' build asset for version_code ${versionCode}` +
+          `${ids ? ` (crash BuildId: ${ids})` : ""}. ` +
           `Publish the build with its unstripped .so archive (${publishHint}).`,
       );
       return;
@@ -810,9 +845,12 @@ export async function symbolicateNativeCrashTicket(
       const outcome = r?.resolved ?? (r?.error ? `?? (${r.error})` : "??");
       return `#${String(f.index).padStart(2, "0")} ${f.offset} ${f.soname} — ${outcome}`;
     });
-    await appendComment(
-      "Symbolicated native stack (auto-resolved from native-symbols):\n\n" +
-        lines.join("\n").slice(0, 20_000),
+    await appendSymbolication(
+      env,
+      ticketId,
+      "native",
+      "symbolicated",
+      lines.join("\n").slice(0, 20_000),
     );
   } catch (err) {
     console.error(
@@ -1061,18 +1099,6 @@ export async function symbolicateDsymCrashTicket(
 ): Promise<void> {
   try {
     if (versionCode === null || frames.length === 0 || images.length === 0) return;
-    const appendComment = async (body: string) => {
-      await env.DB.batch([
-        env.DB.prepare(
-          `INSERT INTO feedback_comments (id, ticket_id, author_actor, body, internal, created_at)
-           VALUES (?1, ?2, 'quiver-symbolicate', ?3, 1, ?4)`,
-        ).bind(crypto.randomUUID(), ticketId, body, Date.now()),
-        env.DB.prepare("UPDATE feedback_tickets SET updated_at = ?1 WHERE id = ?2").bind(
-          Date.now(),
-          ticketId,
-        ),
-      ]);
-    };
 
     // Map each frame to its containing image → { index, offset(hex), image }.
     const containerFrames: Array<{ index: number; offset: string; image: string }> = [];
@@ -1101,9 +1127,13 @@ export async function symbolicateDsymCrashTicket(
       .first<{ r2_key: string }>();
     if (!dsym) {
       const uuids = [...new Set(images.map((i) => i.uuid).filter(Boolean))].slice(0, 6).join(", ");
-      await appendComment(
-        `iOS crash could not be symbolicated: no 'dsym' build asset for ` +
-          `version_code ${versionCode}${uuids ? ` (image UUIDs: ${uuids})` : ""}. ` +
+      await appendSymbolication(
+        env,
+        ticketId,
+        "ios-dsym",
+        "no_symbols",
+        `No 'dsym' build asset for version_code ${versionCode}` +
+          `${uuids ? ` (image UUIDs: ${uuids})` : ""}. ` +
           `Publish the build with its dSYM archive (hands builds publish-ios --dsym).`,
       );
       return;
@@ -1138,9 +1168,12 @@ export async function symbolicateDsymCrashTicket(
       const outcome = r?.resolved ?? (r?.error ? `?? (${r.error})` : "??");
       return `#${String(cf.index).padStart(2, "0")} ${cf.image} ${cf.offset} — ${outcome}`;
     });
-    await appendComment(
-      "Symbolicated iOS stack (auto-resolved from dSYM):\n\n" +
-        lines.join("\n").slice(0, 20_000),
+    await appendSymbolication(
+      env,
+      ticketId,
+      "ios-dsym",
+      "symbolicated",
+      lines.join("\n").slice(0, 20_000),
     );
   } catch (err) {
     console.error(
@@ -1163,19 +1196,6 @@ export async function symbolicateMinidumpCrashTicket(
   minidumpR2Key: string,
 ): Promise<void> {
   try {
-    const appendComment = async (body: string) => {
-      await env.DB.batch([
-        env.DB.prepare(
-          `INSERT INTO feedback_comments (id, ticket_id, author_actor, body, internal, created_at)
-           VALUES (?1, ?2, 'quiver-symbolicate', ?3, 1, ?4)`,
-        ).bind(crypto.randomUUID(), ticketId, body, Date.now()),
-        env.DB.prepare("UPDATE feedback_tickets SET updated_at = ?1 WHERE id = ?2").bind(
-          Date.now(),
-          ticketId,
-        ),
-      ]);
-    };
-
     const dumpObj = await env.APK_BUCKET.get(minidumpR2Key);
     if (!dumpObj) return;
     const dumpBytes = await dumpObj.arrayBuffer();
@@ -1225,19 +1245,82 @@ export async function symbolicateMinidumpCrashTicket(
       `Symbolicated Electron crash (minidump-stackwalk` +
       `${symBytes ? "" : ", no breakpad-symbols asset — module+offset only"}):` +
       `${parsed.crash_reason ? `\nReason: ${parsed.crash_reason}${parsed.crash_address ? ` @ ${parsed.crash_address}` : ""}` : ""}`;
-    await appendComment(`${header}\n\n${stack}`.slice(0, 20_000));
-
-    if (!symBytes && versionCode !== null) {
-      await appendComment(
-        `Tip: upload the version's Breakpad symbols (dump_syms → quiver builds ` +
+    const tip =
+      !symBytes && versionCode !== null
+        ? `\n\nTip: upload the version's Breakpad symbols (dump_syms → quiver builds ` +
           `publish-electron --symbols) for version_code ${versionCode} to get ` +
-          `function/file:line resolution instead of raw module+offset.`,
-      );
-    }
+          `function/file:line resolution instead of raw module+offset.`
+        : "";
+    await appendSymbolication(
+      env,
+      ticketId,
+      "electron-minidump",
+      "symbolicated",
+      `${header}\n\n${stack}${tip}`.slice(0, 20_000),
+    );
   } catch (err) {
     console.error(
       `[symbolicate-minidump] failed for ticket ${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+}
+
+/**
+ * Run every applicable symbolication lane for a crash ticket sequentially and
+ * persist the result on the ticket (symbolicated_stack / symbolication_status).
+ * Used both on crash ingest and by the on-demand re-run endpoint. Lanes run
+ * sequentially so their appends to the single field don't race; status settles
+ * to a terminal value so it never stays "pending".
+ */
+export async function dispatchSymbolication(
+  env: Env,
+  app: { id: string; platform?: string | null },
+  ticketId: string,
+  versionCode: number | null,
+  metadata: Record<string, unknown>,
+  logKey: string | null,
+): Promise<void> {
+  await resetSymbolication(env, ticketId);
+  let ran = false;
+
+  if (logKey) {
+    ran = true;
+    await retraceCrashTicket(env, app.id, ticketId, versionCode, logKey);
+  }
+  const nativeFrames = parseNativeFrames(metadata["crash_native_frames"]);
+  if (nativeFrames.length > 0) {
+    ran = true;
+    await symbolicateNativeCrashTicket(env, app.id, ticketId, versionCode, nativeFrames);
+  }
+  if (app.platform === "ohos" && logKey) {
+    ran = true;
+    await symbolicateOhosCrashTicket(env, app.id, ticketId, versionCode, logKey);
+  }
+  const dsymImages = parseBinaryImages(metadata["crash_binary_images"]);
+  const dsymFrames = parseCrashFrames(metadata["crash_frames"]);
+  if (dsymImages.length > 0 && dsymFrames.length > 0) {
+    ran = true;
+    await symbolicateDsymCrashTicket(env, app.id, ticketId, versionCode, dsymImages, dsymFrames);
+  }
+
+  const row = await env.DB.prepare(
+    "SELECT symbolication_status FROM feedback_tickets WHERE id = ?1",
+  )
+    .bind(ticketId)
+    .first<{ symbolication_status: string | null }>();
+  if (!row) return;
+  if (!ran) {
+    await env.DB.prepare(
+      "UPDATE feedback_tickets SET symbolication_status = 'not_applicable', symbolicated_at = ?1 WHERE id = ?2",
+    )
+      .bind(Date.now(), ticketId)
+      .run();
+  } else if (row.symbolication_status === "pending") {
+    await env.DB.prepare(
+      "UPDATE feedback_tickets SET symbolication_status = 'unsymbolicated', symbolicated_at = ?1 WHERE id = ?2",
+    )
+      .bind(Date.now(), ticketId)
+      .run();
   }
 }
 
@@ -1422,6 +1505,64 @@ export async function handleGetFeedback(c: AdminContext) {
     .bind(ticketId)
     .all();
   return c.json({ ticket, attachments, comments });
+}
+
+/**
+ * On-demand (re-)symbolication of a crash ticket — powers the detail panel's
+ * one-click "Symbolicate / Re-run" button (#136). Reconstructs the crash frames
+ * from the stored metadata + log attachment and runs dispatchSymbolication
+ * synchronously, then returns the fresh symbolication fields.
+ */
+export async function handleResymbolicateFeedback(c: AdminContext) {
+  const appId = c.req.param("appId");
+  const resolved = await resolveTicketId(c.env.DB, appId, c.req.param("ticketId"));
+  if ("error" in resolved) return ticketResolveError(c, resolved);
+  const ticketId = resolved.id;
+  const ticket = await c.env.DB.prepare(
+    "SELECT id, kind, version_code, metadata_json FROM feedback_tickets WHERE app_id = ?1 AND id = ?2",
+  )
+    .bind(appId, ticketId)
+    .first<{ id: string; kind: string; version_code: number | null; metadata_json: string }>();
+  if (!ticket) return c.json({ error: "ticket not found" }, 404);
+  if (ticket.kind !== "crash") {
+    return c.json({ error: "only crash tickets can be symbolicated" }, 400);
+  }
+  const app = await c.env.DB.prepare("SELECT id, platform FROM apps WHERE id = ?1")
+    .bind(appId)
+    .first<{ id: string; platform: string | null }>();
+  if (!app) return c.json({ error: "app not found" }, 404);
+
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = JSON.parse(ticket.metadata_json || "{}") as Record<string, unknown>;
+  } catch {
+    metadata = {};
+  }
+  const logRow = await c.env.DB.prepare(
+    "SELECT r2_key FROM feedback_attachments WHERE ticket_id = ?1 ORDER BY created_at LIMIT 1",
+  )
+    .bind(ticketId)
+    .first<{ r2_key: string }>();
+
+  await dispatchSymbolication(
+    c.env,
+    { id: app.id, platform: app.platform },
+    ticketId,
+    ticket.version_code,
+    metadata,
+    logRow?.r2_key ?? null,
+  );
+
+  const updated = await c.env.DB.prepare(
+    "SELECT symbolication_status, symbolicated_stack, symbolicated_at FROM feedback_tickets WHERE id = ?1",
+  )
+    .bind(ticketId)
+    .first<{
+      symbolication_status: string | null;
+      symbolicated_stack: string | null;
+      symbolicated_at: number | null;
+    }>();
+  return c.json({ id: ticketId, ...(updated ?? {}) });
 }
 
 export async function handleUpdateFeedback(c: AdminContext) {

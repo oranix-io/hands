@@ -1414,6 +1414,9 @@ export interface FeedbackDetail {
     arch: string | null;
     locale: string | null;
     metadata_json: string;
+    symbolication_status: string | null;
+    symbolicated_stack: string | null;
+    symbolicated_at: number | null;
   };
   attachments: Array<{
     id: string;
@@ -1456,6 +1459,14 @@ export const listFeedback = (
 
 export const getFeedback = (appId: string, ticketId: string) =>
   request<FeedbackDetail>(`/api/apps/${appId}/feedback/${ticketId}`, { admin: true });
+
+export const resymbolicateFeedback = (appId: string, ticketId: string) =>
+  request<{
+    id: string;
+    symbolication_status: string | null;
+    symbolicated_stack: string | null;
+    symbolicated_at: number | null;
+  }>(`/api/apps/${appId}/feedback/${ticketId}/symbolicate`, { method: "POST", admin: true });
 
 export const updateFeedbackTicket = (
   appId: string,

@@ -75,6 +75,7 @@ import {
   handleGetFeedback,
   handleUpdateFeedback,
   handleAddFeedbackComment,
+  handleResymbolicateFeedback,
   handleDownloadFeedbackAttachment,
   handleListCrashGroups,
   handleFeedbackStats,
@@ -648,6 +649,7 @@ admin.get("/api/apps/:appId/feedback", requireAppRole("viewer"), handleListFeedb
 admin.get("/api/apps/:appId/feedback/:ticketId", requireAppRole("viewer"), handleGetFeedback);
 admin.patch("/api/apps/:appId/feedback/:ticketId", requireFeedbackTriageRole(), handleUpdateFeedback);
 admin.post("/api/apps/:appId/feedback/:ticketId/comments", requireFeedbackTriageRole(), handleAddFeedbackComment);
+admin.post("/api/apps/:appId/feedback/:ticketId/symbolicate", requireFeedbackTriageRole(), handleResymbolicateFeedback);
 admin.get("/api/apps/:appId/feedback/:ticketId/attachments/:attachmentId", requireAppRole("viewer"), handleDownloadFeedbackAttachment);
 admin.get("/api/apps/:appId/releases/:releaseId/shares", requireAppRole("viewer"), handleListReleaseShares);
 admin.post("/api/apps/:appId/releases/:releaseId/shares", requireAppRole("publisher"), handleCreateReleaseShare);

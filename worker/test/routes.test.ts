@@ -21,7 +21,12 @@ import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { authMiddleware } from "../src/middleware/auth";
 import { requireAppRole, requireCurrentOrgRole, requireFeedbackTriageRole } from "../src/lib/permissions";
-import { handleUpdateFeedback, handleAddFeedbackComment } from "../src/routes/feedback";
+import {
+  handleUpdateFeedback,
+  handleAddFeedbackComment,
+  resetSymbolication,
+  appendSymbolication,
+} from "../src/routes/feedback";
 import {
   httpsRedirectUrl,
   isSecureRequest,
@@ -302,6 +307,9 @@ function makeMockDb() {
       client_ip_hash TEXT,
       assignee TEXT,
       signature TEXT,
+      symbolication_status TEXT,
+      symbolicated_stack TEXT,
+      symbolicated_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -845,6 +853,46 @@ describe("quiver route handlers — SQL smoke", () => {
       .bind("member-app")
       .all();
     expect(seededChannels.results.map((row: any) => row.slug)).toEqual(["main", "nightly", "preview"]);
+  });
+
+  it("appendSymbolication writes the ticket field + raises status by rank; reset clears it", async () => {
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets (id, app_id, kind, status, message, metadata_json, created_at, updated_at)
+       VALUES ('sym-t', 'sym-app', 'crash', 'open', 'boom', '{}', ?, ?)`,
+    )
+      .bind(now, now)
+      .run();
+
+    const readSym = () =>
+      env.DB.prepare(
+        "SELECT symbolication_status, symbolicated_stack FROM feedback_tickets WHERE id = ?1",
+      )
+        .bind("sym-t")
+        .first() as Promise<{ symbolication_status: string; symbolicated_stack: string | null }>;
+
+    await appendSymbolication(env as any, "sym-t", "native", "no_symbols", "no native-symbols asset");
+    let row = await readSym();
+    expect(row.symbolication_status).toBe("no_symbols");
+    expect(row.symbolicated_stack).toContain("[native]");
+    expect(row.symbolicated_stack).toContain("no native-symbols asset");
+
+    // A real symbolicated result outranks no_symbols and appends its block.
+    await appendSymbolication(env as any, "sym-t", "android-r8", "symbolicated", "at Foo.bar(Foo.kt:1)");
+    row = await readSym();
+    expect(row.symbolication_status).toBe("symbolicated");
+    expect(row.symbolicated_stack).toContain("[native]");
+    expect(row.symbolicated_stack).toContain("[android-r8]");
+
+    // A later no_symbols must NOT downgrade a symbolicated status.
+    await appendSymbolication(env as any, "sym-t", "ios-dsym", "no_symbols", "no dsym");
+    row = await readSym();
+    expect(row.symbolication_status).toBe("symbolicated");
+
+    await resetSymbolication(env as any, "sym-t");
+    const cleared = await readSym();
+    expect(cleared.symbolication_status).toBe("pending");
+    expect(cleared.symbolicated_stack).toBeNull();
   });
 
   it("lets org members triage feedback (update status + comment) while viewers cannot", async () => {
@@ -4325,7 +4373,7 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(parseNativeFrames(42)).toEqual([]);
   });
 
-  it("symbolicateNativeCrashTicket leaves an actionable comment when symbols are missing", async () => {
+  it("symbolicateNativeCrashTicket records no_symbols on the ticket when symbols are missing", async () => {
     const env = makeEnv();
     const { symbolicateNativeCrashTicket } = await import("../src/routes/feedback");
     await env.DB.prepare(
@@ -4335,13 +4383,13 @@ describe("quiver public API v2 — scope resolution", () => {
     await symbolicateNativeCrashTicket(env as any, "app-scope", "tick-nat", 1000200, [
       { index: 0, offset: "0x1a2b", soname: "libraft.so", build_id: "abcd1234" },
     ]);
-    const comment = (await env.DB.prepare(
-      "SELECT author_actor, body FROM feedback_comments WHERE ticket_id = ?1",
-    ).bind("tick-nat").all()).results[0] as { author_actor: string; body: string };
-    expect(comment.author_actor).toBe("quiver-symbolicate");
-    expect(comment.body).toContain("native-symbols");
-    expect(comment.body).toContain("1000200");
-    expect(comment.body).toContain("abcd1234");
+    const row = (await env.DB.prepare(
+      "SELECT symbolication_status, symbolicated_stack FROM feedback_tickets WHERE id = ?1",
+    ).bind("tick-nat").first()) as { symbolication_status: string; symbolicated_stack: string };
+    expect(row.symbolication_status).toBe("no_symbols");
+    expect(row.symbolicated_stack).toContain("native-symbols");
+    expect(row.symbolicated_stack).toContain("1000200");
+    expect(row.symbolicated_stack).toContain("abcd1234");
   });
 
   it("parseOhosNativeFrames extracts frames from a debuggerd-style HarmonyOS fault log", async () => {
@@ -4440,13 +4488,13 @@ describe("quiver public API v2 — scope resolution", () => {
       1040000,
       "feedback/app-scope/tick-ohos/0-crash.log",
     );
-    const comment = (await env.DB.prepare(
-      "SELECT author_actor, body FROM feedback_comments WHERE ticket_id = ?1",
-    ).bind("tick-ohos").all()).results[0] as { author_actor: string; body: string };
-    expect(comment.author_actor).toBe("quiver-symbolicate");
-    expect(comment.body).toContain("native-symbols");
-    expect(comment.body).toContain("publish-ohos");
-    expect(comment.body).toContain("aabbccddeeff0011");
+    const row = (await env.DB.prepare(
+      "SELECT symbolication_status, symbolicated_stack FROM feedback_tickets WHERE id = ?1",
+    ).bind("tick-ohos").first()) as { symbolication_status: string; symbolicated_stack: string };
+    expect(row.symbolication_status).toBe("no_symbols");
+    expect(row.symbolicated_stack).toContain("native-symbols");
+    expect(row.symbolicated_stack).toContain("publish-ohos");
+    expect(row.symbolicated_stack).toContain("aabbccddeeff0011");
   });
 
   it("symbolicateOhosCrashTicket ignores non-OHOS logs", async () => {
@@ -4509,13 +4557,13 @@ describe("quiver public API v2 — scope resolution", () => {
       [{ uuid: "DEADBEEF", load_address: 0x100000000n, end_address: 0x100100000n, name: "Raft" }],
       [{ index: 0, address: 0x100004000n }],
     );
-    const comment = (await env.DB.prepare(
-      "SELECT author_actor, body FROM feedback_comments WHERE ticket_id = ?1",
-    ).bind("tick-dsym").all()).results[0] as { author_actor: string; body: string };
-    expect(comment.author_actor).toBe("quiver-symbolicate");
-    expect(comment.body).toContain("dsym");
-    expect(comment.body).toContain("1000200");
-    expect(comment.body).toContain("DEADBEEF");
+    const row = (await env.DB.prepare(
+      "SELECT symbolication_status, symbolicated_stack FROM feedback_tickets WHERE id = ?1",
+    ).bind("tick-dsym").first()) as { symbolication_status: string; symbolicated_stack: string };
+    expect(row.symbolication_status).toBe("no_symbols");
+    expect(row.symbolicated_stack).toContain("dsym");
+    expect(row.symbolicated_stack).toContain("1000200");
+    expect(row.symbolicated_stack).toContain("DEADBEEF");
   });
 
   it("handlePublicMinidumpSubmit ingests a Crashpad minidump as an electron crash ticket", async () => {
