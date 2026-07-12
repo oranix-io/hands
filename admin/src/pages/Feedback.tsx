@@ -8,6 +8,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addFeedbackComment,
+  resymbolicateFeedback,
   downloadFeedbackAttachment,
   getAuthMe,
   getFeedback,
@@ -564,6 +565,19 @@ export function FeedbackTicketPage({
       toast.show({ kind: "error", title: "Comment failed", description: (e as Error).message }),
   });
 
+  const resymbolicate = useMutation({
+    mutationFn: () => resymbolicateFeedback(appId, ticketId),
+    onSuccess: (r) => {
+      invalidate();
+      toast.show({
+        kind: r.symbolication_status === "symbolicated" ? "success" : "info",
+        title: `Symbolication: ${r.symbolication_status ?? "done"}`,
+      });
+    },
+    onError: (e) =>
+      toast.show({ kind: "error", title: "Symbolicate failed", description: (e as Error).message }),
+  });
+
   const t = detail.data?.ticket;
   const myName = me.data?.account?.display_name ?? null;
 
@@ -778,17 +792,46 @@ export function FeedbackTicketPage({
               const log = detail.data!.attachments.find(
                 (a) => (a.content_type?.startsWith("text/") ?? false) || /\.txt$/i.test(a.filename),
               );
-              const deobfuscated = detail.data!.comments.find(
-                (cm) => cm.author_actor === "quiver-retrace" || cm.author_actor === "quiver-symbolicate",
-              )?.body;
-              return log ? (
-                <CrashLogView
-                  appId={appId}
-                  ticketId={ticketId}
-                  attachmentId={log.id}
-                  deobfuscated={deobfuscated}
-                />
-              ) : null;
+              const symStatus = t.symbolication_status;
+              const symStack = t.symbolicated_stack ?? undefined;
+              const badgeClass =
+                symStatus === "symbolicated"
+                  ? "bg-green-100 text-green-700"
+                  : symStatus === "no_symbols"
+                    ? "bg-amber-100 text-amber-700"
+                    : symStatus === "failed"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-slate-100 text-slate-600";
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">Symbolication</span>
+                    <span className={`rounded px-1.5 py-0.5 text-xs ${badgeClass}`}>
+                      {symStatus ?? "not run"}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={resymbolicate.isPending}
+                      onClick={() => resymbolicate.mutate()}
+                    >
+                      {resymbolicate.isPending ? "Symbolicating…" : "Re-run"}
+                    </Button>
+                  </div>
+                  {log ? (
+                    <CrashLogView
+                      appId={appId}
+                      ticketId={ticketId}
+                      attachmentId={log.id}
+                      deobfuscated={symStack}
+                    />
+                  ) : symStack ? (
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-3 text-xs">
+                      {symStack}
+                    </pre>
+                  ) : null}
+                </div>
+              );
             })()}
 
           {detail.data!.attachments.length > 0 && (
