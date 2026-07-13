@@ -403,17 +403,16 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
       ? String(versionCode)
       : null;
   const ticketUrl = `${dashboardOrigin(c.env)}/apps/${app.id}/feedback/${ticketId}`;
-  // List attachment filenames in the copyable reference so an agent reading a
-  // pasted ticket knows it carries images/files and will go fetch them.
+  // List attachment filenames in the copyable reference — one per line — so an
+  // agent reading a pasted ticket knows it carries images/files and will fetch
+  // them.
   const attachmentNames = attachmentRows.map((a) => a.filename).filter(Boolean);
-  const reference = [
-    app.slug,
-    versionLabel,
-    `ticket ${ticketId}`,
-    attachmentNames.length ? `attachments: ${attachmentNames.join(" ")}` : null,
-  ]
+  const referenceLine = [app.slug, versionLabel, `ticket ${ticketId}`]
     .filter(Boolean)
     .join(" · ");
+  const reference = attachmentNames.length
+    ? `${referenceLine}\nattachments:\n${attachmentNames.join("\n")}`
+    : referenceLine;
 
   return c.json(
     {
