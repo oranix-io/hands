@@ -403,7 +403,15 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
       ? String(versionCode)
       : null;
   const ticketUrl = `${dashboardOrigin(c.env)}/apps/${app.id}/feedback/${ticketId}`;
-  const reference = [app.slug, versionLabel, `ticket ${ticketId}`]
+  // List attachment filenames in the copyable reference so an agent reading a
+  // pasted ticket knows it carries images/files and will go fetch them.
+  const attachmentNames = attachmentRows.map((a) => a.filename).filter(Boolean);
+  const reference = [
+    app.slug,
+    versionLabel,
+    `ticket ${ticketId}`,
+    attachmentNames.length ? `attachments: ${attachmentNames.join(" ")}` : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 
@@ -412,6 +420,7 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
       id: ticketId,
       status: "open",
       attachments: attachmentRows.length,
+      attachment_names: attachmentNames,
       reference,
       ticket_url: ticketUrl,
     },
