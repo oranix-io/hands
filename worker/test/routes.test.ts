@@ -4265,8 +4265,9 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(html).toContain(`/share/${token}/download`);
     // Expiry is intentionally not shown on the public page.
     expect(html).not.toContain('id="expires-at"');
-    expect(html).toContain("<dt>Stats</dt>");
-    expect(html).toContain("<span>visitors</span>");
+    // No stats on the public page — they are console-only.
+    expect(html).not.toContain("<dt>Stats</dt>");
+    expect(html).not.toContain("<span>visitors</span>");
 
     const events = await env.DB.prepare("SELECT event_type, COUNT(*) AS count FROM release_share_events GROUP BY event_type")
       .bind()
