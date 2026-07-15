@@ -17,9 +17,6 @@ type ShareStrings = {
   artifactLabel: string;
   platformLabel: string;
   checksumLabel: string;
-  statsLabel: string;
-  visitors: string;
-  views: string;
   downloadApk: string;
   scanHint: string;
   passwordRequired: string; // password page title + heading
@@ -42,9 +39,6 @@ const SHARE_I18N: { en: ShareStrings; zh: ShareStrings } = {
     artifactLabel: "Artifact",
     platformLabel: "Platform",
     checksumLabel: "Checksum",
-    statsLabel: "Stats",
-    visitors: "visitors",
-    views: "views",
     downloadApk: "Download APK",
     scanHint: "Scan to open on your phone",
     passwordRequired: "Password required",
@@ -65,9 +59,6 @@ const SHARE_I18N: { en: ShareStrings; zh: ShareStrings } = {
     artifactLabel: "安装包",
     platformLabel: "平台",
     checksumLabel: "校验和",
-    statsLabel: "统计",
-    visitors: "访客数",
-    views: "浏览次数",
     downloadApk: "下载 APK",
     scanHint: "扫码在手机上打开",
     passwordRequired: "需要密码",
@@ -122,13 +113,6 @@ type SharePageRow = {
   size_bytes: number;
   r2_key: string;
   file_hash: string;
-};
-
-type ShareStats = {
-  view_count: number;
-  unique_view_count: number;
-  download_count: number;
-  unique_download_count: number;
 };
 
 // Shares have no default expiry: a share without an explicit ttl_seconds /
@@ -426,13 +410,12 @@ export async function handlePublicReleaseShare(c: Context<{ Bindings: Env }>) {
   }
 
   await recordShareEvent(c, row.share_id, "view");
-  const stats = await loadShareStats(c.env.DB, row.share_id);
   const origin = publicRequestOrigin(c);
   const downloadUrl = new URL(`/share/${token}/download`, origin).toString();
   const shareUrl = new URL(`/share/${token}`, origin).toString();
   const lang = (c.req.header("accept-language") ?? "").split(",")[0]?.trim().split(";")[0] ?? null;
   const localized = { ...row, changelog: resolveChangelog(row.changelog, lang) };
-  return htmlResponse(renderSharePage(t, localized, stats, downloadUrl, shareUrl, token));
+  return htmlResponse(renderSharePage(t, localized, downloadUrl, shareUrl, token));
 }
 
 export async function handlePublicReleaseShareDownload(c: Context<{ Bindings: Env }>) {
@@ -626,26 +609,6 @@ async function recordShareEvent(
     .run();
 }
 
-async function loadShareStats(db: D1Database, shareId: string): Promise<ShareStats> {
-  const row = await db.prepare(
-    `SELECT
-       COALESCE(SUM(CASE WHEN event_type = 'view' THEN 1 ELSE 0 END), 0) AS view_count,
-       COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'view' THEN visitor_hash END), 0) AS unique_view_count,
-       COALESCE(SUM(CASE WHEN event_type = 'download' THEN 1 ELSE 0 END), 0) AS download_count,
-       COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'download' THEN visitor_hash END), 0) AS unique_download_count
-     FROM release_share_events
-     WHERE share_id = ?1`,
-  )
-    .bind(shareId)
-    .first<ShareStats>();
-  return {
-    view_count: Number(row?.view_count ?? 0),
-    unique_view_count: Number(row?.unique_view_count ?? 0),
-    download_count: Number(row?.download_count ?? 0),
-    unique_download_count: Number(row?.unique_download_count ?? 0),
-  };
-}
-
 /** Resolve an optional expiry: no ttl_seconds/expires_at (or explicit null)
  *  means the share never expires. expires_at wins over ttl_seconds. */
 function resolveExpiry(
@@ -724,7 +687,6 @@ function htmlResponse(html: string, status = 200): Response {
 function renderSharePage(
   t: ShareStrings,
   row: SharePageRow,
-  stats: ShareStats,
   downloadUrl: string,
   shareUrl: string,
   shareToken: string,
@@ -760,15 +722,10 @@ function renderSharePage(
     .notes li { margin: 4px 0; }
     .notes p { margin: 8px 0; }
     .notes code { background: rgba(125,125,125,0.15); border-radius: 4px; padding: 1px 4px; font-size: 0.92em; }
-    .stats { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-    .stat strong { display: block; color: #1e1f22; font-size: 18px; }
-    .stat span { display: block; color: #707782; font-size: 12px; font-weight: 500; }
     @media (prefers-color-scheme: dark) {
       body { background: #17191c; color: #f5f5f2; }
       p, dt { color: #aeb5bf; }
       .notes { color: #d2d6dc; }
-      .stat strong { color: #f5f5f2; }
-      .stat span { color: #aeb5bf; }
     }
   </style>
 </head>
@@ -791,11 +748,6 @@ function renderSharePage(
       <dt>${t.artifactLabel}</dt><dd>${escapeHtml(row.filetype.toUpperCase())} · ${formatBytes(row.size_bytes)}</dd>
       <dt>${t.platformLabel}</dt><dd>${escapeHtml([row.platform, row.arch, row.variant].filter(Boolean).join(" / "))}</dd>
       <dt>${t.checksumLabel}</dt><dd>${escapeHtml(row.file_hash)}</dd>
-      <dt>${t.statsLabel}</dt>
-      <dd class="stats">
-        <span class="stat"><strong>${stats.unique_view_count}</strong><span>${t.visitors}</span></span>
-        <span class="stat"><strong>${stats.view_count}</strong><span>${t.views}</span></span>
-      </dd>
     </dl>
     <div class="get-it">
       <a class="download" href="${escapeAttribute(downloadUrl)}">${t.downloadApk}</a>
