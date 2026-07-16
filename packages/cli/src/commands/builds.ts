@@ -1187,6 +1187,7 @@ export function registerBuildCommands(program: Command): void {
           json?: boolean;
         },
       ) => {
+        assertLocalNotarizationPlatform(process.platform);
         if (!existsSync(opts.file)) throw new Error(`missing file: ${opts.file}`);
         const submissionName = basename(opts.file);
         if (!/\.(dmg|pkg)$/i.test(submissionName)) {
@@ -1304,6 +1305,40 @@ function parseJsonRecord(raw: string, label: string): Record<string, unknown> {
   }
 }
 
+export function assertLocalNotarizationPlatform(
+  platform: NodeJS.Platform,
+): void {
+  if (platform !== "darwin") {
+    throw new NotarizationCommandError(
+      "local Apple notarization requires macOS with Xcode command-line tools",
+    );
+  }
+}
+
+const APPLE_SUBMISSION_ID =
+  /^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$/;
+
+async function assertLocalArtifactBinding(
+  artifactPath: string,
+  expected: { sha256: string; sizeBytes: number },
+  identity?: { dev: number; ino: number },
+): Promise<{ dev: number; ino: number }> {
+  const fileStat = await stat(artifactPath);
+  const sha256 = await sha256File(artifactPath);
+  if (
+    !fileStat.isFile() ||
+    fileStat.size !== expected.sizeBytes ||
+    sha256.toLowerCase() !== expected.sha256.toLowerCase() ||
+    (identity !== undefined &&
+      (fileStat.dev !== identity.dev || fileStat.ino !== identity.ino))
+  ) {
+    throw new NotarizationCommandError(
+      "local artifact changed while Apple notarization was in progress",
+    );
+  }
+  return { dev: fileStat.dev, ino: fileStat.ino };
+}
+
 export async function notarizeAndStapleLocal(args: {
   filePath: string;
   export: NotarizationCredentialExport;
@@ -1316,24 +1351,29 @@ export async function notarizeAndStapleLocal(args: {
   platform?: NodeJS.Platform;
   exec?: LocalExec;
 }): Promise<NotarizationResult> {
-  if ((args.platform ?? process.platform) !== "darwin") {
-    throw new NotarizationCommandError(
-      "local Apple notarization requires macOS with Xcode command-line tools",
-    );
-  }
-  assertCredentialExportBinding(args.export, {
-    appId: args.export.app_id,
-    ...args.expected,
-  });
-  const run = args.exec ?? defaultLocalExec;
-  const artifactPath = resolve(args.filePath);
-  const work = await mkdtemp(join(tmpdir(), "hands-notary-"));
-  // Keep the path independent of server-controlled key metadata.
-  const keyPath = join(work, "AuthKey.p8");
-  const logPath = join(work, "notary-log.json");
-  const execOptions = { timeout: args.timeoutMs, maxBuffer: 4 * 1024 * 1024 };
+  let work: string | null = null;
 
   try {
+    // The command-level caller performs this gate before requesting the
+    // credential export. Keep the helper gate too, inside the cleanup scope,
+    // so direct callers can never retain an already-exported P8 on failure.
+    assertLocalNotarizationPlatform(args.platform ?? process.platform);
+    assertCredentialExportBinding(args.export, {
+      appId: args.export.app_id,
+      ...args.expected,
+    });
+    const run = args.exec ?? defaultLocalExec;
+    const artifactPath = resolve(args.filePath);
+    const sourceIdentity = await assertLocalArtifactBinding(
+      artifactPath,
+      args.expected,
+    );
+    work = await mkdtemp(join(tmpdir(), "hands-notary-"));
+    // Keep the path independent of server-controlled key metadata.
+    const keyPath = join(work, "AuthKey.p8");
+    const logPath = join(work, "notary-log.json");
+    const execOptions = { timeout: args.timeoutMs, maxBuffer: 4 * 1024 * 1024 };
+
     await writeFile(keyPath, args.export.credentials.p8, { mode: 0o600 });
     // Drop the long-lived JS reference as soon as the mode-0600 file exists.
     // The temporary directory is still removed in the finally block.
@@ -1372,23 +1412,20 @@ export async function notarizeAndStapleLocal(args: {
           ? submit.submissionId
           : "";
     const status = typeof submit.status === "string" ? submit.status : "";
-    if (!submissionId || status !== "Accepted") {
+    if (!APPLE_SUBMISSION_ID.test(submissionId) || status !== "Accepted") {
       throw new NotarizationCommandError(
-        `Apple notarization ended with status ${status || "unknown"}`,
+        !APPLE_SUBMISSION_ID.test(submissionId)
+          ? "Apple notarization returned an invalid submission id"
+          : `Apple notarization ended with status ${status || "unknown"}`,
       );
     }
 
     // The source bytes must remain unchanged from the tuple Hands audited.
-    const postSubmitStat = await stat(artifactPath);
-    const postSubmitSha256 = await sha256File(artifactPath);
-    if (
-      postSubmitStat.size !== args.expected.sizeBytes ||
-      postSubmitSha256.toLowerCase() !== args.expected.sha256.toLowerCase()
-    ) {
-      throw new NotarizationCommandError(
-        "local artifact changed while Apple notarization was in progress",
-      );
-    }
+    await assertLocalArtifactBinding(
+      artifactPath,
+      args.expected,
+      sourceIdentity,
+    );
 
     try {
       await run(
@@ -1427,6 +1464,15 @@ export async function notarizeAndStapleLocal(args: {
       );
     }
 
+    // The log fetch is attacker-/network-controlled time between the first
+    // rehash and stapling. Re-prove both exact bytes and file identity at the
+    // last possible point before stapler is allowed to mutate the artifact.
+    await assertLocalArtifactBinding(
+      artifactPath,
+      args.expected,
+      sourceIdentity,
+    );
+
     try {
       await run("xcrun", ["stapler", "staple", artifactPath], execOptions);
       await run("xcrun", ["stapler", "validate", artifactPath], execOptions);
@@ -1455,7 +1501,9 @@ export async function notarizeAndStapleLocal(args: {
     };
   } finally {
     args.export.credentials.p8 = "";
-    await rm(work, { recursive: true, force: true }).catch(() => {});
+    if (work !== null) {
+      await rm(work, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }
 
