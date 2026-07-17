@@ -84,7 +84,35 @@ All CLI commands accept `--json` for scripting.
 ### Release flow (draft-first policy)
 
 CI creates drafts; an agent reviews and publishes. **Never publish without
-reviewing the changelog.**
+reviewing the changelog, and never activate without explicit, current human
+authorization.**
+
+**Raft agents — manifest actions (no CLI, no tokens).** After a one-time
+`raft integration login --service <hands-service>`, release management is
+plain `raft integration invoke`; the server enforces app RBAC (viewer for
+reads, publisher for writes):
+
+```bash
+# create a DRAFT from an existing verified build (draft is the default)
+raft integration invoke --service <hands-service> --action create-release \
+  --param app_id=<app-uuid> --param build_id=<build-uuid>
+
+# attach reviewed bilingual notes (change-logs/<version>/*.md is the source of truth)
+raft integration invoke --service <hands-service> --action update-release \
+  --param app_id=<app-uuid> --param release_id=<release-uuid> \
+  --param release_notes='{"en":"...","zh-CN":"..."}'
+
+# ONLY after explicit human approval of the draft:
+raft integration invoke --service <hands-service> --action publish-release \
+  --param app_id=<app-uuid> --param release_id=<release-uuid>
+```
+
+Also available: `list-releases`, `get-release` (viewer). When reporting a
+release, always cite the build's APK SHA-256 — the binary hash is the
+authority, not a branch head or run id. A 403 means your identity lacks the
+app role: ask an app admin to grant it; never borrow credentials.
+
+**Humans / CI — hands CLI** (browser login or deploy token):
 
 ```bash
 hands releases show <app> <releaseId>                 # inspect draft + raw changelog
