@@ -30,6 +30,13 @@ const pages = [
     source: "agent-cli-feedback.md",
   },
   {
+    slug: "ios-testflight",
+    source: "ios-testflight.md",
+    title: "iOS Releases & TestFlight",
+    category: "For agents",
+    description: "How iOS builds reach TestFlight: Hands uploads server-side with the stored ASC credential.",
+  },
+  {
     slug: "admin-user-guide",
     title: "Admin User Guide",
     category: "Console",
