@@ -430,6 +430,40 @@ export async function handleGetRelease(c: Context<{ Bindings: Env }>) {
   });
 }
 
+/**
+ * Draft-only creation for the agent manifest path. The server enforces draft:
+ * an explicit status other than 'draft' is rejected outright (activation has
+ * exactly one path — the publish endpoint, behind explicit authorization).
+ */
+export async function handleCreateReleaseDraft(c: AdminContext) {
+  const appId = c.req.param("appId") ?? "";
+  const body = (await c.req.json()) as ReleaseInput;
+  if (body.status !== undefined && body.status !== "draft") {
+    return c.json(
+      { error: "this endpoint creates drafts only; use the publish action (with explicit authorization) to activate" },
+      400,
+    );
+  }
+  try {
+    const draftBody: ReleaseInput = { ...body, status: "draft" };
+    const id = await createRelease(c.env.DB, appId, draftBody, currentActor(c));
+    const changelog = inputChangelog(draftBody) ?? null;
+    return c.json(
+      {
+        id,
+        app_id: appId,
+        status: "draft",
+        ...draftBody,
+        changelog,
+        release_notes: parseReleaseNotes(changelog),
+      },
+      201,
+    );
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+}
+
 export async function handleCreateRelease(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const body = (await c.req.json()) as ReleaseInput;

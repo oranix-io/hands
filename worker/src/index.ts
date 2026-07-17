@@ -132,6 +132,7 @@ import {
 import {
   handleBumpRollout,
   handleCreateRelease,
+  handleCreateReleaseDraft,
   handleDeleteRelease,
   handleForceUpdate,
   handleGetRelease,
@@ -640,6 +641,7 @@ admin.delete(
 
 admin.get("/api/apps/:appId/releases", requireAppRole("viewer"), handleListReleases);
 admin.post("/api/apps/:appId/releases", requireAppRole("publisher"), handleCreateRelease);
+admin.post("/api/apps/:appId/releases/draft", requireAppRole("publisher"), handleCreateReleaseDraft);
 admin.get("/api/apps/:appId/releases/:releaseId", requireAppRole("viewer"), handleGetRelease);
 admin.patch("/api/apps/:appId/releases/:releaseId", requireAppRole("publisher"), handleUpdateRelease);
 admin.post("/api/apps/:appId/releases/:releaseId/publish", requireAppRole("publisher"), handlePublishRelease);

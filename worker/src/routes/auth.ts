@@ -715,6 +715,7 @@ export async function handleAgentHelp(c: Context<{ Bindings: Env }>) {
       "1. Authenticate (see `auth` below), then GET /api/apps to find your app_id.",
       "2. Crash triage: list-feedback (kind=crash) → get-feedback (device context + attachments) → presign-feedback-attachment, then curl the returned download_url yourself (raw-bytes endpoints get corrupted through agent transports).",
       "3. Triage as you work: update-feedback (change status/assignee, e.g. close a fixed ticket) and comment-feedback (attribution note, internal=true for staff-only). Requires org member (or app publisher).",
+      "4. Release management (app publisher): create-release from an existing build (DRAFT by default) → update-release with bilingual release_notes → after explicit human authorization, publish-release. See docs.release_guide.",
     ],
     auth: {
       raft_agents:
@@ -731,9 +732,18 @@ export async function handleAgentHelp(c: Context<{ Bindings: Env }>) {
         "PATCH /api/apps/{app_id}/feedback/{ticket_id} — body: {status?: open|in_progress|resolved|closed, assignee?: string|null}",
       comment_ticket:
         "POST /api/apps/{app_id}/feedback/{ticket_id}/comments — body: {text: string}",
+      create_release:
+        "POST /api/apps/{app_id}/releases/draft — body: {build_id, changelog?, release_notes?: {en, zh-CN}} — publisher; server-enforced draft, activate only via publish",
+      create_share:
+        "POST /api/apps/{app_id}/releases/{release_id}/shares — body: {ttl_seconds?, password?} — publisher; no expiry unless set",
+      update_release:
+        "PATCH /api/apps/{app_id}/releases/{release_id} — body: {changelog?, release_notes?, hidden?} — publisher",
+      publish_release:
+        "POST /api/apps/{app_id}/releases/{release_id}/publish — publisher; live-facing, needs explicit human authorization",
     },
     docs: {
       agent_guide: `${origin}/docs/agent-cli-feedback`,
+      release_guide: `${origin}/docs/agent-guide/`,
       cli_reference: `${origin}/docs/cli-reference`,
       api_reference: `${origin}/docs/public-api-reference`,
       openapi: `${origin}/openapi.json`,
@@ -779,6 +789,90 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         name: "list-apps",
         description: "List apps the caller can access.",
         endpoint: { method: "GET", path: "/api/apps" },
+      },
+      {
+        name: "list-releases",
+        description: "List an app's releases (id, status, channel, version, rollout). Requires app viewer.",
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/releases" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+        },
+      },
+      {
+        name: "get-release",
+        description: "Get one release with its changelog/release notes and rollout state. Requires app viewer.",
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/releases/{release_id}" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+        },
+      },
+      {
+        name: "create-release",
+        description:
+          "Create a DRAFT release from an existing build. The server enforces draft — activation has exactly one path: the publish-release action. Requires app publisher.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/releases/draft" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          build_id: { type: "string", in: "body", required: true, description: "Hands build UUID to release." },
+          channel_id: { type: "string", in: "body", required: false, description: "Channel UUID (defaults to the build's channel)." },
+          changelog: { type: "string", in: "body", required: false, description: "Changelog text (single-language fallback)." },
+          release_notes: { type: "object", in: "body", required: false, description: "Bilingual notes, e.g. {\"en\": \"...\", \"zh-CN\": \"...\"}." },
+        },
+      },
+      {
+        name: "update-release",
+        description:
+          "Update a release's changelog/bilingual release notes, rollout fields, or hidden flag. Requires app publisher.",
+        endpoint: { method: "PATCH", path: "/api/apps/{app_id}/releases/{release_id}" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+          changelog: { type: "string", in: "body", required: false, description: "Changelog text." },
+          release_notes: { type: "object", in: "body", required: false, description: "Bilingual notes object." },
+          hidden: { type: "boolean", in: "body", required: false, description: "Hide/show on public history without deleting." },
+        },
+      },
+      {
+        name: "publish-release",
+        description:
+          "Publish (activate) a draft release. Live-facing: only run with explicit human authorization. Requires app publisher.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/releases/{release_id}/publish" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+        },
+      },
+      {
+        name: "list-release-shares",
+        description: "List a release's share links (metadata + stats; URLs for shares created after tokens were stored). Requires app viewer.",
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/releases/{release_id}/shares" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+        },
+      },
+      {
+        name: "create-release-share",
+        description:
+          "Create a public share/download page for a release (works for drafts — that's the review flow). No expiry unless ttl_seconds is passed; lives until revoked. Requires app publisher.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/releases/{release_id}/shares" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+          ttl_seconds: { type: "number", in: "body", required: false, description: "Optional expiry; omit for a link that lives until revoked." },
+          password: { type: "string", in: "body", required: false, description: "Optional password protection." },
+        },
+      },
+      {
+        name: "revoke-release-share",
+        description: "Revoke a share link (the only way a no-expiry link dies). Requires app publisher.",
+        endpoint: { method: "DELETE", path: "/api/apps/{app_id}/releases/{release_id}/shares/{share_id}" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+          share_id: { type: "string", in: "path", required: true, description: "Share UUID." },
+        },
       },
       {
         name: "create-deploy-token",

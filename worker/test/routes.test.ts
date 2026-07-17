@@ -5399,6 +5399,40 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(updated.status).toBe(409);
   });
 
+  it("draft-only release endpoint enforces draft even against a hostile status=active", async () => {
+    const env = makeEnv();
+    const { handleCreateReleaseDraft } = await import("../src/routes/releases");
+    // seed a build to release
+    await seedRelease(env, "rel-seed", "build-draftonly", [["full", "all"]], { versionCode: 21 });
+    const ctx = (body: unknown) =>
+      ({
+        env,
+        executionCtx: { waitUntil: () => {} },
+        req: {
+          url: "https://quiver-worker.test/api/apps/app-scope/releases/draft",
+          param: (name: string) => (name === "appId" ? "app-scope" : ""),
+          json: async () => body,
+        },
+        get: (name: string) => (name === "admin_actor" ? "tester" : name === "org_id" ? "default" : undefined),
+        json: (data: unknown, status = 200) =>
+          new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } }),
+      }) as any;
+
+    // hostile: explicit active must be rejected outright (nothing created)
+    const hostile = await handleCreateReleaseDraft(ctx({ build_id: "build-draftonly", status: "active" }));
+    expect(hostile.status).toBe(400);
+    const hostileBody = await responseJson<any>(hostile);
+    expect(hostileBody.error).toContain("draft");
+
+    // normal: no status -> created as draft (NOT the legacy active default)
+    const ok = await handleCreateReleaseDraft(ctx({ build_id: "build-draftonly" }));
+    expect(ok.status).toBe(201);
+    const created = await responseJson<any>(ok);
+    expect(created.status).toBe("draft");
+    const row = await env.DB.prepare("SELECT status FROM releases WHERE id = ?1").bind(created.id).first<any>();
+    expect(row.status).toBe("draft");
+  });
+
   it("create release share rejects invalid TTL and cancelled releases", async () => {
     const env = makeEnv();
     const { handleCreateReleaseShare } = await import("../src/routes/shares");
