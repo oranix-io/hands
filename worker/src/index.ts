@@ -874,4 +874,10 @@ export async function scheduled(
   ctx.waitUntil(handleReapDeliveries(fakeC));
 }
 
-export default app;
+// The Workers runtime only looks at the default export for handlers: a bare
+// Hono app provides fetch but silently drops the cron trigger (`scheduled`
+// as a named export is never invoked). Export both explicitly.
+export default {
+  fetch: app.fetch,
+  scheduled,
+};
