@@ -26,6 +26,7 @@ import {
   handleAddFeedbackComment,
   resetSymbolication,
   appendSymbolication,
+  dispatchSymbolication,
 } from "../src/routes/feedback";
 import {
   httpsRedirectUrl,
@@ -896,6 +897,125 @@ describe("quiver route handlers — SQL smoke", () => {
     const cleared = await readSym();
     expect(cleared.symbolication_status).toBe("pending");
     expect(cleared.symbolicated_stack).toBeNull();
+  });
+
+  it("dispatchSymbolication selects lanes by app platform, never by content alone", async () => {
+    env.APK_BUCKET = { put: async () => undefined, get: async () => null };
+    const now = Date.now();
+    const mkTicket = async (id: string) => {
+      await env.DB.prepare(
+        `INSERT INTO feedback_tickets (id, app_id, kind, status, message, metadata_json, created_at, updated_at)
+         VALUES (?1, 'lane-app', 'crash', 'open', 'boom', '{}', ?2, ?3)`,
+      )
+        .bind(id, now, now)
+        .run();
+    };
+    const readSym = (id: string) =>
+      env.DB.prepare(
+        "SELECT symbolication_status, symbolicated_stack FROM feedback_tickets WHERE id = ?1",
+      )
+        .bind(id)
+        .first() as Promise<{ symbolication_status: string; symbolicated_stack: string | null }>;
+    const dsymMeta = {
+      crash_binary_images: [
+        { uuid: "ABCD-1234", load_address: "0x100000000", end_address: "0x100010000", name: "App" },
+      ],
+      crash_frames: [{ index: 0, address: "0x100000f00" }],
+    };
+
+    // iOS + crash log but no structured frames: the android-r8 lane must NOT
+    // fire off the log attachment (task #158 regression, ticket 24f26409);
+    // instead the iOS metadata gap is reported.
+    await mkTicket("lane-ios-log");
+    await dispatchSymbolication(
+      env as any,
+      { id: "lane-app", platform: "ios" },
+      "lane-ios-log",
+      42,
+      {},
+      "r2/ios-crash.txt",
+    );
+    let row = await readSym("lane-ios-log");
+    expect(row.symbolicated_stack).not.toContain("[android-r8]");
+    expect(row.symbolicated_stack).not.toContain("proguard");
+    expect(row.symbolicated_stack).toContain("[ios-dsym]");
+    expect(row.symbolicated_stack).toContain("crash_binary_images");
+    expect(row.symbolication_status).toBe("no_symbols");
+
+    // iOS with structured frames but no dsym asset: only the iOS dSYM gap.
+    await mkTicket("lane-ios-meta");
+    await dispatchSymbolication(
+      env as any,
+      { id: "lane-app", platform: "ios" },
+      "lane-ios-meta",
+      42,
+      dsymMeta,
+      "r2/ios-crash.txt",
+    );
+    row = await readSym("lane-ios-meta");
+    expect(row.symbolicated_stack).not.toContain("[android-r8]");
+    expect(row.symbolicated_stack).toContain("[ios-dsym]");
+    expect(row.symbolicated_stack).toContain("No 'dsym' build asset");
+    expect(row.symbolication_status).toBe("no_symbols");
+
+    // Android + crash log, no mapping asset: android-r8 lane with the R8 hint,
+    // and iOS-shaped metadata must not drag in the dSYM lane.
+    await mkTicket("lane-android");
+    await dispatchSymbolication(
+      env as any,
+      { id: "lane-app", platform: "android" },
+      "lane-android",
+      42,
+      dsymMeta,
+      "r2/android-crash.txt",
+    );
+    row = await readSym("lane-android");
+    expect(row.symbolicated_stack).toContain("[android-r8]");
+    expect(row.symbolicated_stack).toContain("hands builds publish-android --mapping");
+    expect(row.symbolicated_stack).not.toContain("[ios-dsym]");
+
+    // Android native frames, no symbols asset: native lane only.
+    await mkTicket("lane-android-native");
+    await dispatchSymbolication(
+      env as any,
+      { id: "lane-app", platform: "android" },
+      "lane-android-native",
+      42,
+      { crash_native_frames: [{ index: 0, offset: "0x1234", soname: "libapp.so" }] },
+      null,
+    );
+    row = await readSym("lane-android-native");
+    expect(row.symbolicated_stack).toContain("[native]");
+    expect(row.symbolicated_stack).toContain("hands builds publish-android --symbols");
+
+    // OHOS + crash log: android-r8 must not fire; the ohos lane owns the log.
+    await mkTicket("lane-ohos");
+    await dispatchSymbolication(
+      env as any,
+      { id: "lane-app", platform: "ohos" },
+      "lane-ohos",
+      42,
+      {},
+      "r2/ohos-fault.log",
+    );
+    row = await readSym("lane-ohos");
+    expect(row.symbolicated_stack ?? "").not.toContain("[android-r8]");
+    expect(row.symbolication_status).toBe("unsymbolicated");
+
+    // Electron + crash log: no dispatch lane applies (minidumps have their own
+    // ingest path) — settles on not_applicable instead of an Android block.
+    await mkTicket("lane-electron");
+    await dispatchSymbolication(
+      env as any,
+      { id: "lane-app", platform: "electron" },
+      "lane-electron",
+      42,
+      {},
+      "r2/renderer-crash.txt",
+    );
+    row = await readSym("lane-electron");
+    expect(row.symbolicated_stack).toBeNull();
+    expect(row.symbolication_status).toBe("not_applicable");
   });
 
   it("lets org members triage feedback (update status + comment) while viewers cannot", async () => {

@@ -700,7 +700,7 @@ export async function retraceCrashTicket(
         "android-r8",
         "no_symbols",
         `No proguard-mapping asset for version_code ${versionCode}. ` +
-          "Publish the build with its R8 mapping (quiver builds publish-android --mapping).",
+          "Publish the build with its R8 mapping (hands builds publish-android --mapping).",
       );
       return;
     }
@@ -796,7 +796,7 @@ export async function symbolicateNativeCrashTicket(
   ticketId: string,
   versionCode: number | null,
   frames: NativeFrame[],
-  publishHint: string = "quiver builds publish-android --symbols",
+  publishHint: string = "hands builds publish-android --symbols",
 ): Promise<void> {
   try {
     if (versionCode === null || frames.length === 0) return;
@@ -997,7 +997,7 @@ export async function symbolicateOhosCrashTicket(
       ticketId,
       versionCode,
       frames,
-      "quiver builds publish-ohos --symbols",
+      "hands builds publish-ohos --symbols",
     );
   } catch (err) {
     console.error(
@@ -1255,7 +1255,7 @@ export async function symbolicateMinidumpCrashTicket(
       `${parsed.crash_reason ? `\nReason: ${parsed.crash_reason}${parsed.crash_address ? ` @ ${parsed.crash_address}` : ""}` : ""}`;
     const tip =
       !symBytes && versionCode !== null
-        ? `\n\nTip: upload the version's Breakpad symbols (dump_syms → quiver builds ` +
+        ? `\n\nTip: upload the version's Breakpad symbols (dump_syms → hands builds ` +
           `publish-electron --symbols) for version_code ${versionCode} to get ` +
           `function/file:line resolution instead of raw module+offset.`
         : "";
@@ -1289,26 +1289,53 @@ export async function dispatchSymbolication(
   logKey: string | null,
 ): Promise<void> {
   await resetSymbolication(env, ticketId);
+  // Lane applicability is platform-first: content presence alone (a crash log
+  // attachment, structured frames) must never select another platform's lane —
+  // an iOS crash txt used to satisfy the log-attachment gate and fall into
+  // android-r8, reporting a missing ProGuard mapping on an iOS ticket. A null
+  // platform (legacy app rows) keeps the content-based behavior.
+  const platform = app.platform ?? null;
   let ran = false;
 
-  if (logKey) {
+  if (logKey && (platform === null || platform === "android")) {
     ran = true;
     await retraceCrashTicket(env, app.id, ticketId, versionCode, logKey);
   }
   const nativeFrames = parseNativeFrames(metadata["crash_native_frames"]);
-  if (nativeFrames.length > 0) {
+  if (
+    nativeFrames.length > 0 &&
+    (platform === null || platform === "android" || platform === "ohos")
+  ) {
     ran = true;
     await symbolicateNativeCrashTicket(env, app.id, ticketId, versionCode, nativeFrames);
   }
-  if (app.platform === "ohos" && logKey) {
+  if (platform === "ohos" && logKey) {
     ran = true;
     await symbolicateOhosCrashTicket(env, app.id, ticketId, versionCode, logKey);
   }
   const dsymImages = parseBinaryImages(metadata["crash_binary_images"]);
   const dsymFrames = parseCrashFrames(metadata["crash_frames"]);
-  if (dsymImages.length > 0 && dsymFrames.length > 0) {
+  if (
+    dsymImages.length > 0 &&
+    dsymFrames.length > 0 &&
+    (platform === null || platform === "ios")
+  ) {
     ran = true;
     await symbolicateDsymCrashTicket(env, app.id, ticketId, versionCode, dsymImages, dsymFrames);
+  } else if (platform === "ios" && logKey) {
+    // iOS crash without the SDK's structured frame metadata: report the iOS
+    // gap instead of settling on a silent not_applicable.
+    ran = true;
+    await appendSymbolication(
+      env,
+      ticketId,
+      "ios-dsym",
+      "no_symbols",
+      "Crash report has no structured frame metadata (crash_binary_images / " +
+        "crash_frames), so server-side dSYM symbolication cannot run. Update " +
+        "the Hands iOS SDK to include them, and publish builds with their " +
+        "dSYM archive (hands builds publish-ios --dsym).",
+    );
   }
 
   const row = await env.DB.prepare(
