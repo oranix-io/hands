@@ -47,6 +47,8 @@ you need the Key ID, Issuer ID, and the `.p8` file. The credential is
 encrypted at rest and can be verified without exposing it
 (`POST .../asc-credentials/verify`). The same credential powers the
 App Store review-state surface (`GET /api/apps/{app_id}/appstore-review`).
+Hands is the credential's only home — CI never needs a copy, so rotation
+stays single-source.
 
 ## Versioning rules
 
@@ -54,12 +56,3 @@ App Store review-state surface (`GET /api/apps/{app_id}/appstore-review`).
 - The **build number** (`versionCode`, e.g. `1000004`) must be unique and
   ascending for that marketing version — Apple rejects reused build numbers.
   Hands build history is the quick way to see the last used code.
-
-## What CI must NOT do
-
-- No `ASC_API_KEY_*` secrets in GitHub, no `xcrun altool` in workflows: the
-  upload path is Hands. Duplicating the credential into CI widens the key
-  surface and splits rotation.
-- Cross-job artifact downloads on Blacksmith macOS runners fail
-  (`ECONNREFUSED`); the design above avoids moving the IPA between jobs at
-  all — Hands already has it.
