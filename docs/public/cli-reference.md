@@ -334,6 +334,17 @@ so existing CI keeps working unchanged.
 Legacy equivalents `QUIVER_API`, `QUIVER_BEARER_TOKEN`, `QUIVER_AUTH_TOKEN` are
 still accepted.
 
+## CI Examples
+
+Copy-ready pipelines built on these commands live in
+[botiverse/hands-examples](https://github.com/botiverse/hands-examples):
+
+- A reusable GitHub Action: `uses: botiverse/hands-examples/publish-android@v1`.
+- Complete GitHub Actions and GitLab CI workflows for Android, iOS
+  (publish + server-side [TestFlight upload](ios-testflight.md)), and
+  Electron (per-platform channels for the generic provider).
+- Plain-bash scripts for Jenkins, Buildkite, or any runner with bash and npm.
+
 ## Versioning Guidance
 
 For Android releases, keep APK `versionCode` and Hands `version_code` identical. Clients only update when the server release has a higher version code than the installed app.

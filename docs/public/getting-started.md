@@ -43,6 +43,17 @@ and per-app **app roles** (admin / publisher / member / viewer) — granted in
 the console under App → Access. Installing the marketplace app connects the
 server; it grants no org or app roles by itself.
 
+## Publishing from CI
+
+Ready-to-copy CI examples live in
+[botiverse/hands-examples](https://github.com/botiverse/hands-examples):
+a reusable GitHub Action for Android
+(`uses: botiverse/hands-examples/publish-android@v1`), complete GitHub
+Actions and GitLab CI workflows for Android, iOS (with server-side
+TestFlight), and Electron, plus plain-bash scripts for any other CI. All
+examples publish draft releases with an app-scoped `publisher` deploy token;
+see the [CLI Reference](cli-reference.md) for the underlying commands.
+
 ## Uninstalling
 
 Removing the app from Connected Apps disconnects the server: sign-ins from
