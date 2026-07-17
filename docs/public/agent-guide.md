@@ -93,7 +93,8 @@ plain `raft integration invoke`; the server enforces app RBAC (viewer for
 reads, publisher for writes):
 
 ```bash
-# create a DRAFT from an existing verified build (draft is the default)
+# create a DRAFT from an existing verified build (the server enforces draft;
+# activation is impossible on this endpoint — publish-release is the only path)
 raft integration invoke --service <hands-service> --action create-release \
   --param app_id=<app-uuid> --param build_id=<build-uuid>
 
@@ -107,7 +108,10 @@ raft integration invoke --service <hands-service> --action publish-release \
   --param app_id=<app-uuid> --param release_id=<release-uuid>
 ```
 
-Also available: `list-releases`, `get-release` (viewer). When reporting a
+Also available: `list-releases`, `get-release`, `list-release-shares`
+(viewer), `create-release-share` / `revoke-release-share` (publisher —
+share pages are how a draft gets to a human for device review; links have no
+expiry unless you set one and die only on revoke). When reporting a
 release, always cite the build's APK SHA-256 — the binary hash is the
 authority, not a branch head or run id. A 403 means your identity lacks the
 app role: ask an app admin to grant it; never borrow credentials.

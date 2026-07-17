@@ -733,7 +733,9 @@ export async function handleAgentHelp(c: Context<{ Bindings: Env }>) {
       comment_ticket:
         "POST /api/apps/{app_id}/feedback/{ticket_id}/comments — body: {text: string}",
       create_release:
-        "POST /api/apps/{app_id}/releases — body: {build_id, status?: draft|active (default draft), changelog?, release_notes?: {en, zh-CN}} — publisher",
+        "POST /api/apps/{app_id}/releases/draft — body: {build_id, changelog?, release_notes?: {en, zh-CN}} — publisher; server-enforced draft, activate only via publish",
+      create_share:
+        "POST /api/apps/{app_id}/releases/{release_id}/shares — body: {ttl_seconds?, password?} — publisher; no expiry unless set",
       update_release:
         "PATCH /api/apps/{app_id}/releases/{release_id} — body: {changelog?, release_notes?, hidden?} — publisher",
       publish_release:
@@ -808,13 +810,12 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
       {
         name: "create-release",
         description:
-          "Create a release from an existing build. Defaults to a DRAFT (pass status=active only when explicitly authorized to go live). Requires app publisher.",
-        endpoint: { method: "POST", path: "/api/apps/{app_id}/releases" },
+          "Create a DRAFT release from an existing build. The server enforces draft — activation has exactly one path: the publish-release action. Requires app publisher.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/releases/draft" },
         parameters: {
           app_id: { type: "string", in: "path", required: true, description: "App UUID." },
           build_id: { type: "string", in: "body", required: true, description: "Hands build UUID to release." },
           channel_id: { type: "string", in: "body", required: false, description: "Channel UUID (defaults to the build's channel)." },
-          status: { type: "string", in: "body", required: false, description: "'draft' (default) or 'active'." },
           changelog: { type: "string", in: "body", required: false, description: "Changelog text (single-language fallback)." },
           release_notes: { type: "object", in: "body", required: false, description: "Bilingual notes, e.g. {\"en\": \"...\", \"zh-CN\": \"...\"}." },
         },
@@ -840,6 +841,37 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         parameters: {
           app_id: { type: "string", in: "path", required: true, description: "App UUID." },
           release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+        },
+      },
+      {
+        name: "list-release-shares",
+        description: "List a release's share links (metadata + stats; URLs for shares created after tokens were stored). Requires app viewer.",
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/releases/{release_id}/shares" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+        },
+      },
+      {
+        name: "create-release-share",
+        description:
+          "Create a public share/download page for a release (works for drafts — that's the review flow). No expiry unless ttl_seconds is passed; lives until revoked. Requires app publisher.",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/releases/{release_id}/shares" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+          ttl_seconds: { type: "number", in: "body", required: false, description: "Optional expiry; omit for a link that lives until revoked." },
+          password: { type: "string", in: "body", required: false, description: "Optional password protection." },
+        },
+      },
+      {
+        name: "revoke-release-share",
+        description: "Revoke a share link (the only way a no-expiry link dies). Requires app publisher.",
+        endpoint: { method: "DELETE", path: "/api/apps/{app_id}/releases/{release_id}/shares/{share_id}" },
+        parameters: {
+          app_id: { type: "string", in: "path", required: true, description: "App UUID." },
+          release_id: { type: "string", in: "path", required: true, description: "Release UUID." },
+          share_id: { type: "string", in: "path", required: true, description: "Share UUID." },
         },
       },
       {
