@@ -458,6 +458,7 @@ const publicDocs = new Set([
   "/docs/electron-sdk/",
   "/docs/cli-reference/",
   "/docs/agent-cli-feedback/",
+  "/docs/ios-testflight/",
   "/docs/public-api-reference/",
 ]);
 
