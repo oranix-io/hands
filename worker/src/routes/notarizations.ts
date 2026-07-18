@@ -68,7 +68,7 @@ interface NotaryAsset {
 
 type AssetResult =
   | { ok: true; asset: NotaryAsset }
-  | { ok: false; code: string; status: number; message: string };
+  | { ok: false; code: string; status: 400 | 404 | 409; message: string };
 
 async function resolveNotaryAsset(db: D1Database, buildId: string, hintAssetId: string): Promise<AssetResult> {
   if (hintAssetId) {
@@ -116,7 +116,8 @@ async function snapshotAndVerify(env: Env, r2Key: string, expectedHash: string, 
 
   // First conditional read — pipe to DigestStream (streaming, no buffer).
   const obj = await env.APK_BUCKET.get(r2Key, { onlyIf: { etagMatches: meta.etag } });
-  if (!obj?.body) throw new SnapshotError("R2 object changed during read", ERR.ASSET_INTEGRITY_MISMATCH);
+  if (!obj || !("body" in obj) || !obj.body)
+    throw new SnapshotError("R2 object changed during read", ERR.ASSET_INTEGRITY_MISMATCH);
   if (obj.etag !== meta.etag) throw new SnapshotError("R2 etag drift", ERR.ASSET_INTEGRITY_MISMATCH);
 
   const digestStream = new crypto.DigestStream("SHA-256");
@@ -356,7 +357,8 @@ async function startNewAttempt(
   try {
     // Second conditional read — this body IS the S3 PUT body.
     const objForUpload = await c.env.APK_BUCKET.get(asset.r2_key, { onlyIf: { etagMatches: snapshot.etag } });
-    if (!objForUpload?.body) throw new SnapshotError("R2 object changed between hash and upload", ERR.ASSET_INTEGRITY_MISMATCH);
+    if (!objForUpload || !("body" in objForUpload) || !objForUpload.body)
+      throw new SnapshotError("R2 object changed between hash and upload", ERR.ASSET_INTEGRITY_MISMATCH);
     if (objForUpload.etag !== snapshot.etag) throw new SnapshotError("R2 etag drift before upload", ERR.ASSET_INTEGRITY_MISMATCH);
     if (objForUpload.size !== snapshot.size) throw new SnapshotError("R2 size drift before upload", ERR.ASSET_INTEGRITY_MISMATCH);
 
