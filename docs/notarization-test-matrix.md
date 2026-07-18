@@ -101,7 +101,7 @@ Revision 4 (2026-07-18): 59 cases. Incorporates XX r3+r4 corrections.
 | **8.12** | **UPDATE logical source-snapshot columns** (r2_key/r2_etag/source_size_bytes/computed_sha256/etc.) after creation | no freeze trigger | `trg_notarize_freeze_snapshot` — source identity columns immutable |
 
 ---
-**Grand total: 43 + 12 = 55 cases**
+**Subtotal: C1–C8 = 55 cases**
 
 ## C9: Bidirectional error_class ↔ state (4 — r5)
 
