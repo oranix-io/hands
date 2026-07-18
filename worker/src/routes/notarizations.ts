@@ -459,22 +459,22 @@ export async function handleNotarizationStatus(c: AdminContext) {
 
   const isActive = row.id === row.active_attempt_id;
 
-  // Cached terminal closure.
+  // B5: historical check BEFORE cached closure — old attempt must not get ready=true.
+  if (!isActive) {
+    return c.json({
+      notarization_id: row.notarization_id, attempt_id: row.id,
+      submission_id: row.apple_submission_id, state: row.status_state,
+      ready_for_staple: false, note: "historical attempt (read-only)",
+    });
+  }
+
+  // Cached terminal closure (only for active attempt).
   if (row.logical_state === "accepted" && row.ready_for_staple === 1) {
     return c.json({
       notarization_id: row.notarization_id, attempt_id: row.id,
       submission_id: row.apple_submission_id, state: "accepted",
       ready_for_staple: true, log_sha256: row.apple_log_sha256,
       source_sha256: row.computed_sha256,
-    });
-  }
-
-  // B5: non-active attempt → read-only.
-  if (!isActive) {
-    return c.json({
-      notarization_id: row.notarization_id, attempt_id: row.id,
-      submission_id: row.apple_submission_id, state: row.status_state,
-      ready_for_staple: false, note: "historical attempt (read-only)",
     });
   }
 
