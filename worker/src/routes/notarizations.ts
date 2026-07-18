@@ -74,7 +74,8 @@ async function resolveNotaryAsset(db: D1Database, buildId: string, hintAssetId: 
   if (hintAssetId) {
     const asset = await db.prepare(
       `SELECT id, r2_key, file_hash, size_bytes, filetype FROM build_assets
-       WHERE id = ?1 AND build_id = ?2 AND artifact_kind = 'installable'`,
+       WHERE id = ?1 AND build_id = ?2 AND artifact_kind = 'installable'
+         AND platform = 'darwin'`,
     ).bind(hintAssetId, buildId).first<NotaryAsset>();
     if (!asset) return { ok: false, code: "ASSET_NOT_FOUND", status: 404, message: "asset not found for this build" };
     if (!["dmg", "zip", "pkg"].includes(asset.filetype))
@@ -83,7 +84,8 @@ async function resolveNotaryAsset(db: D1Database, buildId: string, hintAssetId: 
   }
   const { results } = await db.prepare(
     `SELECT id, r2_key, file_hash, size_bytes, filetype FROM build_assets
-     WHERE build_id = ?1 AND artifact_kind = 'installable' AND filetype IN ('dmg','zip','pkg')`,
+     WHERE build_id = ?1 AND artifact_kind = 'installable'
+       AND platform = 'darwin' AND filetype IN ('dmg','zip','pkg')`,
   ).bind(buildId).all<NotaryAsset>();
   if (results.length === 0) return { ok: false, code: ERR.NO_NOTARY_ASSET, status: 404, message: "no notarizable asset (accepted: dmg, zip, pkg)" };
   if (results.length > 1) return { ok: false, code: ERR.AMBIGUOUS_ASSET, status: 409, message: "multiple notarizable assets; specify asset_id" };
@@ -167,6 +169,10 @@ export async function handleNotarize(c: AdminContext) {
   if (!assetResult.ok) return c.json({ error: assetResult.message, code: assetResult.code }, assetResult.status);
   const asset = assetResult.asset;
 
+  // B4: resolve local credentials BEFORE expensive snapshot/ledger mutation.
+  const creds = await getAscCredentials(c.env.DB, encKey, appId);
+  if (!creds) return c.json({ error: "no ASC credentials configured", code: ERR.NO_ASC_CREDS }, 400);
+
   // Snapshot identity before idempotency (B3: SHA is the identity key).
   let snapshot: SourceSnapshot;
   try {
@@ -197,8 +203,6 @@ export async function handleNotarize(c: AdminContext) {
       return c.json({ notarization_id: existing.id, attempt_id: existing.active_attempt_id, submission_id: existing.apple_submission_id, state: "in_progress", ready_for_staple: false, idempotent: true });
     }
     // Terminal non-accepted → new attempt on same logical.
-    const creds = await getAscCredentials(c.env.DB, encKey, appId);
-    if (!creds) return c.json({ error: "no ASC credentials", code: ERR.NO_ASC_CREDS }, 400);
     return await startNewAttempt(c, creds, appId, existing.id, asset, b.version_name, snapshot);
   }
 
@@ -224,8 +228,6 @@ export async function handleNotarize(c: AdminContext) {
     return c.json({ error: "concurrent create conflict", code: "CONCURRENT" }, 409);
   }
 
-  const creds = await getAscCredentials(c.env.DB, encKey, appId);
-  if (!creds) return c.json({ error: "no ASC credentials", code: ERR.NO_ASC_CREDS }, 400);
   return await startNewAttempt(c, creds, appId, logicalId, asset, b.version_name, snapshot);
 }
 
@@ -316,7 +318,7 @@ async function startNewAttempt(
 
   // ── Ownership proven — NOW create operation + audit (XX correction) ──
   const op = await createOperation(c.env.DB, {
-    app_id: appId, kind: "notarize" as any, actor: currentActor(c),
+    app_id: appId, kind: "notarize", actor: currentActor(c),
     input: JSON.stringify({ logical_id: logicalId, asset_id: asset.id, sha: snapshot.computedSha }),
   });
   await insertAuditLog(c.env.DB, c, {
