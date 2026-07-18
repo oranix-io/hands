@@ -120,19 +120,21 @@ CREATE TABLE IF NOT EXISTS app_notarization_attempts (
     (completed_at IS NOT NULL AND status_state IN ('accepted', 'invalid', 'rejected', 'error'))
   ),
 
-  -- B4-fix (r4): error_class non-NULL requires a concrete error condition.
-  -- NOT tautological: healthy pending/in-progress with no reconciliation must have NULL error_class.
-  -- Allowed non-NULL cases:
-  --   1. status_state = 'error' (infra terminal)
-  --   2. upload_state = 'upload_failed' or 'upload_uncertain'
-  --   3. pending/in_progress with reconcile_state != 'none' (transient with reconciliation)
-  --   4. pending/in_progress with error_phase IS NOT NULL (transient recorded)
-  --   5. status_state = 'invalid' or 'rejected' (Apple terminal with classified error)
-  -- NULL is allowed for: accepted, OR pending/in_progress/invalid/rejected with no error condition
+  -- B4-fix (r5): bidirectional error_class ↔ state relationship.
+  -- NULL branch: requires NO error condition (status != error AND upload != failed).
+  --   accepted/pending/in_progress/invalid/rejected with NULL error_class all pass
+  --   UNLESS status=error or upload=upload_failed (those REQUIRE a non-NULL class).
+  -- Non-NULL branch: requires a concrete error condition:
+  --   status IN (error, invalid, rejected)  -- terminal infra error or classified Apple terminal
+  --   OR upload IN (upload_failed, upload_uncertain)
+  --   OR (pending/in_progress with reconcile_state != none OR error_phase IS NOT NULL)  -- transient
   CHECK (
-    (error_class IS NULL) OR
+    -- NULL is valid only when there is no error/upload-failed state
+    (error_class IS NULL AND status_state != 'error' AND upload_state != 'upload_failed')
+    OR
+    -- non-NULL is valid only when there is a concrete error condition
     (error_class IS NOT NULL AND (
-      status_state = 'error'
+      status_state IN ('error', 'invalid', 'rejected')
       OR upload_state IN ('upload_failed', 'upload_uncertain')
       OR (status_state IN ('pending', 'in_progress') AND (reconcile_state != 'none' OR error_phase IS NOT NULL))
     ))

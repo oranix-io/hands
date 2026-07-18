@@ -1,6 +1,6 @@
 # Notarization Lane — Test Matrix (merge minimum, per XX control-plane review)
 
-Revision 3 (2026-07-18): 43 cases. Incorporates XX r2/r3 corrections.
+Revision 4 (2026-07-18): 59 cases. Incorporates XX r3+r4 corrections.
 
 ## C1: source = asset snapshot + ETag conditional read (9)
 
@@ -83,7 +83,7 @@ Revision 3 (2026-07-18): 43 cases. Incorporates XX r2/r3 corrections.
 ---
 **Total: 43** (9+9+5+8+6+3+3)
 
-## C8: XX-demonstrated bypass negative tests (10 — r3+r4)
+## C8: XX-demonstrated bypass negative tests (12 — r3+r4)
 
 | # | Test | r2/3 bug | fix |
 |---|------|--------|-----|
@@ -102,3 +102,15 @@ Revision 3 (2026-07-18): 43 cases. Incorporates XX r2/r3 corrections.
 
 ---
 **Grand total: 43 + 12 = 55 cases**
+
+## C9: Bidirectional error_class ↔ state (4 — r5)
+
+| # | Test | Expected |
+|---|------|----------|
+| 9.1 | INSERT attempt `status=error, completed_at=X, error_class=NULL` | ABORT — error state requires non-NULL class |
+| 9.2 | INSERT attempt `upload_state=upload_failed, status=pending, error_class=NULL` | ABORT — upload_failed requires non-NULL class |
+| 9.3 | INSERT attempt `status=rejected, error_class=NOTARY_TEAM_NOT_CONFIGURED, error_phase=status_poll` | succeeds — classified Apple 7000 terminal allowed |
+| 9.4 | INSERT attempt `status=accepted, error_class=APPLE_REQUEST_FAILED` | ABORT — accepted has no error condition for non-NULL class |
+
+---
+**Grand total: 55 + 4 = 59 cases**
