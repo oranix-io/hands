@@ -151,6 +151,8 @@ describe("Tauri build helpers", () => {
     expect(inferTauriFiletype("App_1.2.3_x64-setup.nsis.zip")).toBe("nsis.zip");
     expect(inferTauriFiletype("App_1.2.3_x64_en-US.msi.zip")).toBe("msi.zip");
     expect(inferTauriFiletype("App_1.2.3_amd64.AppImage")).toBe("AppImage");
+    expect(inferTauriFiletype("App_1.2.3_x64-setup.exe")).toBe("exe");
+    expect(inferTauriFiletype("App_1.2.3_x64_en-US.msi")).toBe("msi");
     expect(() => inferTauriFiletype("App.dmg")).toThrow("unsupported Tauri updater bundle");
   });
 

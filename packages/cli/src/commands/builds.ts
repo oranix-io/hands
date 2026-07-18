@@ -1431,6 +1431,8 @@ export function inferElectronFiletype(filePath: string): string {
 export function inferTauriFiletype(filePath: string): string {
   const name = basename(filePath).toLowerCase();
   if (name.endsWith(".appimage")) return "AppImage";
+  if (name.endsWith(".exe")) return "exe";
+  if (name.endsWith(".msi")) return "msi";
   if (name.endsWith(".tar.gz")) return "tar.gz";
   if (name.endsWith(".nsis.zip")) return "nsis.zip";
   if (name.endsWith(".msi.zip")) return "msi.zip";

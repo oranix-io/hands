@@ -302,8 +302,8 @@ hands builds publish-tauri my-app \
 
 Repeat `--bundle`, `--signature`, and `--target` in matching order for a
 multi-platform release. Supported updater bundles are macOS `.app.tar.gz`,
-Linux `.AppImage` or compatibility `.tar.gz`, and Windows `.nsis.zip` /
-`.msi.zip`. Targets use Tauri's own names, such as `darwin-aarch64`,
+Linux `.AppImage` or compatibility `.tar.gz`, and Windows `.exe` / `.msi`
+(or v1-compatible `.nsis.zip` / `.msi.zip`). Targets use Tauri's own names, such as `darwin-aarch64`,
 `linux-x86_64`, and `windows-x86_64`.
 
 The command creates a draft by default. Review it and publish explicitly; use

@@ -156,6 +156,8 @@ function decodeFileName(value: string): string {
 
 function contentType(filetype: string): string {
   if (filetype === "AppImage") return "application/octet-stream";
+  if (filetype === "exe") return "application/vnd.microsoft.portable-executable";
+  if (filetype === "msi") return "application/x-msi";
   if (filetype === "tar.gz") return "application/gzip";
   return "application/zip";
 }
