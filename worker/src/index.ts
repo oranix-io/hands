@@ -104,6 +104,10 @@ import {
   handleTestflightUpload,
   handleTestflightUploadStatus,
 } from "./routes/testflight";
+import {
+  handleNotarize,
+  handleNotarizationStatus,
+} from "./routes/notarizations";
 import { handleAppStoreReview } from "./routes/appstore_review";
 import { handleGenerateDeltaPatches, handleDeltaSources } from "./routes/delta";
 import { handleUploadApk } from "./routes/upload";
@@ -825,6 +829,9 @@ admin.get("/api/apps/:appId/asc-credentials", requireAppRole("admin"), handleGet
 admin.post("/api/apps/:appId/asc-credentials/verify", requireAppRole("admin"), handleVerifyAscCredentials);
 admin.post("/api/apps/:appId/builds/:buildId/testflight-upload", requireAppRole("admin"), handleTestflightUpload);
 admin.get("/api/apps/:appId/testflight-uploads/:buildUploadId", requireAppRole("viewer"), handleTestflightUploadStatus);
+// Apple notarization (broker-only platform feature; publisher/viewer per Quinn).
+admin.post("/api/apps/:appId/builds/:buildId/notarize", requireAppRole("publisher"), handleNotarize);
+admin.get("/api/apps/:appId/notarizations/:submissionId", requireAppRole("viewer"), handleNotarizationStatus);
 admin.get("/api/apps/:appId/appstore-review", requireAppRole("viewer"), handleAppStoreReview);
 admin.put("/api/apps/:appId/asc-credentials", requireAppRole("admin"), handleSetAscCredentials);
 admin.delete("/api/apps/:appId/asc-credentials", requireAppRole("admin"), handleDeleteAscCredentials);
