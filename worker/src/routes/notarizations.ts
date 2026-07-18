@@ -219,12 +219,28 @@ export async function handleNotarize(c: AdminContext) {
     ).bind(logicalId, appId, b.id, asset.id, asset.r2_key, snapshot.etag,
            snapshot.size, snapshot.computedSha, asset.filetype, currentActor(c), now).run();
   } catch {
-    // UNIQUE race — reread winner.
+    // UNIQUE race — reread winner and route through same start-or-return-active flow.
     const winner = await c.env.DB.prepare(
-      `SELECT id, state, active_attempt_id FROM app_notarizations
-       WHERE app_id = ?1 AND asset_id = ?2 AND computed_sha256 = ?3`,
-    ).bind(appId, asset.id, snapshot.computedSha).first<{ id: string; state: string; active_attempt_id: string | null }>();
-    if (winner) return c.json({ notarization_id: winner.id, state: winner.state, idempotent: true, note: "concurrent create resolved" });
+      `SELECT n.id, n.state, n.ready_for_staple, n.active_attempt_id,
+              a.apple_submission_id, a.status_state as attempt_status
+       FROM app_notarizations n
+       LEFT JOIN app_notarization_attempts a ON a.id = n.active_attempt_id
+       WHERE n.app_id = ?1 AND n.asset_id = ?2 AND n.computed_sha256 = ?3`,
+    ).bind(appId, asset.id, snapshot.computedSha).first<{
+      id: string; state: string; ready_for_staple: number;
+      active_attempt_id: string | null; apple_submission_id: string | null; attempt_status: string | null;
+    }>();
+    if (winner) {
+      // Return same shape as idempotency check above.
+      if (winner.state === "accepted") {
+        return c.json({ notarization_id: winner.id, submission_id: winner.apple_submission_id, state: "accepted", ready_for_staple: winner.ready_for_staple === 1, idempotent: true, note: "concurrent create resolved" });
+      }
+      if (winner.active_attempt_id && winner.attempt_status && ["pending", "in_progress"].includes(winner.attempt_status)) {
+        return c.json({ notarization_id: winner.id, attempt_id: winner.active_attempt_id, submission_id: winner.apple_submission_id, state: "in_progress", ready_for_staple: false, idempotent: true, note: "concurrent create resolved" });
+      }
+      // Terminal non-accepted — start new attempt on the winner logical.
+      return await startNewAttempt(c, creds, appId, winner.id, asset, b.version_name, snapshot);
+    }
     return c.json({ error: "concurrent create conflict", code: "CONCURRENT" }, 409);
   }
 
@@ -333,15 +349,26 @@ async function startNewAttempt(
 
   await updateOperation(c.env.DB, op.id, { status: "in_progress", progress: 10 });
 
-  // ── Phase: create_submission ──
+  // ── Phase: create_submission (B1: external mutation boundary) ──
+  // B1 fix: if createNotarySubmission fails with recoverable error (5xx/timeout),
+  // Apple may have accepted the submission but we lost the response.
+  // Mark attempt as upload_uncertain + reconcile_state=needed. The next POST
+  // dedupes to this attempt (it's active + pending). Reconciliation should use
+  // Apple's Get Previous Submissions endpoint to find the orphan submission.
+  // We never create a second submission while outcome is uncertain.
   let submissionAttrs: { awsAccessKeyId: string; awsSecretAccessKey: string; awsSessionToken: string; bucket: string; object: string };
   let appleSubmissionId: string;
   try {
     const submissionName = `${versionName}-${asset.filetype}-${snapshot.computedSha.slice(0, 12)}.${asset.filetype}`;
     const resp = await createNotarySubmission(creds, { submissionName, sha256: snapshot.computedSha });
+    // Validate response shape before persisting.
+    if (!resp?.data?.id || !resp?.data?.attributes?.bucket) {
+      throw new Error("invalid Apple submission response: missing id or attributes");
+    }
     appleSubmissionId = resp.data.id;
     submissionAttrs = resp.data.attributes;
 
+    // Persist submission_id IMMEDIATELY after validated response (B1).
     await c.env.DB.prepare(
       `UPDATE app_notarization_attempts
        SET apple_submission_id = ?1, upload_state = 'uploading', submitted_at = ?2
@@ -350,7 +377,19 @@ async function startNewAttempt(
     await updateOperation(c.env.DB, op.id, { progress: 30 });
   } catch (e) {
     const { code, detail, recoverable } = classifyError(e, "create_submission");
-    await markError(c.env.DB, attemptId, code, detail, "create_submission", recoverable);
+    if (recoverable) {
+      // B1: uncertain outcome — Apple may have created the submission.
+      // Mark upload_uncertain + reconcile. Never create a second submission.
+      await c.env.DB.prepare(
+        `UPDATE app_notarization_attempts
+         SET upload_state = 'upload_uncertain', error_class = ?1, error_detail = ?2,
+             error_phase = 'create_submission', reconcile_state = 'needed'
+         WHERE id = ?3`,
+      ).bind(code, detail, attemptId).run();
+      await updateOperation(c.env.DB, op.id, { status: "failed", error: JSON.stringify({ code, detail, note: "uncertain create outcome — needs reconcile" }), completed_at: Date.now() });
+      return c.json({ notarization_id: logicalId, attempt_id: attemptId, ok: false, code: ERR.UPLOAD_UNCERTAIN, detail, note: "submission create uncertain — needs reconcile" }, 502);
+    }
+    await markError(c.env.DB, attemptId, code, detail, "create_submission", false);
     await updateOperation(c.env.DB, op.id, { status: "failed", error: JSON.stringify({ code, detail }), completed_at: Date.now() });
     return c.json({ notarization_id: logicalId, attempt_id: attemptId, ok: false, code, detail }, 502);
   }
