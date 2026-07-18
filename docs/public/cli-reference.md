@@ -293,7 +293,7 @@ Publish the updater bundles and their Tauri-generated signatures together:
 
 ```bash
 hands builds publish-tauri my-app \
-  --version 1.2.3 \
+  --version-name 1.2.3 \
   --channel main \
   --bundle target/release/bundle/macos/MyApp.app.tar.gz \
   --signature target/release/bundle/macos/MyApp.app.tar.gz.sig \
