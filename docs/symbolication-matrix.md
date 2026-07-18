@@ -18,6 +18,21 @@ lane exists.
 
 ## Decisions
 
+0. **Android `native-symbols` provenance (2026-07-18, shipped in SDK 0.11.1+).**
+   App pipelines must not repackage the `.so` bytes from their own build
+   tree — the SDK's AAR (and therefore the APK) contains a *stripped*
+   `libhandscrash.so`, so "intermediates from the app build" are fake symbols.
+   The real symbols ship as the `native-symbols` Maven classifier of
+   `build.hands:hands-android-sdk` (packaged from the CMake unstripped obj by
+   `scripts/package_android_native_symbols.sh` via the
+   `packageReleaseNativeSymbols` gradle task in the publish workflow;
+   fail-closed on stripped/missing/duplicate/Build-ID-less input, with a
+   `manifest.json` of per-ABI Build IDs). The app release flow resolves the
+   classifier for its exact SDK version, verifies per-ABI Build IDs against
+   the APK's stripped `.so`, and only then uploads the zip as the build's
+   `native-symbols` asset — missing or mismatched ⇒ release fails closed.
+   **AAR and classifier must come from the same channel** (GitHub Packages vs
+   JitPack build separately; their Build IDs differ).
 1. **Server tooling is Linux-only, standardized on the Rust symbolication
    stack** (owner call, 2026-07-05): Sentry's `symbolic` for dSYM/ELF
    frame resolution and Mozilla's `rust-minidump`/`minidump-stackwalk` for
