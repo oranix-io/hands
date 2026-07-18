@@ -122,6 +122,9 @@ async function snapshotAndVerify(env: Env, r2Key: string, expectedHash: string, 
   const digestStream = new crypto.DigestStream("SHA-256");
   await obj.body.pipeTo(digestStream);
   const digest = await digestStream.digest;
+  // Assert all expected bytes were hashed.
+  if (Number(digestStream.bytesWritten) !== expectedSize)
+    throw new SnapshotError(`bytesWritten ${digestStream.bytesWritten} != expected ${expectedSize}`, ERR.ASSET_INTEGRITY_MISMATCH);
   const computedSha = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
 
   if (computedSha !== expectedHash)
@@ -247,59 +250,77 @@ async function startNewAttempt(
     payload: { logical_id: logicalId, asset_id: asset.id, sha: snapshot.computedSha },
   });
 
-  // ── CAS: allocate attempt_no and INSERT atomically ──
+  // ── CAS: transactional batch — conditional INSERT + guarded active-pointer UPDATE ──
+  // XX correction: use batch() (sequential, transactional, rollback-on-failure).
+  // Conditional INSERT ... SELECT creates candidate ONLY when slot is empty/terminal.
+  // Loser has no candidate row → reread winner. No orphan rows.
   const attemptNoRow = await c.env.DB.prepare(
     `SELECT COALESCE(MAX(attempt_no), 0) + 1 as next_no FROM app_notarization_attempts WHERE notarization_id = ?1`,
   ).bind(logicalId).first<{ next_no: number }>();
   const attemptNo = attemptNoRow?.next_no ?? 1;
 
-  try {
-    await c.env.DB.prepare(
+  // Batch: [0] conditional INSERT candidate, [1] guarded active-pointer UPDATE.
+  // INSERT ... SELECT only inserts when the logical's active slot is claimable
+  // (NULL or pointing to a terminal attempt).
+  const batchResults = await c.env.DB.batch([
+    c.env.DB.prepare(
       `INSERT INTO app_notarization_attempts
          (id, notarization_id, app_id, attempt_no, operation_id,
           upload_state, status_state, reconcile_state, created_at)
-       VALUES (?1,?2,?3,?4,?5,'pending','pending','none',?6)`,
-    ).bind(attemptId, logicalId, appId, attemptNo, op.id, now).run();
-  } catch {
-    // Collision — reread and return existing winner.
+       SELECT ?1, ?2, ?3, ?4, ?5, 'pending', 'pending', 'none', ?6
+       WHERE EXISTS (
+         SELECT 1 FROM app_notarizations n
+         WHERE n.id = ?2 AND (
+           n.active_attempt_id IS NULL OR
+           n.active_attempt_id IN (
+             SELECT id FROM app_notarization_attempts
+             WHERE notarization_id = ?2 AND status_state IN ('accepted','invalid','rejected','error')
+           )
+         )
+       )`,
+    ).bind(attemptId, logicalId, appId, attemptNo, op.id, now),
+    c.env.DB.prepare(
+      `UPDATE app_notarizations
+       SET active_attempt_id = ?1, state = 'in_progress', updated_at = ?2
+       WHERE id = ?3 AND (
+         active_attempt_id IS NULL OR
+         active_attempt_id IN (
+           SELECT id FROM app_notarization_attempts
+           WHERE notarization_id = ?3 AND status_state IN ('accepted','invalid','rejected','error')
+         )
+       )`,
+    ).bind(attemptId, now, logicalId),
+  ]);
+
+  // Inspect batch result: did our candidate INSERT actually happen?
+  const insertMeta = batchResults[0]?.meta;
+  const inserted = insertMeta && insertMeta.changes > 0;
+
+  if (!inserted) {
+    // Lost the CAS — active slot was claimed by another. Reread winner.
+    // No orphan row was created (conditional INSERT didn't fire).
     const winner = await c.env.DB.prepare(
       `SELECT a.id, a.apple_submission_id, a.status_state
        FROM app_notarization_attempts a
        JOIN app_notarizations n ON n.active_attempt_id = a.id
        WHERE n.id = ?1`,
     ).bind(logicalId).first<{ id: string; apple_submission_id: string | null; status_state: string }>();
-    if (winner) return c.json({ notarization_id: logicalId, attempt_id: winner.id, submission_id: winner.apple_submission_id, state: winner.status_state, idempotent: true, note: "attempt race resolved" });
-    return c.json({ error: "attempt allocation conflict", code: "CONCURRENT" }, 409);
+    if (winner) return c.json({ notarization_id: logicalId, attempt_id: winner.id, submission_id: winner.apple_submission_id, state: winner.status_state, idempotent: true, note: "CAS lost, returning active attempt" });
+    return c.json({ error: "CAS claim failed", code: "CONCURRENT" }, 409);
   }
 
-  // ── CAS: claim active attempt slot BEFORE any Apple side-effect ──
-  // Only succeed if logical has no active, or active is terminal.
-  const claimResult = await c.env.DB.prepare(
-    `UPDATE app_notarizations
-     SET active_attempt_id = ?1, state = 'in_progress', updated_at = ?2
-     WHERE id = ?3 AND (
-       active_attempt_id IS NULL OR active_attempt_id = ?1 OR
-       active_attempt_id IN (
-         SELECT id FROM app_notarization_attempts WHERE notarization_id = ?3
-         AND status_state IN ('accepted','invalid','rejected','error')
-       )
-     )`,
-  ).bind(attemptId, now, logicalId).run();
-
-  // Check if we actually claimed (CAS result).
+  // Verify active pointer points to us (double-check after batch).
   const claimed = await c.env.DB.prepare(
     `SELECT active_attempt_id FROM app_notarizations WHERE id = ?1`,
   ).bind(logicalId).first<{ active_attempt_id: string | null }>();
-
-  if (!claimed?.active_attempt_id || claimed.active_attempt_id !== attemptId) {
-    // Lost the CAS — another attempt is active. Reread winner, do NOT proceed to Apple.
+  if (claimed?.active_attempt_id !== attemptId) {
+    // Race: someone else won between our batch and this check.
     const winner = await c.env.DB.prepare(
       `SELECT a.id, a.apple_submission_id, a.status_state
        FROM app_notarization_attempts a WHERE a.id = ?1`,
     ).bind(claimed?.active_attempt_id).first<{ id: string; apple_submission_id: string | null; status_state: string }>();
-    void claimResult;
-    if (winner) return c.json({ notarization_id: logicalId, attempt_id: winner.id, submission_id: winner.apple_submission_id, state: winner.status_state, idempotent: true, note: "CAS lost, returning active attempt" });
-    return c.json({ error: "CAS claim failed", code: "CONCURRENT" }, 409);
+    if (winner) return c.json({ notarization_id: logicalId, attempt_id: winner.id, submission_id: winner.apple_submission_id, state: winner.status_state, idempotent: true, note: "CAS lost after batch" });
+    return c.json({ error: "CAS verification failed", code: "CONCURRENT" }, 409);
   }
 
   await updateOperation(c.env.DB, op.id, { status: "in_progress", progress: 10 });
@@ -332,6 +353,7 @@ async function startNewAttempt(
     const objForUpload = await c.env.APK_BUCKET.get(asset.r2_key, { onlyIf: { etagMatches: snapshot.etag } });
     if (!objForUpload?.body) throw new SnapshotError("R2 object changed between hash and upload", ERR.ASSET_INTEGRITY_MISMATCH);
     if (objForUpload.etag !== snapshot.etag) throw new SnapshotError("R2 etag drift before upload", ERR.ASSET_INTEGRITY_MISMATCH);
+    if (objForUpload.size !== snapshot.size) throw new SnapshotError("R2 size drift before upload", ERR.ASSET_INTEGRITY_MISMATCH);
 
     const uploadResult = await uploadArtifactToS3(
       submissionAttrs,
