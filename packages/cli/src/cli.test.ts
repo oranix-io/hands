@@ -202,11 +202,11 @@ describe("Tauri build helpers", () => {
 
     try {
       const { registerBuildCommands } = await import("../src/commands/builds.js");
-      const program = new Command().option("--json", "JSON output", false);
+      const program = new Command().version("0.5.9").option("--json", "JSON output", false);
       registerBuildCommands(program);
       await program.parseAsync([
         "node", "hands", "builds", "publish-tauri", "desktop",
-        "--version", "1.2.3",
+        "--version-name", "1.2.3",
         "--bundle", bundle,
         "--signature", signature,
         "--target", "linux-x86_64",

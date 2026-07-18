@@ -917,7 +917,7 @@ export function registerBuildCommands(program: Command): void {
   builds
     .command("publish-tauri <appIdOrSlug>")
     .description("Create a Tauri updater build/release and upload signed updater bundles.")
-    .requiredOption("--version <version>", "Tauri application semver.")
+    .requiredOption("--version-name <version>", "Tauri application semver.")
     .option("--version-code <code>", "Hands version code. Defaults from numeric semver.")
     .requiredOption("--bundle <path>", "Tauri updater bundle. Repeat once per target.", collect, [])
     .requiredOption("--signature <path>", "Tauri .sig file matching --bundle. Repeat in the same order.", collect, [])
@@ -929,12 +929,12 @@ export function registerBuildCommands(program: Command): void {
     .option("--publish", "Create an active release instead of the default draft.", false)
     .option("--json", "Output JSON.", false)
     .action(async (appIdOrSlug: string, opts: {
-      version: string; versionCode?: string; bundle: string[]; signature: string[];
+      versionName: string; versionCode?: string; bundle: string[]; signature: string[];
       target: string[]; channel: string; releaseType: string;
       changelog?: string[]; changelogFile?: string[]; publish?: boolean; json?: boolean;
     }) => {
-      if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(opts.version)) {
-        throw new Error("--version must be a valid semantic version");
+      if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(opts.versionName)) {
+        throw new Error("--version-name must be a valid semantic version");
       }
       if (opts.bundle.length === 0) throw new Error("provide at least one --bundle, --signature, and --target set");
       if (opts.bundle.length !== opts.signature.length || opts.bundle.length !== opts.target.length) {
@@ -947,13 +947,13 @@ export function registerBuildCommands(program: Command): void {
       const channelId = await resolveChannelId(appId, opts.channel);
       const versionCode = opts.versionCode
         ? parseNonNegativeInteger(opts.versionCode, "--version-code")
-        : versionCodeFromVersion(opts.version);
+        : versionCodeFromVersion(opts.versionName);
       const changelog = parseChangelogOptions(opts);
       const build = await apiRequest<{ id: string }>(`/api/apps/${appId}/builds`, {
         method: "POST",
         body: {
           channel_id: channelId, product_type: "tauri-updater", release_type: opts.releaseType,
-          version_name: opts.version, version_code: versionCode, changelog,
+          version_name: opts.versionName, version_code: versionCode, changelog,
           source: "cli", status: "succeeded",
           build_metadata_json: { tauri: { targets: opts.target } },
         },
@@ -982,9 +982,9 @@ export function registerBuildCommands(program: Command): void {
           changelog, scopes: [{ scope_type: "full", scope_value: "all" }],
         },
       });
-      const result = { build_id: build.id, release_id: release.id, channel: opts.channel, version: opts.version, assets };
+      const result = { build_id: build.id, release_id: release.id, channel: opts.channel, version: opts.versionName, assets };
       if (shouldOutputJson(program, opts.json)) console.log(JSON.stringify(result, null, 2));
-      else console.log(`Published Tauri ${opts.publish ? "release" : "draft"} ${opts.version} to ${opts.channel} (${assets.length} target${assets.length === 1 ? "" : "s"})`);
+      else console.log(`Published Tauri ${opts.publish ? "release" : "draft"} ${opts.versionName} to ${opts.channel} (${assets.length} target${assets.length === 1 ? "" : "s"})`);
     });
 
   builds
