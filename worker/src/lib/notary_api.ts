@@ -149,13 +149,12 @@ export async function getNotarySubmissionStatus(
 export async function getNotarySubmissionLog(
   creds: AscApiCredentials,
   submissionId: string,
-): Promise<{ developerLogUrl: string; log: NotaryLogJson }> {
+): Promise<{ log: NotaryLogJson }> {
   validateSubmissionId(submissionId);
   const logResp = await notaryRequest<NotaryLogUrlResponse>(
     creds, "GET", `/submissions/${submissionId}/logs`,
   );
   const developerLogUrl = logResp.data.attributes.developerLogUrl;
-  // Fetch the actual log JSON — URL is short-lived.
   const logFetch = await fetch(developerLogUrl);
   if (!logFetch.ok) {
     throw new AscApiError(
@@ -164,19 +163,26 @@ export async function getNotarySubmissionLog(
     );
   }
   const log = (await logFetch.json()) as NotaryLogJson;
-  return { developerLogUrl, log };
+  // Return only the parsed log — developerLogUrl is short-lived and must not
+  // leak into D1/operation output/audit/API response (B7).
+  return { log };
 }
 
 /**
  * Upload artifact to Apple's S3 using temp credentials from createNotarySubmission.
  * Uses aws4fetch for SigV4 signing (same library as r2_presign.ts).
  *
- * The body is a ReadableStream from R2 — streamed directly, never buffered.
- * Returns the S3 ETag receipt (NOT a content hash — do not use for integrity).
+ * aws4fetch 1.0.20 requires X-Amz-Content-Sha256 header for non-ArrayBuffer bodies.
+ * We pass the pre-computed SHA (from DigestStream) as that header, and the body
+ * is a ReadableStream (second etagMatches GET — same verified bytes, matrix 1.8).
+ * aws4fetch sees the header and does NOT inspect/buffer the stream.
+ *
+ * Returns the S3 ETag receipt (NOT a content hash).
  */
 export async function uploadArtifactToS3(
   attrs: NotarySubmissionResponse["data"]["attributes"],
   body: ReadableStream<Uint8Array>,
+  computedSha256: string,
   contentType = "application/octet-stream",
 ): Promise<{ etag: string | null }> {
   const url = `https://${attrs.bucket}.s3-accelerate.amazonaws.com/${attrs.object}`;
@@ -186,13 +192,16 @@ export async function uploadArtifactToS3(
     secretAccessKey: attrs.awsSecretAccessKey,
     sessionToken: attrs.awsSessionToken,
     service: "s3",
-    region: "us-east-1",  // Apple's Notary S3 uses us-east-1
+    region: "us-east-1",
     retries: 0,
   });
 
   const signedReq = await aws.sign(url, {
     method: "PUT",
-    headers: { "content-type": contentType },
+    headers: {
+      "content-type": contentType,
+      "x-amz-content-sha256": computedSha256,
+    },
     body,
   });
 
@@ -206,9 +215,6 @@ export async function uploadArtifactToS3(
     );
   }
 
-  // S3 returns ETag header (content MD5 in classic S3, but NOT reliable as
-  // content hash — we only use it as a receipt, never for integrity verification).
   const etag = res.headers.get("etag");
-  // Strip quotes if present (S3 ETags are quoted)
   return { etag: etag ? etag.replace(/^"|"$/g, "") : null };
 }
