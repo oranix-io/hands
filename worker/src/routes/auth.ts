@@ -800,6 +800,18 @@ export async function handleAgentManifest(c: Context<{ Bindings: Env }>) {
         endpoint: { method: "GET", path: "/api/apps" },
       },
       {
+        name: "list-channels",
+        endpoint: { method: "GET", path: "/api/apps/{app_id}/channels" },
+        description: "List an app's release channels (id, slug, name). Requires app viewer.",
+      },
+      {
+        name: "create-channel",
+        endpoint: { method: "POST", path: "/api/apps/{app_id}/channels" },
+        params: { slug: "string (lowercase channel slug)", name: "string (display name)" },
+        description:
+          "Create a release channel on an app (channels are never auto-created by publish). Requires app admin. Creating a channel activates nothing.",
+      },
+      {
         name: "list-releases",
         description: "List an app's releases (id, status, channel, version, rollout). Requires app viewer.",
         endpoint: { method: "GET", path: "/api/apps/{app_id}/releases" },
