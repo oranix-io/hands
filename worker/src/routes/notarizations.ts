@@ -379,15 +379,21 @@ async function startNewAttempt(
     await updateOperation(c.env.DB, op.id, { progress: 50 });
   } catch (e) {
     const isSnapshot = e instanceof SnapshotError;
-    const code = isSnapshot ? ERR.ASSET_INTEGRITY_MISMATCH : ERR.S3_UPLOAD_FAILED;
+    // B7: distinguish deterministic failure from uncertainty.
+    // - SnapshotError / S3 4xx HTTP rejection = deterministic upload_failed
+    // - Transport/timeout/abort (outcome unknown) = upload_uncertain
+    const isAscError = e instanceof AscApiError;
+    const isDeterministic = isSnapshot || (isAscError && e.status >= 400 && e.status < 500);
+    const uploadState = isDeterministic ? "upload_failed" : "upload_uncertain";
+    const code = isSnapshot ? ERR.ASSET_INTEGRITY_MISMATCH : (isDeterministic ? ERR.S3_UPLOAD_FAILED : ERR.UPLOAD_UNCERTAIN);
     const detail = e instanceof Error ? e.message : String(e);
-    // S3 upload failure — but Apple submission already exists. Must reconcile same attempt.
+    // Upload failure — but Apple submission already exists. Must reconcile same attempt.
     await c.env.DB.prepare(
       `UPDATE app_notarization_attempts
        SET upload_state = ?1, error_class = ?2, error_detail = ?3, error_phase = 's3_upload',
            reconcile_state = 'needed'
        WHERE id = ?4`,
-    ).bind(isSnapshot ? "upload_failed" : "upload_uncertain", code, detail, attemptId).run();
+    ).bind(uploadState, code, detail, attemptId).run();
     await updateOperation(c.env.DB, op.id, { status: "failed", error: JSON.stringify({ code, detail }), completed_at: Date.now() });
     return c.json({ notarization_id: logicalId, attempt_id: attemptId, submission_id: appleSubmissionId, ok: false, code, detail, note: "submission created; upload needs reconcile" }, 502);
   }
@@ -515,9 +521,18 @@ export async function handleNotarizationStatus(c: AdminContext) {
     if (rawStatus === "Rejected") {
       try {
         const { log } = await getNotarySubmissionLog(creds, row.apple_submission_id);
-        const logStr = JSON.stringify(log);
-        errorClass = logStr.includes("7000") || logStr.includes("notarization is not enabled") || logStr.includes("team has not been configured")
-          ? ERR.TEAM_NOT_CONFIGURED : null;
+        // B5: structured parse of Apple log issues — not string includes.
+        // Error code 7000 = team not configured for notarization.
+        const issues = Array.isArray(log.issues) ? log.issues : [];
+        const has7000 = issues.some(
+          (i: { severity?: string; message?: string; code?: number }) =>
+            i.code === 7000 ||
+            (typeof i.message === "string" && (
+              i.message.includes("notarization is not enabled") ||
+              i.message.includes("team has not been configured")
+            ))
+        );
+        errorClass = has7000 ? ERR.TEAM_NOT_CONFIGURED : null;
       } catch { /* log fetch failed — classification deferred */ }
     }
 
@@ -554,9 +569,19 @@ async function handleAcceptedClosure(c: AdminContext, creds: AscApiCredentials, 
     const { log } = await getNotarySubmissionLog(creds, row.apple_submission_id!);
     logSha = log.sha256 ?? null;
     logJobId = log.jobId ?? null;
-  } catch {
-    await setAttemptStatus(c.env.DB, row.id, row.notarization_id, "accepted");
-    return c.json({ notarization_id: row.notarization_id, state: "accepted", ready_for_staple: false, note: "log fetch pending" });
+  } catch (logErr) {
+    // B5: preserve typed error semantics instead of generic "log pending".
+    const { code, detail, recoverable } = classifyError(logErr, "log_fetch");
+    if (recoverable) {
+      // Transient log fetch failure — stay accepted, not ready, reconcile.
+      await c.env.DB.prepare(
+        `UPDATE app_notarization_attempts SET status_state = 'accepted', error_class = ?1, error_phase = 'log_fetch', error_detail = ?2, reconcile_state = 'needed' WHERE id = ?3`,
+      ).bind(code, detail, row.id).run();
+      return c.json({ notarization_id: row.notarization_id, state: "accepted", ready_for_staple: false, note: "log fetch transient, will reconcile" });
+    }
+    // Non-recoverable (401/403) — typed error.
+    await markError(c.env.DB, row.id, code, detail, "log_fetch", false);
+    return c.json({ notarization_id: row.notarization_id, state: "error", code, ready_for_staple: false, note: "log fetch auth failure" }, 502);
   }
 
   // Triple closure: jobId == submission_id AND log sha256 == computed_sha256.
@@ -570,12 +595,20 @@ async function handleAcceptedClosure(c: AdminContext, creds: AscApiCredentials, 
   }
 
   // Atomic batch (B7): attempt closure + logical ready_for_staple (CAS active-only, B5).
+  // B2: clear transient error fields when transitioning to accepted (otherwise
+  // schema CHECK rejects: error_class non-NULL with status_state=accepted).
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `UPDATE app_notarization_attempts SET status_state = 'accepted', log_fetched = 1, log_sha256 = ?1, log_job_id = ?2, completed_at = ?3 WHERE id = ?4`,
+      `UPDATE app_notarization_attempts
+       SET status_state = 'accepted', log_fetched = 1, log_sha256 = ?1, log_job_id = ?2,
+           completed_at = ?3, error_class = NULL, error_detail = NULL, error_phase = NULL,
+           reconcile_state = 'reconciled'
+       WHERE id = ?4`,
     ).bind(logSha, logJobId, now, row.id),
     c.env.DB.prepare(
-      `UPDATE app_notarizations SET state = 'accepted', ready_for_staple = 1, apple_log_sha256 = ?1, apple_log_job_id = ?2, completed_at = ?3 WHERE id = ?4 AND active_attempt_id = ?5`,
+      `UPDATE app_notarizations
+       SET state = 'accepted', ready_for_staple = 1, apple_log_sha256 = ?1, apple_log_job_id = ?2, completed_at = ?3
+       WHERE id = ?4 AND active_attempt_id = ?5`,
     ).bind(logSha, logJobId, now, row.notarization_id, row.id),
   ]);
 
