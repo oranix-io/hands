@@ -176,11 +176,24 @@ function parseJsonObject(value: string): JsonObject {
   }
 }
 
-function artifactState(row: IosSimulatorArtifactRow): "pending_upload" | "ready" | "failed" {
+type ArtifactState = "pending_upload" | "verifying" | "ready" | "failed";
+
+function artifactState(row: IosSimulatorArtifactRow): ArtifactState {
   const metadata = parseJsonObject(row.asset_metadata_json);
+  if (metadata.upload_state === "verifying") return "verifying";
   if (metadata.upload_state === "ready") return "ready";
   if (metadata.upload_state === "failed") return "failed";
   return "pending_upload";
+}
+
+function completionConflict(c: Context<any>, state: ArtifactState) {
+  if (state === "ready") {
+    return c.json({ error: "QA artifact is already complete", code: "QA_ARTIFACT_ALREADY_COMPLETED" }, 409);
+  }
+  if (state === "failed") {
+    return c.json({ error: "QA artifact verification has already failed", code: "QA_ARTIFACT_VERIFICATION_FAILED" }, 409);
+  }
+  return c.json({ error: "QA artifact verification is already in progress", code: "QA_ARTIFACT_VERIFICATION_IN_PROGRESS" }, 409);
 }
 
 function artifactResponse(c: Context<any>, row: IosSimulatorArtifactRow) {
@@ -408,43 +421,228 @@ async function hashObjectBody(body: ReadableStream<Uint8Array>): Promise<{ sha25
   return { sha256: bytesToHex(digest.digest()), size };
 }
 
+function limitObjectBody(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): ReadableStream<Uint8Array> {
+  let seen = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > maxBytes || seen > MAX_ARTIFACT_BYTES) {
+          throw new Error("QA artifact stream exceeds the declared or maximum byte limit");
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
+async function transitionToVerifying(
+  db: D1Database,
+  row: IosSimulatorArtifactRow,
+): Promise<boolean> {
+  const metadata = {
+    ...parseJsonObject(row.asset_metadata_json),
+    upload_state: "verifying",
+    verifying_started_at: Date.now(),
+  };
+  const result = await db
+    .prepare(
+      `UPDATE build_assets
+       SET metadata_json = ?1
+       WHERE id = ?2 AND build_id = ?3
+         AND json_extract(metadata_json, '$.upload_state') = 'pending_upload'`,
+    )
+    .bind(JSON.stringify(metadata), row.asset_id, row.build_id)
+    .run();
+  return Number(result.meta?.changes ?? 0) === 1;
+}
+
+async function transitionFromVerifying(
+  db: D1Database,
+  row: IosSimulatorArtifactRow,
+  state: "ready" | "failed",
+  metadata: JsonObject,
+  finalR2Key?: string,
+): Promise<boolean> {
+  const now = Date.now();
+  const assetUpdate = state === "ready"
+    ? db.prepare(
+        `UPDATE build_assets
+         SET r2_key = ?1, metadata_json = ?2
+         WHERE id = ?3 AND build_id = ?4
+           AND json_extract(metadata_json, '$.upload_state') = 'verifying'`,
+      ).bind(finalR2Key, JSON.stringify(metadata), row.asset_id, row.build_id)
+    : db.prepare(
+        `UPDATE build_assets
+         SET metadata_json = ?1
+         WHERE id = ?2 AND build_id = ?3
+           AND json_extract(metadata_json, '$.upload_state') = 'verifying'`,
+      ).bind(JSON.stringify(metadata), row.asset_id, row.build_id);
+  const buildUpdate = db.prepare(
+    `UPDATE builds
+     SET status = ?1, updated_at = ?2, completed_at = ?2
+     WHERE id = ?3 AND app_id = ?4
+       AND EXISTS (
+         SELECT 1 FROM build_assets
+         WHERE id = ?5 AND build_id = ?3
+           AND json_extract(metadata_json, '$.upload_state') = ?6
+       )`,
+  ).bind(state === "ready" ? "succeeded" : "failed", now, row.build_id, row.app_id, row.asset_id, state);
+  const results = await db.batch([assetUpdate, buildUpdate]);
+  return Number(results[0]?.meta?.changes ?? 0) === 1 && Number(results[1]?.meta?.changes ?? 0) === 1;
+}
+
+async function failVerification(
+  c: AdminContext,
+  row: IosSimulatorArtifactRow,
+  details: JsonObject,
+  keysToDelete: string[],
+) {
+  await Promise.all(keysToDelete.map((key) => c.env.APK_BUCKET.delete(key).catch(() => {})));
+  const metadata = {
+    ...parseJsonObject(row.asset_metadata_json),
+    upload_state: "failed",
+    ...details,
+    verified_at: Date.now(),
+  };
+  const changed = await transitionFromVerifying(c.env.DB, row, "failed", metadata);
+  if (changed) {
+    await insertAuditLog(c.env.DB, row.app_id, "qa_artifact.verify_failed", currentActor(c), {
+      build_id: row.build_id,
+      asset_id: row.asset_id,
+      ...details,
+    });
+  }
+}
+
 export async function handleCompleteIosSimulatorArtifact(c: AdminContext) {
   const appId = c.req.param("appId") ?? "";
   const assetId = c.req.param("assetId") ?? "";
   const row = await getArtifactRow(c.env.DB, appId, assetId);
   if (!row) return c.json({ error: "QA artifact not found" }, 404);
-  const state = artifactState(row);
-  if (state === "ready") {
-    return c.json({ error: "QA artifact is already complete", code: "QA_ARTIFACT_ALREADY_COMPLETED" }, 409);
+  if (artifactState(row) !== "pending_upload") return completionConflict(c, artifactState(row));
+  if (!(await transitionToVerifying(c.env.DB, row))) {
+    const latest = await getArtifactRow(c.env.DB, appId, assetId);
+    return completionConflict(c, latest ? artifactState(latest) : "verifying");
   }
-  if (state === "failed") {
-    return c.json({ error: "QA artifact verification has already failed", code: "QA_ARTIFACT_VERIFICATION_FAILED" }, 409);
+
+  const head = await c.env.APK_BUCKET.head(row.r2_key);
+  if (!head) {
+    await failVerification(c, row, { verification_error: "upload_not_found" }, []);
+    return c.json({ error: "uploaded object not found", code: "QA_UPLOAD_NOT_FOUND" }, 409);
+  }
+  if (head.size !== row.size_bytes || head.size > MAX_ARTIFACT_BYTES) {
+    await failVerification(
+      c,
+      row,
+      {
+        verification_error: head.size > MAX_ARTIFACT_BYTES ? "object_too_large" : "size_mismatch",
+        expected_size_bytes: row.size_bytes,
+        actual_size_bytes: head.size,
+      },
+      [row.r2_key],
+    );
+    return c.json(
+      {
+        error: "uploaded artifact size does not match the declaration",
+        code: "QA_ARTIFACT_INTEGRITY_MISMATCH",
+        expected: { sha256: row.file_hash, size_bytes: row.size_bytes },
+        actual: { sha256: null, size_bytes: head.size },
+      },
+      422,
+    );
   }
 
   const object = await c.env.APK_BUCKET.get(row.r2_key);
-  if (!object) return c.json({ error: "uploaded object not found", code: "QA_UPLOAD_NOT_FOUND" }, 409);
+  if (!object) {
+    await failVerification(c, row, { verification_error: "upload_disappeared" }, []);
+    return c.json({ error: "uploaded object disappeared", code: "QA_UPLOAD_NOT_FOUND" }, 409);
+  }
+  if (object.size !== row.size_bytes || object.size > MAX_ARTIFACT_BYTES) {
+    await failVerification(
+      c,
+      row,
+      {
+        verification_error: object.size > MAX_ARTIFACT_BYTES ? "object_too_large" : "size_mismatch",
+        expected_size_bytes: row.size_bytes,
+        actual_size_bytes: object.size,
+      },
+      [row.r2_key],
+    );
+    return c.json(
+      {
+        error: "uploaded artifact size changed before verification",
+        code: "QA_ARTIFACT_INTEGRITY_MISMATCH",
+        expected: { sha256: row.file_hash, size_bytes: row.size_bytes },
+        actual: { sha256: null, size_bytes: object.size },
+      },
+      422,
+    );
+  }
 
-  const actual = await hashObjectBody(object.body);
+  const existingMetadata = parseJsonObject(row.asset_metadata_json);
+  const finalR2Key = typeof existingMetadata.final_r2_key === "string"
+    ? existingMetadata.final_r2_key
+    : null;
+  if (!finalR2Key || !finalR2Key.startsWith(`apps/${appId}/qa/ios-simulator/verified/${row.build_id}/${assetId}/`)) {
+    await failVerification(c, row, { verification_error: "invalid_final_storage_key" }, [row.r2_key]);
+    return c.json({ error: "QA artifact final storage key is invalid", code: "QA_ARTIFACT_STORAGE_INVALID" }, 500);
+  }
+  if (await c.env.APK_BUCKET.head(finalR2Key)) {
+    await failVerification(c, row, { verification_error: "immutable_key_conflict" }, [row.r2_key]);
+    return c.json({ error: "QA artifact immutable storage key already exists", code: "QA_ARTIFACT_IMMUTABLE_CONFLICT" }, 409);
+  }
+
+  // Hash and seal the exact same R2 object-body snapshot. `tee()` duplicates
+  // one byte stream; we never re-read the mutable staging key after hashing,
+  // so a still-valid presigned PUT cannot create a hash/copy TOCTOU window.
+  const limitedBody = limitObjectBody(object.body, row.size_bytes);
+  const [hashStream, sealStream] = limitedBody.tee();
+  const [hashResult, sealResult] = await Promise.allSettled([
+    hashObjectBody(hashStream),
+    c.env.APK_BUCKET.put(finalR2Key, sealStream, {
+      httpMetadata: { contentType: "application/zip" },
+      customMetadata: {
+        sha256: row.file_hash,
+        build_id: row.build_id,
+        asset_id: assetId,
+      },
+    }),
+  ]);
+  if (hashResult.status === "rejected" || sealResult.status === "rejected") {
+    await failVerification(
+      c,
+      row,
+      {
+        verification_error: "stream_or_seal_failed",
+        detail: hashResult.status === "rejected"
+          ? String(hashResult.reason)
+          : String((sealResult as PromiseRejectedResult).reason),
+      },
+      [row.r2_key, finalR2Key],
+    );
+    return c.json({ error: "failed to verify and seal QA artifact", code: "QA_ARTIFACT_SEAL_FAILED" }, 422);
+  }
+
+  const actual = hashResult.value;
   if (actual.size !== row.size_bytes || actual.sha256 !== row.file_hash.toLowerCase()) {
-    const metadata = {
-      ...parseJsonObject(row.asset_metadata_json),
-      upload_state: "failed",
-      verification_error: actual.size !== row.size_bytes ? "size_mismatch" : "sha256_mismatch",
-      verified_size_bytes: actual.size,
-      verified_sha256: actual.sha256,
-      verified_at: Date.now(),
-    };
-    await c.env.DB.prepare("UPDATE build_assets SET metadata_json = ?1 WHERE id = ?2").bind(JSON.stringify(metadata), assetId).run();
-    await c.env.DB.prepare("UPDATE builds SET status = 'failed', updated_at = ?1, completed_at = ?1 WHERE id = ?2").bind(Date.now(), row.build_id).run();
-    await c.env.APK_BUCKET.delete(row.r2_key);
-    await insertAuditLog(c.env.DB, appId, "qa_artifact.verify_failed", currentActor(c), {
-      build_id: row.build_id,
-      asset_id: assetId,
-      expected_sha256: row.file_hash,
-      actual_sha256: actual.sha256,
-      expected_size_bytes: row.size_bytes,
-      actual_size_bytes: actual.size,
-    });
+    await failVerification(
+      c,
+      row,
+      {
+        verification_error: actual.size !== row.size_bytes ? "size_mismatch" : "sha256_mismatch",
+        expected_sha256: row.file_hash,
+        actual_sha256: actual.sha256,
+        expected_size_bytes: row.size_bytes,
+        actual_size_bytes: actual.size,
+        verified_size_bytes: actual.size,
+        verified_sha256: actual.sha256,
+      },
+      [row.r2_key, finalR2Key],
+    );
     return c.json(
       {
         error: "uploaded artifact does not match the declared exact bytes",
@@ -457,29 +655,18 @@ export async function handleCompleteIosSimulatorArtifact(c: AdminContext) {
   }
 
   const now = Date.now();
-  const existingMetadata = parseJsonObject(row.asset_metadata_json);
-  const finalR2Key = typeof existingMetadata.final_r2_key === "string"
-    ? existingMetadata.final_r2_key
-    : null;
-  if (!finalR2Key || !finalR2Key.startsWith(`apps/${appId}/qa/ios-simulator/verified/${row.build_id}/${assetId}/`)) {
-    return c.json({ error: "QA artifact final storage key is invalid", code: "QA_ARTIFACT_STORAGE_INVALID" }, 500);
-  }
-  if (await c.env.APK_BUCKET.head(finalR2Key)) {
-    return c.json({ error: "QA artifact immutable storage key already exists", code: "QA_ARTIFACT_IMMUTABLE_CONFLICT" }, 409);
-  }
-  const copySource = await c.env.APK_BUCKET.get(row.r2_key);
-  if (!copySource) return c.json({ error: "uploaded object disappeared", code: "QA_UPLOAD_NOT_FOUND" }, 409);
-  await c.env.APK_BUCKET.put(finalR2Key, copySource.body, {
-    httpMetadata: { contentType: "application/zip" },
-    customMetadata: {
-      sha256: actual.sha256,
-      build_id: row.build_id,
-      asset_id: assetId,
-    },
-  });
   const finalHead = await c.env.APK_BUCKET.head(finalR2Key);
   if (!finalHead || finalHead.size !== actual.size) {
-    await c.env.APK_BUCKET.delete(finalR2Key);
+    await failVerification(
+      c,
+      row,
+      {
+        verification_error: "sealed_size_mismatch",
+        expected_size_bytes: actual.size,
+        actual_size_bytes: finalHead?.size ?? null,
+      },
+      [row.r2_key, finalR2Key],
+    );
     return c.json({ error: "failed to seal immutable QA artifact", code: "QA_ARTIFACT_SEAL_FAILED" }, 500);
   }
   const metadata = {
@@ -489,10 +676,11 @@ export async function handleCompleteIosSimulatorArtifact(c: AdminContext) {
     verified_sha256: actual.sha256,
     verified_at: now,
   };
-  await c.env.DB.batch([
-    c.env.DB.prepare("UPDATE build_assets SET r2_key = ?1, metadata_json = ?2 WHERE id = ?3").bind(finalR2Key, JSON.stringify(metadata), assetId),
-    c.env.DB.prepare("UPDATE builds SET status = 'succeeded', updated_at = ?1, completed_at = ?1 WHERE id = ?2").bind(now, row.build_id),
-  ]);
+  const ready = await transitionFromVerifying(c.env.DB, row, "ready", metadata, finalR2Key);
+  if (!ready) {
+    await Promise.all([c.env.APK_BUCKET.delete(row.r2_key), c.env.APK_BUCKET.delete(finalR2Key)]);
+    return c.json({ error: "QA artifact verification state changed unexpectedly", code: "QA_ARTIFACT_STATE_CONFLICT" }, 409);
+  }
   await c.env.APK_BUCKET.delete(row.r2_key);
   await insertAuditLog(c.env.DB, appId, "qa_artifact.complete", currentActor(c), {
     build_id: row.build_id,

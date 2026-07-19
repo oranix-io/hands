@@ -6342,6 +6342,158 @@ describe("Hands iOS simulator QA artifacts", () => {
     await expect(retry.json()).resolves.toMatchObject({ code: "QA_ARTIFACT_VERIFICATION_FAILED" });
   });
 
+  it("allows exactly one concurrent complete request to enter verifying", async () => {
+    const { env, objects } = makeEnv();
+    const bytes = new TextEncoder().encode("concurrent complete fixture");
+    const createdResponse = await handleCreateIosSimulatorArtifact(
+      context(env, "POST", "/api/apps/app-ios/qa-artifacts/ios-simulator", { appId: "app-ios" }, declaration(bytes)),
+    );
+    const created = await createdResponse.json() as any;
+    const stored = await env.DB.prepare("SELECT r2_key FROM build_assets WHERE id = ?1")
+      .bind(created.asset_id)
+      .first() as { r2_key: string } | null;
+    objects.set(stored!.r2_key, bytes);
+
+    const bucket = env.APK_BUCKET as any;
+    const originalHead = bucket.head.bind(bucket);
+    let releaseFirstHead!: () => void;
+    const firstHeadBlocked = new Promise<void>((resolveBlocked) => {
+      bucket.head = async (key: string) => {
+        if (key === stored!.r2_key) {
+          await new Promise<void>((resolveRelease) => {
+            releaseFirstHead = resolveRelease;
+            resolveBlocked();
+          });
+        }
+        return originalHead(key);
+      };
+    });
+
+    const first = handleCompleteIosSimulatorArtifact(
+      context(
+        env,
+        "POST",
+        `/api/apps/app-ios/qa-artifacts/ios-simulator/${created.asset_id}/complete`,
+        { appId: "app-ios", assetId: created.asset_id },
+      ),
+    );
+    await firstHeadBlocked;
+    const loser = await handleCompleteIosSimulatorArtifact(
+      context(
+        env,
+        "POST",
+        `/api/apps/app-ios/qa-artifacts/ios-simulator/${created.asset_id}/complete`,
+        { appId: "app-ios", assetId: created.asset_id },
+      ),
+    );
+    expect(loser.status).toBe(409);
+    await expect(loser.json()).resolves.toMatchObject({ code: "QA_ARTIFACT_VERIFICATION_IN_PROGRESS" });
+    releaseFirstHead();
+    const winner = await first;
+    expect(winner.status).toBe(200);
+    await expect(winner.json()).resolves.toMatchObject({ status: "ready" });
+  });
+
+  it("hashes and seals the same staging byte stream even if the upload key is overwritten during complete", async () => {
+    const { env, objects } = makeEnv();
+    const original = new TextEncoder().encode("original-stream");
+    const overwritten = new TextEncoder().encode("tampered-stream");
+    expect(overwritten.byteLength).toBe(original.byteLength);
+    const createdResponse = await handleCreateIosSimulatorArtifact(
+      context(env, "POST", "/api/apps/app-ios/qa-artifacts/ios-simulator", { appId: "app-ios" }, declaration(original)),
+    );
+    const created = await createdResponse.json() as any;
+    const stored = await env.DB.prepare("SELECT r2_key FROM build_assets WHERE id = ?1")
+      .bind(created.asset_id)
+      .first() as { r2_key: string } | null;
+    objects.set(stored!.r2_key, original);
+
+    const bucket = env.APK_BUCKET as any;
+    const originalGet = bucket.get.bind(bucket);
+    let overwrittenOnce = false;
+    bucket.get = async (key: string) => {
+      const snapshot = await originalGet(key);
+      if (key === stored!.r2_key && !overwrittenOnce) {
+        overwrittenOnce = true;
+        objects.set(key, overwritten);
+      }
+      return snapshot;
+    };
+
+    const complete = await handleCompleteIosSimulatorArtifact(
+      context(
+        env,
+        "POST",
+        `/api/apps/app-ios/qa-artifacts/ios-simulator/${created.asset_id}/complete`,
+        { appId: "app-ios", assetId: created.asset_id },
+      ),
+    );
+    expect(complete.status).toBe(200);
+    const completed = await complete.json() as any;
+    expect(completed.server_sha256).toBe(declaration(original).sha256);
+
+    const download = await handleDownloadIosSimulatorArtifact(
+      context(env, "GET", `/api/apps/app-ios/qa-artifacts/ios-simulator/${created.asset_id}/download`, {
+        appId: "app-ios",
+        assetId: created.asset_id,
+      }),
+    );
+    const downloaded = new Uint8Array(await download.arrayBuffer());
+    expect(createHash("sha256").update(downloaded).digest("hex")).toBe(declaration(original).sha256);
+    expect(createHash("sha256").update(downloaded).digest("hex")).not.toBe(
+      createHash("sha256").update(overwritten).digest("hex"),
+    );
+  });
+
+  it("rejects oversized staging objects from metadata without streaming them", async () => {
+    const { env, objects } = makeEnv();
+    const bytes = new TextEncoder().encode("small declaration");
+    const createdResponse = await handleCreateIosSimulatorArtifact(
+      context(env, "POST", "/api/apps/app-ios/qa-artifacts/ios-simulator", { appId: "app-ios" }, declaration(bytes)),
+    );
+    const created = await createdResponse.json() as any;
+    const stored = await env.DB.prepare("SELECT r2_key FROM build_assets WHERE id = ?1")
+      .bind(created.asset_id)
+      .first() as { r2_key: string } | null;
+    objects.set(stored!.r2_key, bytes);
+
+    const bucket = env.APK_BUCKET as any;
+    const originalHead = bucket.head.bind(bucket);
+    const originalGet = bucket.get.bind(bucket);
+    let getCalls = 0;
+    bucket.head = async (key: string) => key === stored!.r2_key
+      ? { size: 500 * 1024 * 1024 + 1, httpEtag: '"oversized"', writeHttpMetadata: () => undefined }
+      : originalHead(key);
+    bucket.get = async (key: string) => {
+      getCalls += 1;
+      return originalGet(key);
+    };
+
+    const response = await handleCompleteIosSimulatorArtifact(
+      context(
+        env,
+        "POST",
+        `/api/apps/app-ios/qa-artifacts/ios-simulator/${created.asset_id}/complete`,
+        { appId: "app-ios", assetId: created.asset_id },
+      ),
+    );
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "QA_ARTIFACT_INTEGRITY_MISMATCH",
+      actual: { size_bytes: 500 * 1024 * 1024 + 1 },
+    });
+    expect(getCalls).toBe(0);
+    expect(objects.has(stored!.r2_key)).toBe(false);
+
+    const readback = await handleGetIosSimulatorArtifact(
+      context(env, "GET", `/api/apps/app-ios/qa-artifacts/ios-simulator/${created.asset_id}`, {
+        appId: "app-ios",
+        assetId: created.asset_id,
+      }),
+    );
+    await expect(readback.json()).resolves.toMatchObject({ status: "failed" });
+  });
+
   it("explicitly excludes QA-only builds from public latest, update offers, and latest landing", async () => {
     const { env } = makeEnv();
     const now = Date.now();
