@@ -8,6 +8,18 @@ const migrationPath = fileURLToPath(
 );
 
 describe("device-group migration invariants", () => {
+  it("keeps trigger definitions on one physical line for remote D1 migrations", () => {
+    const triggerLines = readFileSync(migrationPath, "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("CREATE TRIGGER"));
+
+    expect(triggerLines).toHaveLength(3);
+    for (const line of triggerLines) {
+      expect(line).toContain(" BEGIN ");
+      expect(line).toMatch(/ END;$/);
+    }
+  });
+
   it("enforces same-app scopes and blocks deletion while a live release references the group", () => {
     const db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
