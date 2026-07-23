@@ -3,7 +3,7 @@
 Hands CLI — manage apps, builds, releases from the terminal.
 
 Status: **alpha**. The npm package is public as `@botiverse/hands-cli`; v1 ships
-`login`, `logout`, `whoami`, `apps list/get`, `builds list/get`, and
+`login`, `logout`, `whoami`, `apps create/list/get/client-key`, `builds list/get`, and
 `builds publish-version`, `builds publish-android`, `builds publish-ios`,
 `builds testflight-groups`, `builds testflight-publish`,
 `builds testflight-status`, `builds publish-ohos`, `builds publish-electron`,
@@ -33,8 +33,12 @@ hands login
 # 2. Verify who you are.
 hands whoami
 
-# 3. List your apps.
+# 3. Create or list apps in your current Hands organization.
+hands apps create --slug myapp-web --name "My Web App" --platform web
 hands apps list
+
+# Read the public SDK client key explicitly (app admin only).
+hands apps client-key myapp-web
 
 # 4. List builds for an app (by slug or id).
 hands builds list myapp-android

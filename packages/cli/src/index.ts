@@ -48,7 +48,10 @@ program
     `
 Common recipes:
   hands whoami                                        Who am I / is my auth valid?
+  hands apps create --slug <s> --name <n> --platform web
+                                                       Create an app in my current org
   hands apps list                                     Apps I can access
+  hands apps client-key <app>                         Read public SDK client key (admin)
   hands feedback list <app> --kind crash              Newest crash tickets
   hands feedback show <app> <ticketId>                One ticket: device context + attachments
   hands feedback download-attachment <app> <t> <a>    Pull a crash log / screenshot

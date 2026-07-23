@@ -72,10 +72,27 @@ Show the installed version:
 hands version
 ```
 
+Create an app in the current Hands organization (requires org member or higher):
+
+```bash
+hands apps create \
+  --slug raft-web \
+  --name "Raft Web" \
+  --platform web \
+  --description "Raft browser feedback proxy"
+```
+
 List apps visible to the current token:
 
 ```bash
 hands apps list
+```
+
+Read the app's public SDK client key explicitly (requires app admin; this does
+not rotate the key or return any deploy token):
+
+```bash
+hands apps client-key raft-web
 ```
 
 List builds for an app:
