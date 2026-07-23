@@ -13,7 +13,7 @@ npm install -g @botiverse/hands-cli
 Or run it without a permanent install:
 
 ```bash
-npm exec --package @botiverse/hands-cli@0.5.12 -- hands --help
+npm exec --package @botiverse/hands-cli@0.5.13 -- hands --help
 ```
 
 In CI, pin a version so release scripts stay reproducible.
