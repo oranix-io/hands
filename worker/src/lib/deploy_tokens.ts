@@ -22,6 +22,7 @@ export type AppDeployToken = {
   expires_at: number | null;
   last_used_at: number | null;
   revoked_at: number | null;
+  reporter_integration_id: string | null;
 };
 
 export function isDeployTokenRole(value: unknown): value is DeployTokenRole {
@@ -97,7 +98,8 @@ export async function loadDeployToken(
   const row = await env.DB.prepare(
     `SELECT dt.id, dt.app_id, a.slug AS app_slug, dt.name, dt.token_prefix,
             dt.app_role, dt.scopes_json, dt.created_by, dt.created_by_actor, dt.created_at,
-            dt.expires_at, dt.last_used_at, dt.revoked_at
+            dt.expires_at, dt.last_used_at, dt.revoked_at,
+            dt.reporter_integration_id
      FROM app_deploy_tokens dt
      JOIN apps a ON a.id = dt.app_id
      WHERE dt.token_hash = ?1

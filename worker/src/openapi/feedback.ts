@@ -30,7 +30,93 @@ const FeedbackCommentInput = z
   })
   .openapi("FeedbackCommentInput");
 
+const ReporterHeaders = z.object({
+  "X-Hands-Reporter-Id": z.string().min(16).max(200),
+});
+
+const ReporterCommentInput = z.object({
+  body: z.string().min(1).max(10_000),
+  submission_id: z.string().uuid(),
+}).openapi("ReporterFeedbackCommentInput");
+
 export function registerFeedbackRoutes(registry: OpenApiRegistry) {
+  register(registry, {
+    method: "get",
+    path: "/api/apps/{appId}/reporter-feedback",
+    tags: ["Reporter Feedback"],
+    summary: "List feedback owned by the reporter integration",
+    security: auth,
+    request: {
+      params: AppIdParam,
+      headers: ReporterHeaders,
+      query: z.object({ limit: z.coerce.number().int().min(1).max(100).optional(), cursor: z.string().optional() }),
+    },
+    responses: {
+      200: success("Reporter-owned feedback list.", GenericObject),
+      400: error("Missing or malformed reporter id or cursor."),
+      401: error("Missing or invalid bearer token."),
+      403: error("Bearer grant is not an active reporter integration grant."),
+      429: error("Reporter rate limit exceeded."),
+    },
+  });
+
+  register(registry, {
+    method: "get",
+    path: "/api/apps/{appId}/reporter-feedback/{ticketId}",
+    tags: ["Reporter Feedback"],
+    summary: "Get reporter-owned feedback details",
+    security: auth,
+    request: { params: AppTicketParams, headers: ReporterHeaders },
+    responses: {
+      200: success("Reporter-owned feedback details.", GenericObject),
+      400: error("Missing or malformed reporter id."),
+      401: error("Missing or invalid bearer token."),
+      403: error("Invalid reporter integration grant."),
+      404: error("Ticket is not owned by this reporter integration."),
+      429: error("Reporter rate limit exceeded."),
+    },
+  });
+
+  register(registry, {
+    method: "post",
+    path: "/api/apps/{appId}/reporter-feedback/{ticketId}/comments",
+    tags: ["Reporter Feedback"],
+    summary: "Add an idempotent reporter comment",
+    security: auth,
+    request: {
+      params: AppTicketParams,
+      headers: ReporterHeaders,
+      body: { content: json(ReporterCommentInput), required: true },
+    },
+    responses: {
+      200: success("Exact idempotent replay.", GenericObject),
+      201: success("Reporter comment created.", GenericObject),
+      400: error("Invalid reporter id, body, or submission id."),
+      401: error("Missing or invalid bearer token."),
+      403: error("Invalid reporter integration grant."),
+      404: error("Ticket is not owned by this reporter integration."),
+      409: error("Submission id was already used with a different body."),
+      429: error("Reporter rate limit exceeded."),
+    },
+  });
+
+  register(registry, {
+    method: "get",
+    path: "/api/apps/{appId}/reporter-feedback/{ticketId}/attachments/{attachmentId}",
+    tags: ["Reporter Feedback"],
+    summary: "Download a reporter-visible submission attachment",
+    security: auth,
+    request: { params: AttachmentParams, headers: ReporterHeaders },
+    responses: {
+      200: { description: "Attachment stream.", content: binary() },
+      400: error("Missing or malformed reporter id."),
+      401: error("Missing or invalid bearer token."),
+      403: error("Invalid reporter integration grant."),
+      404: error("Attachment is not reporter-visible or not owned."),
+      429: error("Reporter rate limit exceeded."),
+    },
+  });
+
   register(registry, {
     method: "get",
     path: "/api/apps/{appId}/feedback",
@@ -148,4 +234,3 @@ export function registerFeedbackRoutes(registry: OpenApiRegistry) {
     },
   });
 }
-

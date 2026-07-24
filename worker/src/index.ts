@@ -101,6 +101,18 @@ import {
   handleRevokeAppDeployToken,
 } from "./routes/deploy_tokens";
 import {
+  handleCreateReporterIntegration,
+  handleListReporterIntegrations,
+  handleUpdateReporterIntegration,
+} from "./routes/reporter_integrations";
+import {
+  handleAddReporterComment,
+  handleDownloadReporterAttachment,
+  handleGetReporterFeedback,
+  handleListReporterFeedback,
+  cleanupReporterFeedbackData,
+} from "./routes/reporter_feedback";
+import {
   handleGetAscCredentials,
   handleSetAscCredentials,
   handleDeleteAscCredentials,
@@ -549,6 +561,13 @@ app.post("/public/v2/apps/:slug/devices", handleDeviceRegister);
 app.post("/public/v2/apps/:slug/metrics", handleDeviceRegister);
 app.post("/public/v2/apps/:slug/sessions", handleSessionEvent);
 app.post("/public/v2/apps/:slug/feedback/presign", handlePresignFeedbackAttachments);
+app.get("/api/apps/:appId/reporter-feedback", handleListReporterFeedback);
+app.get("/api/apps/:appId/reporter-feedback/:ticketId", handleGetReporterFeedback);
+app.post("/api/apps/:appId/reporter-feedback/:ticketId/comments", handleAddReporterComment);
+app.get(
+  "/api/apps/:appId/reporter-feedback/:ticketId/attachments/:attachmentId",
+  handleDownloadReporterAttachment,
+);
 app.get("/public/apps/:slug/icon", handlePublicAppIcon);
 app.get("/apps/:slug/history", handlePublicAppHistory);
 app.get("/apps/:slug/history/:releaseId/download", handlePublicAppHistoryDownload);
@@ -890,6 +909,13 @@ admin.get("/api/apps/:appId/deploy-tokens", requireAppRole("admin"), handleListA
 admin.get("/api/app-permissions", handleGetAppPermissionModel);
 admin.post("/api/apps/:appId/deploy-tokens", requireAppRole("admin"), handleCreateAppDeployToken);
 admin.delete("/api/apps/:appId/deploy-tokens/:tokenId", requireAppRole("admin"), handleRevokeAppDeployToken);
+admin.get("/api/apps/:appId/reporter-integrations", requireAppRole("admin"), handleListReporterIntegrations);
+admin.post("/api/apps/:appId/reporter-integrations", requireAppRole("admin"), handleCreateReporterIntegration);
+admin.patch(
+  "/api/apps/:appId/reporter-integrations/:integrationId",
+  requireAppRole("admin"),
+  handleUpdateReporterIntegration,
+);
 
 // App Store Connect API credentials (for Hands-orchestrated TestFlight uploads).
 admin.get("/api/apps/:appId/asc-credentials", requireAppRole("admin"), handleGetAscCredentials);
@@ -945,7 +971,10 @@ export async function scheduled(
       headers: { "content-type": "application/json" },
     }),
   } as unknown as Parameters<typeof handleReapDeliveries>[0];
-  ctx.waitUntil(handleReapDeliveries(fakeC));
+  ctx.waitUntil(Promise.all([
+    handleReapDeliveries(fakeC),
+    cleanupReporterFeedbackData(env),
+  ]).then(() => undefined));
 }
 
 // The Workers runtime only looks at the default export for handlers: a bare

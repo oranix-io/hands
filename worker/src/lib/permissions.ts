@@ -328,7 +328,23 @@ export async function ensureAppPermission(
     }
     return { ok: true as const, app_permission: permission };
   }
-  return ensureAppRole(c, appId, APP_PERMISSION_MINIMUM_ROLE[permission], opts);
+  const minimumRole = APP_PERMISSION_MINIMUM_ROLE[permission];
+  if (!minimumRole) {
+    return {
+      ok: false as const,
+      response: c.json(
+        {
+          error: "insufficient_app_permission",
+          code: "INSUFFICIENT_APP_PERMISSION",
+          required_permission: permission,
+          current_permissions: [],
+          app_id: appId,
+        },
+        403,
+      ),
+    };
+  }
+  return ensureAppRole(c, appId, minimumRole, opts);
 }
 
 export function requireOrgRole(paramName: string, minimum: OrgRole): MiddlewareHandler<RoleContext> {

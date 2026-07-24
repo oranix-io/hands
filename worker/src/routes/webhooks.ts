@@ -26,6 +26,8 @@ import type { AdminContext } from "../lib/permissions";
 
 type WebhookEventType =
   | "feedback:new"
+  | "feedback:comment_created"
+  | "feedback:status_changed"
   | "crash:new_group"
   | "crash:spike"
   | "release:new"

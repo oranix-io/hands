@@ -398,13 +398,25 @@ export interface AppDeployToken {
   expires_at: number | null;
   last_used_at: number | null;
   revoked_at: number | null;
+  reporter_integration_id: string | null;
+}
+
+export interface ReporterIntegration {
+  id: string;
+  app_id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  archived_at: number | null;
 }
 
 export type AppPermission =
   | "app:read"
   | "app:publish"
   | "app:admin"
-  | "feedback:write";
+  | "feedback:write"
+  | "feedback:read"
+  | "feedback:comment";
 
 export interface AppPermissionModel {
   permissions: Array<{ permission: AppPermission; label: string; description: string }>;
@@ -1016,6 +1028,7 @@ export const createAppDeployToken = (
     name: string;
     app_role?: Exclude<AppDeployToken["app_role"], null>;
     scopes?: AppPermission[];
+    reporter_integration_id?: string;
     expires_at?: number | null;
   },
 ) =>
@@ -1036,6 +1049,28 @@ export const revokeAppDeployToken = (appId: string, tokenId: string) =>
       admin: true,
     },
   );
+
+export const listReporterIntegrations = (appId: string, includeArchived = false) =>
+  request<{ reporter_integrations: ReporterIntegration[] }>(
+    `/api/apps/${appId}/reporter-integrations${includeArchived ? "?include_archived=1" : ""}`,
+    { admin: true },
+  );
+
+export const createReporterIntegration = (appId: string, name: string) =>
+  request<ReporterIntegration>(`/api/apps/${appId}/reporter-integrations`, {
+    method: "POST",
+    admin: true,
+    body: JSON.stringify({ name }),
+  });
+
+export const updateReporterIntegration = (
+  appId: string,
+  integrationId: string,
+  archived: boolean,
+) => request<{ id: string; archived: boolean; changed: boolean }>(
+  `/api/apps/${appId}/reporter-integrations/${encodeURIComponent(integrationId)}`,
+  { method: "PATCH", admin: true, body: JSON.stringify({ archived }) },
+);
 
 export const getInvite = (token: string) =>
   request<Invite>(`/api/invites/${token}`);
@@ -1420,6 +1455,8 @@ export const forceUpdate = (
 
 export type WebhookEventType =
   | "feedback:new"
+  | "feedback:comment_created"
+  | "feedback:status_changed"
   | "crash:new_group"
   | "crash:spike"
   | "release:new"
@@ -1432,6 +1469,8 @@ export type WebhookEventType =
 
 export const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
   "feedback:new",
+  "feedback:comment_created",
+  "feedback:status_changed",
   "crash:new_group",
   "crash:spike",
   "release:new",

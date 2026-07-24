@@ -392,15 +392,19 @@ function makeMockDb() {
       submission_id TEXT,
       submission_fingerprint TEXT,
       reporter_id TEXT,
+      reporter_integration_id TEXT,
       symbolication_status TEXT,
       symbolicated_stack TEXT,
       symbolicated_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
-    CREATE UNIQUE INDEX idx_feedback_tickets_submission
+    CREATE UNIQUE INDEX idx_feedback_tickets_submission_direct
       ON feedback_tickets(app_id, submission_id)
-      WHERE submission_id IS NOT NULL;
+      WHERE submission_id IS NOT NULL AND reporter_integration_id IS NULL;
+    CREATE UNIQUE INDEX idx_feedback_tickets_submission_reporter
+      ON feedback_tickets(app_id, reporter_integration_id, submission_id)
+      WHERE submission_id IS NOT NULL AND reporter_integration_id IS NOT NULL;
     CREATE INDEX idx_feedback_tickets_reporter
       ON feedback_tickets(app_id, reporter_id, created_at)
       WHERE reporter_id IS NOT NULL;
@@ -443,15 +447,31 @@ function makeMockDb() {
       filename TEXT NOT NULL,
       content_type TEXT,
       size_bytes INTEGER NOT NULL,
+      origin TEXT NOT NULL DEFAULT 'submission',
+      visibility TEXT NOT NULL DEFAULT 'reporter',
       created_at INTEGER NOT NULL
     );
     CREATE TABLE feedback_comments (
       id TEXT PRIMARY KEY,
       ticket_id TEXT NOT NULL,
       author_actor TEXT NOT NULL,
+      author_type TEXT NOT NULL DEFAULT 'staff',
       body TEXT NOT NULL,
       internal INTEGER NOT NULL DEFAULT 0,
+      reporter_integration_id TEXT,
+      reporter_id TEXT,
+      submission_id TEXT,
+      submission_fingerprint TEXT,
       created_at INTEGER NOT NULL
+    );
+    CREATE TABLE app_reporter_integrations (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER,
+      UNIQUE(app_id, name)
     );
     CREATE TABLE audit_logs (
       id TEXT PRIMARY KEY, app_id TEXT NOT NULL, action TEXT NOT NULL,
@@ -541,6 +561,7 @@ function makeMockDb() {
       expires_at INTEGER,
       last_used_at INTEGER,
       revoked_at INTEGER,
+      reporter_integration_id TEXT REFERENCES app_reporter_integrations(id) ON DELETE SET NULL,
       CHECK (app_role IS NOT NULL OR scopes_json IS NOT NULL)
     );
     CREATE TABLE invites (
@@ -588,6 +609,7 @@ function makeMockDb() {
       id TEXT PRIMARY KEY,
       webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
       event_type TEXT NOT NULL,
+      event_id TEXT,
       payload_json TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       attempts INTEGER NOT NULL DEFAULT 0,
@@ -601,6 +623,48 @@ function makeMockDb() {
       updated_at INTEGER NOT NULL,
       completed_at INTEGER
     );
+    CREATE UNIQUE INDEX idx_webhook_deliveries_event
+      ON webhook_deliveries(webhook_id, event_id) WHERE event_id IS NOT NULL;
+    CREATE TABLE feedback_events (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      app_id TEXT NOT NULL,
+      ticket_id TEXT NOT NULL,
+      reporter_integration_id TEXT NOT NULL,
+      reporter_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE feedback_reporter_rate_windows (
+      app_id TEXT NOT NULL,
+      reporter_integration_id TEXT NOT NULL,
+      reporter_hash TEXT NOT NULL,
+      audit_key_version TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      window_started_at INTEGER NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      last_audited_at INTEGER,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (app_id, reporter_integration_id, reporter_hash,
+                   audit_key_version, endpoint, window_started_at)
+    );
+    CREATE TABLE feedback_reporter_access_audits (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      reporter_integration_id TEXT NOT NULL,
+      reporter_hash TEXT NOT NULL,
+      audit_key_version TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      ticket_id TEXT,
+      attachment_id TEXT,
+      throttle_window_started_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX idx_feedback_reporter_access_audits_throttle
+      ON feedback_reporter_access_audits(
+        app_id, reporter_integration_id, reporter_hash, audit_key_version,
+        endpoint, throttle_window_started_at
+      ) WHERE throttle_window_started_at IS NOT NULL;
   `);
 
   // Replace `?N` numbered placeholders with anonymous `?` (better-sqlite3 compat).
@@ -2204,6 +2268,11 @@ describe("quiver Hono app — auth + dispatch", () => {
     await env.DB.prepare(
       "INSERT INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).bind("dt-app", "default", "dt-app", "DT App", "android", now).run();
+    await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind("integration-dt", "dt-app", "Feedback", now, now).run();
     const {
       handleCreateAppDeployToken,
       handleListAppDeployTokens,
@@ -2281,7 +2350,12 @@ describe("quiver Hono app — auth + dispatch", () => {
     );
     expect(unknownScope.status).toBe(400);
     const scoped = await handleCreateAppDeployToken(
-      ctx({ name: "feedback-only", scopes: ["feedback:write"], expires_in_days: 7 }),
+      ctx({
+        name: "feedback-only",
+        scopes: ["feedback:write"],
+        reporter_integration_id: "integration-dt",
+        expires_in_days: 7,
+      }),
     );
     expect(scoped.status).toBe(201);
     expect((await scoped.json()) as any).toMatchObject({
@@ -2355,6 +2429,8 @@ describe("quiver Hono app — auth + dispatch", () => {
       "app:publish",
       "app:admin",
       "feedback:write",
+      "feedback:read",
+      "feedback:comment",
     ]);
     expect(body.permissions.find((entry: any) => entry.permission === "app:read").label)
       .toBe("App read");
@@ -6690,9 +6766,15 @@ describe("quiver public API v2 — scope resolution", () => {
     const publisherCredential = generateDeployToken();
     const broadCredential = generateDeployToken();
     await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?4)`,
+    ).bind("integration-proxy", "app-scope", "Feedback proxy", Date.now()).run();
+    await env.DB.prepare(
       `INSERT INTO app_deploy_tokens
-       (id, app_id, name, token_prefix, token_hash, app_role, scopes_json, created_by_actor, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, NULL, '["feedback:write"]', ?6, ?7)`,
+       (id, app_id, name, token_prefix, token_hash, app_role, scopes_json,
+        created_by_actor, created_at, reporter_integration_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, NULL, '["feedback:write"]', ?6, ?7, ?8)`,
     ).bind(
       "proxy-token",
       "app-scope",
@@ -6701,6 +6783,7 @@ describe("quiver public API v2 — scope resolution", () => {
       await hashDeployToken(credential.token),
       "test",
       Date.now(),
+      "integration-proxy",
     ).run();
     await env.DB.prepare(
       `INSERT INTO app_deploy_tokens
@@ -7935,5 +8018,145 @@ describe("Hands iOS simulator QA artifacts", () => {
     });
     expect(byName["create-release"].parameters.scopes).toMatchObject({ type: "array", in: "body" });
     expect(byName["update-release"].parameters.scopes).toMatchObject({ type: "array", in: "body" });
+  });
+
+  it("reporter feedback bearer routes isolate integrations and converge comment replay", async () => {
+    const { env } = makeEnv() as any;
+    env.FEEDBACK_AUDIT_HMAC_KEY = "test-audit-key-with-enough-entropy";
+    env.FEEDBACK_AUDIT_KEY_VERSION = "test-v1";
+    const { generateDeployToken, hashDeployToken } = await import("../src/lib/deploy_tokens");
+    const { handleAddReporterComment, handleGetReporterFeedback, handleListReporterFeedback } =
+      await import("../src/routes/reporter_feedback");
+    const now = Date.now();
+    const reporterId = "r".repeat(64);
+    const integrationA = "11111111-1111-4111-8111-111111111111";
+    const integrationB = "22222222-2222-4222-8222-222222222222";
+    const ticketA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const ticketB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const credentialA = generateDeployToken();
+    const credentialB = generateDeployToken();
+    await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES (?1, 'app-ios', 'A', ?3, ?3), (?2, 'app-ios', 'B', ?3, ?3)`,
+    ).bind(integrationA, integrationB, now).run();
+    const insertToken = async (id: string, credential: { token: string; token_prefix: string }, integrationId: string) => {
+      await env.DB.prepare(
+        `INSERT INTO app_deploy_tokens
+         (id, app_id, name, token_prefix, token_hash, app_role, scopes_json,
+          created_by_actor, created_at, reporter_integration_id)
+         VALUES (?1, 'app-ios', ?1, ?2, ?3, NULL,
+                 '["feedback:write","feedback:read","feedback:comment"]',
+                 'test', ?4, ?5)`,
+      ).bind(id, credential.token_prefix, await hashDeployToken(credential.token), now, integrationId).run();
+    };
+    await insertToken("token-a", credentialA, integrationA);
+    await insertToken("token-b", credentialB, integrationB);
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets
+       (id, app_id, kind, status, message, metadata_json, reporter_id,
+        reporter_integration_id, created_at, updated_at)
+       VALUES (?1, 'app-ios', 'feedback', 'open', 'A ticket', '{}', ?3, ?4, ?5, ?5),
+              (?2, 'app-ios', 'feedback', 'open', 'B ticket', '{}', ?3, ?6, ?5, ?5)`,
+    ).bind(ticketA, ticketB, reporterId, integrationA, now, integrationB).run();
+    await env.DB.prepare(
+      `INSERT INTO webhooks
+       (id, org_id, app_id, url, secret, events_json, enabled, created_at, updated_at)
+       VALUES ('reporter-hook', 'default', 'app-ios', 'https://example.test/hook',
+               'secret', '["feedback:comment_created","feedback:status_changed"]', 1, ?1, ?1)`,
+    ).bind(now).run();
+
+    const context = (
+      handler: "list" | "detail" | "comment",
+      credential: string | null,
+      ticketId?: string,
+      commentBody?: { body: string; submission_id: string },
+      headerReporter = reporterId,
+    ) => {
+      const responseHeaders = new Headers();
+      return {
+        env,
+        header: (name: string, value: string) => responseHeaders.set(name, value),
+        req: {
+          param: (name: string) => name === "appId" ? "app-ios" : name === "ticketId" ? ticketId : undefined,
+          header: (name: string) => name === "X-Hands-Reporter-Id"
+            ? headerReporter
+            : name === "authorization" && credential
+              ? `Bearer ${credential}`
+              : undefined,
+          query: (name: string) => handler === "list" && name === "limit" ? "50" : undefined,
+          json: async () => commentBody ?? {},
+        },
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+          status,
+          headers: responseHeaders,
+        }),
+      } as any;
+    };
+
+    const listA = await handleListReporterFeedback(context("list", credentialA.token));
+    expect(listA.status).toBe(200);
+    expect((await listA.json() as any).tickets.map((ticket: any) => ticket.id)).toEqual([ticketA]);
+    expect((await handleGetReporterFeedback(context("detail", credentialA.token, ticketB))).status).toBe(404);
+    expect((await handleListReporterFeedback(context("list", credentialA.token, undefined, undefined, ""))).status).toBe(400);
+    expect((await handleListReporterFeedback(context("list", null))).status).toBe(401);
+
+    const submissionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const makeComment = () => handleAddReporterComment(context(
+      "comment",
+      credentialA.token,
+      ticketA,
+      { body: "  hello reporter loop  ", submission_id: submissionId },
+    ));
+    const concurrent = await Promise.all([makeComment(), makeComment()]);
+    expect(concurrent.map((response) => response.status).sort()).toEqual([200, 201]);
+    const conflict = await handleAddReporterComment(context(
+      "comment",
+      credentialA.token,
+      ticketA,
+      { body: "different", submission_id: submissionId },
+    ));
+    expect(conflict.status).toBe(409);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_comments WHERE ticket_id = ?1 AND author_type = 'reporter'",
+    ).bind(ticketA).first() as any).count).toBe(1);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_events WHERE ticket_id = ?1",
+    ).bind(ticketA).first() as any).count).toBe(1);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM webhook_deliveries WHERE webhook_id = 'reporter-hook' AND event_id IS NOT NULL",
+    ).first() as any).count).toBe(1);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'feedback.reporter_comment'",
+    ).first() as any).count).toBe(1);
+
+    const { handleAddFeedbackComment, handleUpdateFeedback } = await import("../src/routes/feedback");
+    const adminContext = (body: unknown) => ({
+      env,
+      req: {
+        param: (name: string) => name === "appId" ? "app-ios" : name === "ticketId" ? ticketA : undefined,
+        json: async () => body,
+      },
+      get: (name: string) => name === "admin_actor" ? "staff:test" : undefined,
+      json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+    }) as any;
+    expect((await handleAddFeedbackComment(adminContext({ body: "staff reply", internal: false }))).status).toBe(201);
+    expect((await handleAddFeedbackComment(adminContext({ body: "internal note", internal: true }))).status).toBe(201);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_events WHERE ticket_id = ?1 AND event_type = 'feedback:comment_created'",
+    ).bind(ticketA).first() as any).count).toBe(2);
+    const update = await handleUpdateFeedback(adminContext({ status: "resolved", assignee: "staff:test" }));
+    expect(update.status).toBe(200);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_events WHERE ticket_id = ?1 AND event_type = 'feedback:status_changed'",
+    ).bind(ticketA).first() as any).count).toBe(1);
+    const auditBeforeNoop = (await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'feedback.update'",
+    ).first() as any).count;
+    const noop = await handleUpdateFeedback(adminContext({ status: "resolved", assignee: "staff:test" }));
+    expect((await noop.json() as any).changed).toBe(false);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'feedback.update'",
+    ).first() as any).count).toBe(auditBeforeNoop);
   });
 });
