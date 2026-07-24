@@ -1,5 +1,7 @@
 import type { Context } from "hono";
 import { authenticateReporter, type ReporterPrincipal } from "../lib/reporter_auth";
+import { computeReporterAuditHash } from "../lib/reporter_audit";
+import { buildFeedbackCommentEvent } from "../lib/feedback_events";
 
 type ReporterContext = Context<{ Bindings: Env }>;
 
@@ -49,28 +51,23 @@ function decodeCursor(value: string | undefined): [number, string] | null {
   }
 }
 
+function decodeAscendingCursor(value: string | undefined): [number, string] | null {
+  if (!value) return [-1, ""];
+  return decodeCursor(value);
+}
+
 async function reporterHash(c: ReporterContext, principal: ReporterPrincipal) {
   const env = c.env as ReporterEnv;
-  const key = env.FEEDBACK_AUDIT_HMAC_KEY?.trim();
+  const key = env.FEEDBACK_AUDIT_HMAC_KEY;
   const version = env.FEEDBACK_AUDIT_KEY_VERSION?.trim();
   if (!key || !version) return null;
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(key),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const domain = JSON.stringify([
-    "hands.feedback.reporter-audit.v1",
-    principal.appId,
-    principal.integrationId,
-    principal.reporterId,
-  ]);
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(domain));
-  const hash = Array.from(new Uint8Array(signature))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  const hash = await computeReporterAuditHash({
+    key,
+    appId: principal.appId,
+    integrationId: principal.integrationId,
+    reporterId: principal.reporterId,
+  });
+  if (!hash) return null;
   return { hash, version };
 }
 
@@ -203,23 +200,33 @@ function ticketDto(row: Record<string, unknown>) {
     channel: row.channel,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    attachment_count: row.attachment_count,
+    comment_count: row.comment_count,
+    latest_comment_at: row.latest_comment_at,
   };
 }
 
 export async function handleListReporterFeedback(c: ReporterContext) {
   const authorized = await authorize(c, "feedback:read", "list");
   if (!authorized.ok) return authorized.response;
-  const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") ?? "50") || 50));
+  const limit = Math.min(50, Math.max(1, Number(c.req.query("limit") ?? "20") || 20));
   const decodedCursor = decodeCursor(c.req.query("cursor"));
   if (!decodedCursor) return c.json({ error: "invalid cursor" }, 400);
   const [cursorCreatedAt, cursorId] = decodedCursor;
   const { results } = await c.env.DB.prepare(
-    `SELECT id, kind, status, message, version_name, version_code, channel,
-            created_at, updated_at
-     FROM feedback_tickets
-     WHERE app_id = ?1 AND reporter_integration_id = ?2 AND reporter_id = ?3
-       AND (created_at < ?4 OR (created_at = ?4 AND id < ?5))
-     ORDER BY created_at DESC, id DESC LIMIT ?6`,
+    `SELECT t.id, t.kind, t.status, t.message, t.version_name, t.version_code,
+            t.channel, t.created_at, t.updated_at,
+            (SELECT COUNT(*) FROM feedback_attachments fa
+             WHERE fa.ticket_id = t.id AND fa.origin = 'submission'
+               AND fa.visibility = 'reporter') AS attachment_count,
+            (SELECT COUNT(*) FROM feedback_comments fc
+             WHERE fc.ticket_id = t.id AND fc.internal = 0) AS comment_count,
+            (SELECT MAX(fc.created_at) FROM feedback_comments fc
+             WHERE fc.ticket_id = t.id AND fc.internal = 0) AS latest_comment_at
+     FROM feedback_tickets t
+     WHERE t.app_id = ?1 AND t.reporter_integration_id = ?2 AND t.reporter_id = ?3
+       AND (t.created_at < ?4 OR (t.created_at = ?4 AND t.id < ?5))
+     ORDER BY t.created_at DESC, t.id DESC LIMIT ?6`,
   ).bind(
     authorized.principal.appId,
     authorized.principal.integrationId,
@@ -240,7 +247,14 @@ export async function handleListReporterFeedback(c: ReporterContext) {
 async function ownedTicket(c: ReporterContext, principal: ReporterPrincipal, ticketId: string) {
   return c.env.DB.prepare(
     `SELECT t.id, t.kind, t.status, t.message, t.version_name, t.version_code,
-            t.channel, t.created_at, t.updated_at, a.org_id
+            t.channel, t.created_at, t.updated_at, a.org_id,
+            (SELECT COUNT(*) FROM feedback_attachments fa
+             WHERE fa.ticket_id = t.id AND fa.origin = 'submission'
+               AND fa.visibility = 'reporter') AS attachment_count,
+            (SELECT COUNT(*) FROM feedback_comments fc
+             WHERE fc.ticket_id = t.id AND fc.internal = 0) AS comment_count,
+            (SELECT MAX(fc.created_at) FROM feedback_comments fc
+             WHERE fc.ticket_id = t.id AND fc.internal = 0) AS latest_comment_at
      FROM feedback_tickets t JOIN apps a ON a.id = t.app_id
      WHERE t.id = ?1 AND t.app_id = ?2
        AND t.reporter_integration_id = ?3 AND t.reporter_id = ?4`,
@@ -256,7 +270,7 @@ export async function handleGetReporterFeedback(c: ReporterContext) {
   const ticket = await ownedTicket(c, authorized.principal, ticketId);
   if (!ticket) return ticketNotFound(c);
   const commentLimit = Math.min(100, Math.max(1, Number(c.req.query("comment_limit") ?? "50") || 50));
-  const decodedCommentCursor = decodeCursor(c.req.query("comment_cursor"));
+  const decodedCommentCursor = decodeAscendingCursor(c.req.query("comment_cursor"));
   if (!decodedCommentCursor) return c.json({ error: "invalid comment cursor" }, 400);
   const [commentCursorCreatedAt, commentCursorId] = decodedCommentCursor;
   const [{ results: comments }, { results: attachments }] = await Promise.all([
@@ -264,8 +278,8 @@ export async function handleGetReporterFeedback(c: ReporterContext) {
       `SELECT id, author_type, body, created_at
        FROM feedback_comments
        WHERE ticket_id = ?1 AND internal = 0
-         AND (created_at < ?2 OR (created_at = ?2 AND id < ?3))
-       ORDER BY created_at DESC, id DESC LIMIT ?4`,
+         AND (created_at > ?2 OR (created_at = ?2 AND id > ?3))
+       ORDER BY created_at ASC, id ASC LIMIT ?4`,
     ).bind(ticketId, commentCursorCreatedAt, commentCursorId, commentLimit + 1).all<Record<string, unknown>>(),
     c.env.DB.prepare(
       `SELECT id, filename, content_type, size_bytes, created_at
@@ -283,7 +297,7 @@ export async function handleGetReporterFeedback(c: ReporterContext) {
     : null;
   return c.json({
     ticket: ticketDto(safeTicket),
-    comments: commentPage.reverse(),
+    comments: commentPage,
     next_comment_cursor: nextCommentCursor,
     attachments,
   });
@@ -305,7 +319,7 @@ export async function handleAddReporterComment(c: ReporterContext) {
   const text = typeof body.body === "string" ? body.body.trim() : "";
   const submissionId = fullUuid(typeof body.submission_id === "string" ? body.submission_id : undefined);
   if (!text) return c.json({ error: "body is required" }, 400);
-  if (text.length > COMMENT_MAX_CHARS) return c.json({ error: `body too long (max ${COMMENT_MAX_CHARS} chars)` }, 400);
+  if ([...text].length > COMMENT_MAX_CHARS) return c.json({ error: `body too long (max ${COMMENT_MAX_CHARS} chars)` }, 400);
   if (!submissionId) return c.json({ error: "submission_id must be a UUID" }, 400);
   const fingerprint = await sha256Hex(text);
   const existingComment = async () => c.env.DB.prepare(
@@ -325,20 +339,16 @@ export async function handleAddReporterComment(c: ReporterContext) {
   const now = Date.now();
   const commentId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
-  const eventBody = JSON.stringify({
-    id: eventId,
-    event: "feedback:comment_created",
-    created_at: now,
-    delivered_at: now,
-    org_id: ticket.org_id,
-    app_id: authorized.principal.appId,
-    payload: {
-      ticket_id: ticketId,
-      comment_id: commentId,
-      reporter_integration_id: authorized.principal.integrationId,
-      reporter_id: authorized.principal.reporterId,
-      body: text,
-    },
+  const eventBody = buildFeedbackCommentEvent({
+    eventId,
+    eventType: "feedback:comment_created",
+    createdAt: now,
+    orgId: ticket.org_id!,
+    appId: authorized.principal.appId,
+    ticketId,
+    reporterIntegrationId: authorized.principal.integrationId,
+    reporterId: authorized.principal.reporterId,
+    comment: { id: commentId, author_type: "reporter", body: text, created_at: now },
   });
   const auditPayload = JSON.stringify({
     ticket_id: ticketId,

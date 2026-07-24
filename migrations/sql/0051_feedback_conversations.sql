@@ -15,7 +15,7 @@ ALTER TABLE app_deploy_tokens
   ADD COLUMN reporter_integration_id TEXT REFERENCES app_reporter_integrations(id) ON DELETE SET NULL;
 
 ALTER TABLE feedback_tickets
-  ADD COLUMN reporter_integration_id TEXT REFERENCES app_reporter_integrations(id) ON DELETE RESTRICT;
+  ADD COLUMN reporter_integration_id TEXT REFERENCES app_reporter_integrations(id) ON DELETE CASCADE;
 
 INSERT OR IGNORE INTO app_reporter_integrations
   (id, app_id, name, created_at, updated_at, archived_at)
@@ -79,7 +79,7 @@ CREATE TABLE feedback_comments (
     CHECK (author_type IN ('reporter', 'staff', 'system')),
   body TEXT NOT NULL,
   internal INTEGER NOT NULL DEFAULT 0 CHECK (internal IN (0, 1)),
-  reporter_integration_id TEXT REFERENCES app_reporter_integrations(id) ON DELETE RESTRICT,
+  reporter_integration_id TEXT REFERENCES app_reporter_integrations(id) ON DELETE CASCADE,
   reporter_id TEXT,
   submission_id TEXT,
   submission_fingerprint TEXT,
@@ -155,7 +155,7 @@ CREATE TABLE feedback_events (
     CHECK (event_type IN ('feedback:comment_created', 'feedback:status_changed')),
   app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
   ticket_id TEXT NOT NULL REFERENCES feedback_tickets(id) ON DELETE CASCADE,
-  reporter_integration_id TEXT NOT NULL REFERENCES app_reporter_integrations(id) ON DELETE RESTRICT,
+  reporter_integration_id TEXT NOT NULL REFERENCES app_reporter_integrations(id) ON DELETE CASCADE,
   reporter_id TEXT NOT NULL,
   payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
   created_at INTEGER NOT NULL
@@ -165,7 +165,6 @@ CREATE INDEX idx_feedback_events_ticket
   ON feedback_events(ticket_id, created_at, id);
 
 CREATE TRIGGER feedback_events_no_update BEFORE UPDATE ON feedback_events BEGIN SELECT RAISE(ABORT, 'feedback_events are immutable'); END;
-CREATE TRIGGER feedback_events_no_delete BEFORE DELETE ON feedback_events BEGIN SELECT RAISE(ABORT, 'feedback_events are immutable'); END;
 
 ALTER TABLE webhook_deliveries
   ADD COLUMN event_id TEXT REFERENCES feedback_events(id) ON DELETE SET NULL;

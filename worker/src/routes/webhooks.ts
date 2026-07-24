@@ -279,7 +279,7 @@ export async function handleReapDeliveries(c: Context<{ Bindings: Env }>) {
   const now = Date.now();
   // Find all deliveries ready to attempt
   const { results: due } = await c.env.DB.prepare(
-    `SELECT id, webhook_id, attempts, max_attempts, payload_json
+    `SELECT id, webhook_id, event_id, attempts, max_attempts, payload_json
      FROM webhook_deliveries
      WHERE status = 'pending'
        AND (next_attempt_at IS NULL OR next_attempt_at <= ?1)
@@ -290,6 +290,7 @@ export async function handleReapDeliveries(c: Context<{ Bindings: Env }>) {
     .all<{
       id: string;
       webhook_id: string;
+      event_id: string | null;
       attempts: number;
       max_attempts: number;
       payload_json: string;
@@ -305,7 +306,13 @@ export async function handleReapDeliveries(c: Context<{ Bindings: Env }>) {
       .first<{ url: string; secret: string }>();
     if (!wh) continue;
 
-    const result = await postOnce(wh.url, wh.secret, d.payload_json);
+    const result = await postOnce(
+      wh.url,
+      wh.secret,
+      d.payload_json,
+      d.id,
+      d.event_id,
+    );
     const nextAttempts = d.attempts + 1;
     if (result.ok) {
       await c.env.DB.prepare(
@@ -364,23 +371,28 @@ async function postOnce(
   url: string,
   secret: string,
   body: string,
+  deliveryId: string,
+  eventId: string | null,
 ): Promise<{ ok: boolean; status: number; body?: string; error?: string }> {
   try {
     const sig = await hmacSha256Hex(secret, body);
     const event = (() => {
       try { return JSON.parse(body).event ?? ""; } catch { return ""; }
     })();
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      // New canonical headers; legacy X-Quiver-* sent too so existing
+      // webhook consumers keep verifying without a change.
+      "X-Hands-Signature": `sha256=${sig}`,
+      "X-Hands-Event": event,
+      "X-Hands-Delivery-Id": deliveryId,
+      "X-Quiver-Signature": `sha256=${sig}`,
+      "X-Quiver-Event": event,
+    };
+    if (eventId) headers["X-Hands-Event-Id"] = eventId;
     const r = await fetch(url, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        // New canonical headers; legacy X-Quiver-* sent too so existing
-        // webhook consumers keep verifying without a change.
-        "X-Hands-Signature": `sha256=${sig}`,
-        "X-Hands-Event": event,
-        "X-Quiver-Signature": `sha256=${sig}`,
-        "X-Quiver-Event": event,
-      },
+      headers,
       body,
     });
     const text = await r.text().catch(() => "");

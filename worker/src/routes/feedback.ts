@@ -15,6 +15,7 @@ import { generateSignedR2Url } from "./public_v2";
 import { dashboardOrigin, requestOrigin } from "../lib/origin";
 import { loadDeployToken } from "../lib/deploy_tokens";
 import { isFeedbackOnlyToken, REPORTER_ID_PATTERN } from "../lib/reporter_auth";
+import { buildFeedbackCommentEvent, buildFeedbackStatusEvent } from "../lib/feedback_events";
 
 type AdminContext = Context<AdminEnv & { Bindings: Env }>;
 
@@ -204,7 +205,7 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
       return c.json({ error: "trusted reporter identity requires an active reporter integration" }, 401);
     }
     reporterIntegrationId = deployToken.reporter_integration_id;
-    rateLimitHashInput = `feedback:${app.id}:reporter:${reporterId}`;
+    rateLimitHashInput = `feedback:${app.id}:integration:${reporterIntegrationId}:reporter:${reporterId}`;
     rateLimitPerHour = TRUSTED_REPORTER_RATE_LIMIT_PER_HOUR;
   }
   const clientIpHash = await sha256Hex(rateLimitHashInput);
@@ -524,6 +525,7 @@ export async function handlePublicFeedbackSubmit(c: Context<{ Bindings: Env }>) 
         version_code: versionCode,
         attachments: attachmentRows.length,
         reporter_id: reporterId || null,
+        reporter_integration_id: reporterIntegrationId,
       },
     }).catch(() => {
       // webhook fan-out must never fail the submission
@@ -1802,25 +1804,130 @@ export async function handleUpdateFeedback(c: AdminContext) {
     status?: string;
     assignee?: string | null;
   };
-  const sets: string[] = [];
-  const binds: unknown[] = [];
   if (body.status !== undefined) {
     if (!(TICKET_STATUSES as readonly string[]).includes(body.status)) {
       return c.json({ error: `status must be one of ${TICKET_STATUSES.join(", ")}` }, 400);
     }
-    binds.push(body.status);
-    sets.push(`status = ?${binds.length}`);
   }
-  if (body.assignee !== undefined) {
-    const assignee =
-      typeof body.assignee === "string" ? body.assignee.trim().slice(0, 120) : "";
-    binds.push(assignee || null);
-    sets.push(`assignee = ?${binds.length}`);
-  }
-  if (sets.length === 0) {
+  if (body.status === undefined && body.assignee === undefined) {
     return c.json({ error: "nothing to update (status or assignee required)" }, 400);
   }
-  const existing = await c.env.DB.prepare(
+  const requestedAssigneeInput = body.assignee === undefined
+    ? undefined
+    : (typeof body.assignee === "string" ? body.assignee.trim().slice(0, 120) : "") || null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const existing = await loadFeedbackMutationSnapshot(c.env.DB, appId, ticketId);
+    if (!existing) return c.json({ error: "ticket not found" }, 404);
+    const requestedStatus = body.status ?? existing.status;
+    const requestedAssignee = requestedAssigneeInput === undefined
+      ? existing.assignee
+      : requestedAssigneeInput;
+    const statusChanged = requestedStatus !== existing.status;
+    const assigneeChanged = requestedAssignee !== existing.assignee;
+    if (!statusChanged && !assigneeChanged) {
+      return c.json({
+        id: ticketId,
+        status: existing.status,
+        assignee: existing.assignee,
+        updated_at: null,
+        changed: false,
+      });
+    }
+
+    const now = Date.now();
+    const auditId = crypto.randomUUID();
+    const auditPayload = JSON.stringify({
+      ticket_id: ticketId,
+      previous_status: existing.status,
+      status: requestedStatus,
+      previous_assignee: existing.assignee,
+      assignee: requestedAssignee,
+    });
+    const statements: D1PreparedStatement[] = [
+      c.env.DB.prepare(
+        `INSERT INTO audit_logs (id, app_id, action, actor, payload, created_at)
+         SELECT ?1, ?2, 'feedback.update', ?3, ?4, ?5
+         FROM feedback_tickets
+         WHERE app_id = ?2 AND id = ?6 AND status = ?7 AND assignee IS ?8`,
+      ).bind(
+        auditId,
+        appId,
+        currentActor(c),
+        auditPayload,
+        now,
+        ticketId,
+        existing.status,
+        existing.assignee,
+      ),
+      c.env.DB.prepare(
+        `UPDATE feedback_tickets
+         SET status = ?1, assignee = ?2, updated_at = ?3
+         WHERE app_id = ?4 AND id = ?5 AND status = ?6 AND assignee IS ?7
+           AND EXISTS (SELECT 1 FROM audit_logs WHERE id = ?8)`,
+      ).bind(
+        requestedStatus,
+        requestedAssignee,
+        now,
+        appId,
+        ticketId,
+        existing.status,
+        existing.assignee,
+        auditId,
+      ),
+    ];
+    if (
+      statusChanged
+      && existing.org_id
+      && existing.reporter_integration_id
+      && existing.reporter_id
+      && existing.reporter_active === 1
+    ) {
+      statements.push(...feedbackReporterEventStatements(c.env.DB, {
+        eventType: "feedback:status_changed",
+        orgId: existing.org_id,
+        appId,
+        ticketId,
+        reporterIntegrationId: existing.reporter_integration_id,
+        reporterId: existing.reporter_id,
+        createdAt: now,
+        previousStatus: existing.status,
+        status: requestedStatus,
+        claimAuditId: auditId,
+      }));
+    }
+    await c.env.DB.batch(statements);
+    const won = await c.env.DB.prepare("SELECT id FROM audit_logs WHERE id = ?1")
+      .bind(auditId)
+      .first();
+    if (won) {
+      return c.json({
+        id: ticketId,
+        status: requestedStatus,
+        assignee: requestedAssignee,
+        updated_at: now,
+        changed: true,
+      });
+    }
+  }
+  return c.json({ error: "feedback ticket changed concurrently; retry" }, 409);
+}
+
+type FeedbackMutationSnapshot = {
+  id: string;
+  status: string;
+  assignee: string | null;
+  reporter_integration_id: string | null;
+  reporter_id: string | null;
+  org_id: string | null;
+  reporter_active: number;
+};
+
+async function loadFeedbackMutationSnapshot(
+  db: D1Database,
+  appId: string,
+  ticketId: string,
+): Promise<FeedbackMutationSnapshot | null> {
+  return db.prepare(
     `SELECT t.id, t.status, t.assignee, t.reporter_integration_id, t.reporter_id,
             a.org_id,
             CASE WHEN ri.id IS NOT NULL AND ri.archived_at IS NULL THEN 1 ELSE 0 END AS reporter_active
@@ -1829,80 +1936,7 @@ export async function handleUpdateFeedback(c: AdminContext) {
      LEFT JOIN app_reporter_integrations ri
        ON ri.id = t.reporter_integration_id AND ri.app_id = t.app_id
      WHERE t.app_id = ?1 AND t.id = ?2`,
-  )
-    .bind(appId, ticketId)
-    .first<{
-      id: string;
-      status: string;
-      assignee: string | null;
-      reporter_integration_id: string | null;
-      reporter_id: string | null;
-      org_id: string | null;
-      reporter_active: number;
-    }>();
-  if (!existing) return c.json({ error: "ticket not found" }, 404);
-
-  const requestedAssignee = body.assignee === undefined
-    ? existing.assignee
-    : (typeof body.assignee === "string" ? body.assignee.trim().slice(0, 120) : "") || null;
-  const requestedStatus = body.status ?? existing.status;
-  const statusChanged = requestedStatus !== existing.status;
-  const assigneeChanged = requestedAssignee !== existing.assignee;
-  if (!statusChanged && !assigneeChanged) {
-    return c.json({
-      id: ticketId,
-      status: existing.status,
-      assignee: existing.assignee,
-      updated_at: null,
-      changed: false,
-    });
-  }
-
-  const now = Date.now();
-  binds.push(now);
-  sets.push(`updated_at = ?${binds.length}`);
-  binds.push(appId, ticketId);
-  const statements = [c.env.DB.prepare(
-    `UPDATE feedback_tickets SET ${sets.join(", ")}
-     WHERE app_id = ?${binds.length - 1} AND id = ?${binds.length}`,
-  )
-    .bind(...binds), c.env.DB.prepare(
-    `INSERT INTO audit_logs (id, app_id, action, actor, payload, created_at)
-     VALUES (?1, ?2, 'feedback.update', ?3, ?4, ?5)`,
-  )
-    .bind(
-      crypto.randomUUID(),
-      appId,
-      currentActor(c),
-      JSON.stringify({
-        ticket_id: ticketId,
-        previous_status: existing.status,
-        status: requestedStatus,
-        previous_assignee: existing.assignee,
-        assignee: requestedAssignee,
-      }),
-      now,
-    )];
-  if (
-    statusChanged
-    && existing.org_id
-    && existing.reporter_integration_id
-    && existing.reporter_id
-    && existing.reporter_active === 1
-  ) {
-    statements.push(...feedbackReporterEventStatements(c.env.DB, {
-      eventType: "feedback:status_changed",
-      orgId: existing.org_id,
-      appId,
-      ticketId,
-      reporterIntegrationId: existing.reporter_integration_id,
-      reporterId: existing.reporter_id,
-      createdAt: now,
-      payload: { previous_status: existing.status, status: requestedStatus },
-    }));
-  }
-  await c.env.DB.batch(statements);
-  return c.json({ id: ticketId, status: requestedStatus, assignee: requestedAssignee, updated_at: now, changed: true });
+  ).bind(appId, ticketId).first<FeedbackMutationSnapshot>();
 }
 
 export async function handleAddFeedbackComment(c: AdminContext) {
@@ -1971,7 +2005,7 @@ export async function handleAddFeedbackComment(c: AdminContext) {
       reporterIntegrationId: ticket.reporter_integration_id,
       reporterId: ticket.reporter_id,
       createdAt: now,
-      payload: { comment_id: id, author_type: "staff", body: text },
+      comment: { id, author_type: "staff", body: text, created_at: now },
     }));
   }
   await c.env.DB.batch(statements);
@@ -1988,30 +2022,45 @@ function feedbackReporterEventStatements(
     reporterIntegrationId: string;
     reporterId: string;
     createdAt: number;
-    payload: Record<string, unknown>;
+    comment?: { id: string; author_type: "staff" | "reporter" | "system"; body: string; created_at: number };
+    previousStatus?: string;
+    status?: string;
+    claimAuditId?: string;
   },
 ): D1PreparedStatement[] {
   const eventId = crypto.randomUUID();
-  const payloadJson = JSON.stringify({
-    id: eventId,
-    event: input.eventType,
-    created_at: input.createdAt,
-    delivered_at: input.createdAt,
-    org_id: input.orgId,
-    app_id: input.appId,
-    payload: {
-      ticket_id: input.ticketId,
-      reporter_integration_id: input.reporterIntegrationId,
-      reporter_id: input.reporterId,
-      ...input.payload,
-    },
-  });
+  const base = {
+    eventId,
+    eventType: input.eventType,
+    createdAt: input.createdAt,
+    orgId: input.orgId,
+    appId: input.appId,
+    ticketId: input.ticketId,
+    reporterIntegrationId: input.reporterIntegrationId,
+    reporterId: input.reporterId,
+  };
+  const payloadJson = input.eventType === "feedback:comment_created"
+    ? buildFeedbackCommentEvent({ ...base, comment: input.comment! })
+    : buildFeedbackStatusEvent({
+        ...base,
+        previousStatus: input.previousStatus!,
+        status: input.status!,
+      });
   return [
     db.prepare(
       `INSERT INTO feedback_events
        (id, event_type, app_id, ticket_id, reporter_integration_id,
         reporter_id, payload_json, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+       WHERE (?9 IS NULL OR EXISTS (SELECT 1 FROM audit_logs WHERE id = ?9))
+         AND EXISTS (
+           SELECT 1 FROM feedback_tickets t
+           JOIN app_reporter_integrations ri
+             ON ri.id = t.reporter_integration_id
+            AND ri.app_id = t.app_id AND ri.archived_at IS NULL
+           WHERE t.id = ?4 AND t.app_id = ?3
+             AND t.reporter_integration_id = ?5 AND t.reporter_id = ?6
+         )`,
     ).bind(
       eventId,
       input.eventType,
@@ -2021,6 +2070,7 @@ function feedbackReporterEventStatements(
       input.reporterId,
       payloadJson,
       input.createdAt,
+      input.claimAuditId ?? null,
     ),
     db.prepare(
       `INSERT INTO webhook_deliveries
@@ -2028,8 +2078,10 @@ function feedbackReporterEventStatements(
         attempts, max_attempts, next_attempt_at, created_at, updated_at)
        SELECT ?1 || ':' || w.id, w.id, ?2, ?1, ?3, 'pending', 0, 3,
               ?4, ?4, ?4
-       FROM webhooks w
-       WHERE w.org_id = ?5 AND w.enabled = 1 AND w.archived_at IS NULL
+       FROM feedback_events fe
+       JOIN webhooks w ON w.org_id = ?5
+       WHERE fe.id = ?1
+         AND w.enabled = 1 AND w.archived_at IS NULL
          AND (w.app_id IS NULL OR w.app_id = ?6)
          AND CASE WHEN json_valid(w.events_json) THEN (
            json_array_length(w.events_json) = 0

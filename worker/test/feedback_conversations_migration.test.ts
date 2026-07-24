@@ -72,7 +72,7 @@ function makeDb() {
     CREATE TABLE webhooks (
       id TEXT PRIMARY KEY,
       org_id TEXT NOT NULL,
-      app_id TEXT,
+      app_id TEXT REFERENCES apps(id) ON DELETE CASCADE,
       events_json TEXT NOT NULL,
       enabled INTEGER NOT NULL,
       archived_at INTEGER
@@ -220,7 +220,6 @@ describe("feedback conversations migration", () => {
     expect(() => db.prepare(
       "UPDATE feedback_events SET payload_json = '{\"changed\":true}' WHERE id = 'event-1'",
     ).run()).toThrow(/immutable/);
-
     db.prepare(
       `INSERT INTO apps (id, created_at) VALUES ('app-2', 1)`,
     ).run();
@@ -236,5 +235,8 @@ describe("feedback conversations migration", () => {
        VALUES ('cross-app-token', 'app-1', 'bad', 'qvdt_bad', 'hash-bad', NULL,
                '["feedback:read"]', 'tester', 6, 'integration-app-2')`,
     ).run()).toThrow(/app mismatch/);
+    expect(() => db.prepare("DELETE FROM apps WHERE id = 'app-1'").run()).not.toThrow();
+    expect(db.prepare("SELECT id FROM feedback_events WHERE id = 'event-1'").get()).toBeUndefined();
+    expect(db.prepare("SELECT id FROM webhook_deliveries WHERE id = 'delivery-1'").get()).toBeUndefined();
   });
 });

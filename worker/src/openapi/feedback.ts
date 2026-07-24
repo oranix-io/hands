@@ -49,7 +49,7 @@ export function registerFeedbackRoutes(registry: OpenApiRegistry) {
     request: {
       params: AppIdParam,
       headers: ReporterHeaders,
-      query: z.object({ limit: z.coerce.number().int().min(1).max(100).optional(), cursor: z.string().optional() }),
+      query: z.object({ limit: z.coerce.number().int().min(1).max(50).default(20), cursor: z.string().optional() }),
     },
     responses: {
       200: success("Reporter-owned feedback list.", GenericObject),
@@ -66,7 +66,14 @@ export function registerFeedbackRoutes(registry: OpenApiRegistry) {
     tags: ["Reporter Feedback"],
     summary: "Get reporter-owned feedback details",
     security: auth,
-    request: { params: AppTicketParams, headers: ReporterHeaders },
+    request: {
+      params: AppTicketParams,
+      headers: ReporterHeaders,
+      query: z.object({
+        comment_limit: z.coerce.number().int().min(1).max(100).default(50),
+        comment_cursor: z.string().optional(),
+      }),
+    },
     responses: {
       200: success("Reporter-owned feedback details.", GenericObject),
       400: error("Missing or malformed reporter id."),

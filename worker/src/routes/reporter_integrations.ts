@@ -108,10 +108,11 @@ export async function handleUpdateReporterIntegration(c: AdminContext) {
     c.env.DB.prepare(
       `INSERT INTO audit_logs
        (id, app_id, action, actor, actor_id, actor_type, payload, created_at)
-       VALUES (?1, ?2, 'reporter_integration.archive', ?3, ?4, ?5, ?6, ?7)`,
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
     ).bind(
       crypto.randomUUID(),
       appId,
+      body.archived ? "reporter_integration.archive" : "reporter_integration.unarchive",
       actor.display_name,
       actor.id,
       actor.type,

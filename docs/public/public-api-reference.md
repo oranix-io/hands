@@ -319,6 +319,13 @@ reuse with different trimmed UTF-8 text returns `409`. Reporter-visible
 attachments are limited to original submission attachments and are served with
 private/no-store, safe-disposition, and no-sniff headers.
 
+Reporter comment and status webhooks carry a stable logical event id in both
+the signed JSON body and `X-Hands-Event-Id`. Each subscription delivery also
+has a stable `X-Hands-Delivery-Id`. Retries reuse the exact same body,
+signature, event id, and delivery id; attempt timestamps and counters live only
+in the delivery ledger. Legacy delivery rows without a logical event id omit
+`X-Hands-Event-Id` while retaining the existing signature/event headers.
+
 ## Metrics Ingest
 
 ```http
