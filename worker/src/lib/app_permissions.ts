@@ -5,6 +5,8 @@ export const APP_PERMISSIONS = [
   "app:publish",
   "app:admin",
   "feedback:write",
+  "feedback:read",
+  "feedback:comment",
 ] as const;
 
 export type AppPermission = (typeof APP_PERMISSIONS)[number];
@@ -14,6 +16,8 @@ export const APP_PERMISSION_LABELS: Record<AppPermission, string> = {
   "app:publish": "Publish releases",
   "app:admin": "App administration",
   "feedback:write": "Feedback write",
+  "feedback:read": "Reporter feedback read",
+  "feedback:comment": "Reporter feedback comment",
 };
 
 export const APP_PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
@@ -21,6 +25,8 @@ export const APP_PERMISSION_DESCRIPTIONS: Record<AppPermission, string> = {
   "app:publish": "Create and publish builds, releases, and distribution assets.",
   "app:admin": "Manage app settings, members, credentials, and destructive operations.",
   "feedback:write": "Submit feedback tickets for this app.",
+  "feedback:read": "Read tickets owned by a reporter integration.",
+  "feedback:comment": "Comment on tickets owned by a reporter integration.",
 };
 
 export const APP_ROLE_PERMISSIONS: Record<AppRole, readonly AppPermission[]> = {
@@ -35,12 +41,25 @@ export const APP_ROLE_REQUIRED_PERMISSION: Record<AppRole, AppPermission> = {
   admin: "app:admin",
 };
 
-export const APP_PERMISSION_MINIMUM_ROLE: Record<AppPermission, AppRole> = {
+export const APP_PERMISSION_MINIMUM_ROLE: Partial<Record<AppPermission, AppRole>> = {
   "app:read": "viewer",
   "app:publish": "publisher",
   "app:admin": "admin",
   "feedback:write": "publisher",
 };
+
+export const FEEDBACK_TOKEN_PERMISSIONS = [
+  "feedback:write",
+  "feedback:read",
+  "feedback:comment",
+] as const satisfies readonly AppPermission[];
+
+export type FeedbackTokenPermission = (typeof FEEDBACK_TOKEN_PERMISSIONS)[number];
+
+export function isFeedbackTokenPermission(value: unknown): value is FeedbackTokenPermission {
+  return typeof value === "string"
+    && (FEEDBACK_TOKEN_PERMISSIONS as readonly string[]).includes(value);
+}
 
 const APP_ROLE_PRIORITY: Record<AppRole, number> = {
   viewer: 1,

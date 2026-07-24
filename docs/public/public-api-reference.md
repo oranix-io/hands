@@ -275,8 +275,10 @@ Authorization: Bearer qvdt_...  # granted feedback:write
 X-Hands-Reporter-Id: <stable opaque base64url value>
 ```
 
-The bearer must be a non-expired, non-revoked app token granted only the
-`feedback:write` permission and scoped to the same app. Scoped tokens do not
+The bearer must be a non-expired, non-revoked, role-free app token bound to an
+active reporter integration. Its non-empty scope set must contain
+`feedback:write` and may contain only `feedback:write`, `feedback:read`, and
+`feedback:comment`. Scoped tokens do not
 inherit the legacy viewer/publisher role and cannot authenticate to Hands
 admin/read APIs unless a route explicitly requires one of their named
 permissions. The optional reporter id is an external subject identifier chosen
@@ -292,6 +294,37 @@ lower product limit. Supplying the reporter header without a matching app
 deploy token returns `401`; ordinary SDK submissions that omit it continue to
 use the 10/hour app + client-IP bucket. Rate-limit responses include a dynamic
 `Retry-After` header.
+
+### Reporter-owned conversation API
+
+Trusted server proxies can list and continue only their own reporters' tickets:
+
+```http
+GET  /api/apps/:appId/reporter-feedback
+GET  /api/apps/:appId/reporter-feedback/:ticketId
+POST /api/apps/:appId/reporter-feedback/:ticketId/comments
+GET  /api/apps/:appId/reporter-feedback/:ticketId/attachments/:attachmentId
+Authorization: Bearer qvdt_...
+X-Hands-Reporter-Id: <stable opaque value>
+```
+
+The token must be role-free, bound to an active reporter integration, contain
+the route's `feedback:read` or `feedback:comment` scope, and contain no
+non-feedback scope. Ownership is the exact tuple `(app, reporter integration,
+reporter id)`. Lists return only owned tickets; targeted ownership misses and
+malformed ticket UUIDs return `404` without revealing another reporter's data.
+Reporter comments are text-only and require a client-generated UUID
+`submission_id`: new comments return `201`, exact replays return `200`, and
+reuse with different trimmed UTF-8 text returns `409`. Reporter-visible
+attachments are limited to original submission attachments and are served with
+private/no-store, safe-disposition, and no-sniff headers.
+
+Reporter comment and status webhooks carry a stable logical event id in both
+the signed JSON body and `X-Hands-Event-Id`. Each subscription delivery also
+has a stable `X-Hands-Delivery-Id`. Retries reuse the exact same body,
+signature, event id, and delivery id; attempt timestamps and counters live only
+in the delivery ledger. Legacy delivery rows without a logical event id omit
+`X-Hands-Event-Id` while retaining the existing signature/event headers.
 
 ## Metrics Ingest
 

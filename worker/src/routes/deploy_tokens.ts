@@ -13,6 +13,7 @@ import {
   APP_PERMISSION_DESCRIPTIONS,
   APP_PERMISSION_LABELS,
   APP_ROLE_PERMISSIONS,
+  isFeedbackTokenPermission,
   isAppPermission,
   type AppPermission,
 } from "../lib/app_permissions";
@@ -46,6 +47,7 @@ type DeployTokenRow = {
   expires_at: number | null;
   last_used_at: number | null;
   revoked_at: number | null;
+  reporter_integration_id: string | null;
 };
 
 function parseExpiresAt(value: unknown): number | null {
@@ -88,6 +90,7 @@ function toResponse(row: DeployTokenRow) {
     expires_at: row.expires_at,
     last_used_at: row.last_used_at,
     revoked_at: row.revoked_at,
+    reporter_integration_id: row.reporter_integration_id,
   };
   return {
     ...token,
@@ -103,7 +106,8 @@ export async function handleListAppDeployTokens(c: AdminContext) {
   const includeRevoked = c.req.query("include_revoked") === "1";
   const { results } = await c.env.DB.prepare(
     `SELECT id, app_id, name, token_prefix, app_role, scopes_json, created_by,
-            created_by_actor, created_at, expires_at, last_used_at, revoked_at
+            created_by_actor, created_at, expires_at, last_used_at, revoked_at,
+            reporter_integration_id
      FROM app_deploy_tokens
      WHERE app_id = ?1
        AND (?2 = 1 OR revoked_at IS NULL)
@@ -122,6 +126,7 @@ export async function handleCreateAppDeployToken(c: AdminContext) {
     scopes?: unknown;
     expires_at?: unknown;
     expires_in_days?: unknown;
+    reporter_integration_id?: unknown;
   } & Record<string, unknown>;
 
   // Token minting is strict-validated: an unrecognized field must 400, never
@@ -129,7 +134,7 @@ export async function handleCreateAppDeployToken(c: AdminContext) {
   // expiry field used to yield a NON-EXPIRING token).
   // app_id appears in the body when invoked through the agent-manifest layer
   // (path params are mirrored into the body); accept and ignore it.
-  const allowedKeys = new Set(["name", "app_role", "scopes", "expires_at", "expires_in_days", "app_id"]);
+  const allowedKeys = new Set(["name", "app_role", "scopes", "expires_at", "expires_in_days", "app_id", "reporter_integration_id"]);
   const unknownKeys = Object.keys(body).filter((k) => !allowedKeys.has(k));
   if (unknownKeys.length > 0) {
     return c.json(
@@ -154,6 +159,25 @@ export async function handleCreateAppDeployToken(c: AdminContext) {
   }
   if (appRole === null && scopes === null) {
     return c.json({ error: "provide app_role, scopes, or both" }, 400);
+  }
+  const reporterIntegrationId = body.reporter_integration_id == null
+    ? null
+    : String(body.reporter_integration_id).trim();
+  const hasFeedbackScope = scopes?.some((scope) => scope.startsWith("feedback:")) ?? false;
+  if (appRole === null && hasFeedbackScope && !reporterIntegrationId) {
+    return c.json({ error: "reporter_integration_id is required for feedback scopes" }, 400);
+  }
+  if (reporterIntegrationId) {
+    if (appRole !== null || !scopes || !scopes.every(isFeedbackTokenPermission)) {
+      return c.json({
+        error: "reporter integrations require a role-free token with feedback-only scopes",
+      }, 400);
+    }
+    const integration = await c.env.DB.prepare(
+      `SELECT id FROM app_reporter_integrations
+       WHERE id = ?1 AND app_id = ?2 AND archived_at IS NULL`,
+    ).bind(reporterIntegrationId, appId).first();
+    if (!integration) return c.json({ error: "active reporter integration not found" }, 400);
   }
 
   if (body.expires_at != null && body.expires_in_days != null) {
@@ -184,8 +208,9 @@ export async function handleCreateAppDeployToken(c: AdminContext) {
   await c.env.DB.prepare(
     `INSERT INTO app_deploy_tokens
      (id, app_id, name, token_prefix, token_hash, app_role, scopes_json, created_by,
-      created_by_actor, created_at, expires_at, last_used_at, revoked_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, NULL)`,
+      created_by_actor, created_at, expires_at, last_used_at, revoked_at,
+      reporter_integration_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, NULL, ?12)`,
   )
     .bind(
       id,
@@ -199,6 +224,7 @@ export async function handleCreateAppDeployToken(c: AdminContext) {
       actor,
       now,
       expiresAt,
+      reporterIntegrationId,
     )
     .run();
 
@@ -213,6 +239,7 @@ export async function handleCreateAppDeployToken(c: AdminContext) {
       scopes,
       effective_permissions: [...resolveAppGrantPermissions(appRole, scopes)],
       expires_at: expiresAt,
+      reporter_integration_id: reporterIntegrationId,
     },
     created_at: now,
   });

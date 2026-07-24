@@ -15,7 +15,7 @@
  * Run with: `pnpm test`
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
@@ -392,15 +392,19 @@ function makeMockDb() {
       submission_id TEXT,
       submission_fingerprint TEXT,
       reporter_id TEXT,
+      reporter_integration_id TEXT,
       symbolication_status TEXT,
       symbolicated_stack TEXT,
       symbolicated_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
-    CREATE UNIQUE INDEX idx_feedback_tickets_submission
+    CREATE UNIQUE INDEX idx_feedback_tickets_submission_direct
       ON feedback_tickets(app_id, submission_id)
-      WHERE submission_id IS NOT NULL;
+      WHERE submission_id IS NOT NULL AND reporter_integration_id IS NULL;
+    CREATE UNIQUE INDEX idx_feedback_tickets_submission_reporter
+      ON feedback_tickets(app_id, reporter_integration_id, submission_id)
+      WHERE submission_id IS NOT NULL AND reporter_integration_id IS NOT NULL;
     CREATE INDEX idx_feedback_tickets_reporter
       ON feedback_tickets(app_id, reporter_id, created_at)
       WHERE reporter_id IS NOT NULL;
@@ -443,15 +447,31 @@ function makeMockDb() {
       filename TEXT NOT NULL,
       content_type TEXT,
       size_bytes INTEGER NOT NULL,
+      origin TEXT NOT NULL DEFAULT 'submission',
+      visibility TEXT NOT NULL DEFAULT 'reporter',
       created_at INTEGER NOT NULL
     );
     CREATE TABLE feedback_comments (
       id TEXT PRIMARY KEY,
       ticket_id TEXT NOT NULL,
       author_actor TEXT NOT NULL,
+      author_type TEXT NOT NULL DEFAULT 'staff',
       body TEXT NOT NULL,
       internal INTEGER NOT NULL DEFAULT 0,
+      reporter_integration_id TEXT,
+      reporter_id TEXT,
+      submission_id TEXT,
+      submission_fingerprint TEXT,
       created_at INTEGER NOT NULL
+    );
+    CREATE TABLE app_reporter_integrations (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER,
+      UNIQUE(app_id, name)
     );
     CREATE TABLE audit_logs (
       id TEXT PRIMARY KEY, app_id TEXT NOT NULL, action TEXT NOT NULL,
@@ -541,6 +561,7 @@ function makeMockDb() {
       expires_at INTEGER,
       last_used_at INTEGER,
       revoked_at INTEGER,
+      reporter_integration_id TEXT REFERENCES app_reporter_integrations(id) ON DELETE SET NULL,
       CHECK (app_role IS NOT NULL OR scopes_json IS NOT NULL)
     );
     CREATE TABLE invites (
@@ -588,6 +609,7 @@ function makeMockDb() {
       id TEXT PRIMARY KEY,
       webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
       event_type TEXT NOT NULL,
+      event_id TEXT REFERENCES feedback_events(id) ON DELETE SET NULL,
       payload_json TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       attempts INTEGER NOT NULL DEFAULT 0,
@@ -601,6 +623,48 @@ function makeMockDb() {
       updated_at INTEGER NOT NULL,
       completed_at INTEGER
     );
+    CREATE UNIQUE INDEX idx_webhook_deliveries_event
+      ON webhook_deliveries(webhook_id, event_id) WHERE event_id IS NOT NULL;
+    CREATE TABLE feedback_events (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      ticket_id TEXT NOT NULL REFERENCES feedback_tickets(id) ON DELETE CASCADE,
+      reporter_integration_id TEXT NOT NULL REFERENCES app_reporter_integrations(id) ON DELETE CASCADE,
+      reporter_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE feedback_reporter_rate_windows (
+      app_id TEXT NOT NULL,
+      reporter_integration_id TEXT NOT NULL,
+      reporter_hash TEXT NOT NULL,
+      audit_key_version TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      window_started_at INTEGER NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      last_audited_at INTEGER,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (app_id, reporter_integration_id, reporter_hash,
+                   audit_key_version, endpoint, window_started_at)
+    );
+    CREATE TABLE feedback_reporter_access_audits (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      reporter_integration_id TEXT NOT NULL,
+      reporter_hash TEXT NOT NULL,
+      audit_key_version TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      ticket_id TEXT,
+      attachment_id TEXT,
+      throttle_window_started_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX idx_feedback_reporter_access_audits_throttle
+      ON feedback_reporter_access_audits(
+        app_id, reporter_integration_id, reporter_hash, audit_key_version,
+        endpoint, throttle_window_started_at
+      ) WHERE throttle_window_started_at IS NOT NULL;
   `);
 
   // Replace `?N` numbered placeholders with anonymous `?` (better-sqlite3 compat).
@@ -608,12 +672,10 @@ function makeMockDb() {
   // Numbered placeholders may repeat (`?1, ?1` binds one value on D1), so track
   // the index sequence and expand the bound params to match the anonymous slots.
   return {
-    batch: async (statements: Array<{ run: () => Promise<unknown> }>) => {
-      const results = [];
-      for (const statement of statements) {
-        results.push(await statement.run());
-      }
-      return results;
+    batch: async (statements: Array<{ run: () => Promise<unknown>; _runSync?: () => unknown }>) => {
+      return sqlite.transaction(() => statements.map((statement) =>
+        statement._runSync ? statement._runSync() : statement.run()
+      ))();
     },
     prepare(sql: string) {
       const indexSequence: number[] = [];
@@ -625,11 +687,13 @@ function makeMockDb() {
       const bind = (...params: any[]) => {
         const expanded =
           indexSequence.length > 0 ? indexSequence.map((n) => params[n - 1]) : params;
+        const runSync = () => {
+          const info = stmt.run(...expanded);
+          return { success: true, meta: { changes: info.changes } };
+        };
         return {
-          run: async () => {
-            const info = stmt.run(...expanded);
-            return { success: true, meta: { changes: info.changes } };
-          },
+          _runSync: runSync,
+          run: async () => runSync(),
           all: async () => {
             const rows = stmt.all(...expanded);
             return { results: rows, success: true };
@@ -2204,6 +2268,11 @@ describe("quiver Hono app — auth + dispatch", () => {
     await env.DB.prepare(
       "INSERT INTO apps (id, org_id, slug, name, platform, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).bind("dt-app", "default", "dt-app", "DT App", "android", now).run();
+    await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind("integration-dt", "dt-app", "Feedback", now, now).run();
     const {
       handleCreateAppDeployToken,
       handleListAppDeployTokens,
@@ -2281,7 +2350,12 @@ describe("quiver Hono app — auth + dispatch", () => {
     );
     expect(unknownScope.status).toBe(400);
     const scoped = await handleCreateAppDeployToken(
-      ctx({ name: "feedback-only", scopes: ["feedback:write"], expires_in_days: 7 }),
+      ctx({
+        name: "feedback-only",
+        scopes: ["feedback:write"],
+        reporter_integration_id: "integration-dt",
+        expires_in_days: 7,
+      }),
     );
     expect(scoped.status).toBe(201);
     expect((await scoped.json()) as any).toMatchObject({
@@ -2355,6 +2429,8 @@ describe("quiver Hono app — auth + dispatch", () => {
       "app:publish",
       "app:admin",
       "feedback:write",
+      "feedback:read",
+      "feedback:comment",
     ]);
     expect(body.permissions.find((entry: any) => entry.permission === "app:read").label)
       .toBe("App read");
@@ -2827,6 +2903,82 @@ describe("quiver webhooks — SQL smoke", () => {
     // After max_attempts (3) the delivery is marked permanently failed.
     const maxAttempts = 3;
     expect(BACKOFF.length).toBe(maxAttempts);
+  });
+
+  it("keeps webhook body, signature, event id, and delivery id stable across retries", async () => {
+    const env = makeEnv();
+    await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES ('retry-integration', 'app-test', 'Retry', 1, 1)`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets
+       (id, app_id, kind, status, message, metadata_json, reporter_id,
+        reporter_integration_id, created_at, updated_at)
+       VALUES ('77777777-7777-4777-8777-777777777777', 'app-test',
+               'feedback', 'open', 'retry', '{}', ?1, 'retry-integration', 1, 1)`,
+    ).bind("r".repeat(32)).run();
+    const payload = JSON.stringify({ id: "event-retry", event: "feedback:status_changed", payload: {} });
+    await env.DB.prepare(
+      `INSERT INTO feedback_events
+       (id, event_type, app_id, ticket_id, reporter_integration_id,
+        reporter_id, payload_json, created_at)
+       VALUES ('event-retry', 'feedback:status_changed', 'app-test',
+               '77777777-7777-4777-8777-777777777777', 'retry-integration',
+               ?1, ?2, 1)`,
+    ).bind("r".repeat(32), payload).run();
+    await env.DB.prepare(
+      `INSERT INTO webhooks
+       (id, org_id, app_id, url, secret, events_json, enabled, created_at, updated_at)
+       VALUES ('wh-retry', 'default', 'app-test', 'https://example.test/retry',
+               'retry-secret', '[]', 1, 1, 1)`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO webhook_deliveries
+       (id, webhook_id, event_type, event_id, payload_json, status,
+        attempts, max_attempts, next_attempt_at, created_at, updated_at)
+       VALUES ('delivery-retry', 'wh-retry', 'feedback:status_changed',
+               'event-retry', ?1, 'pending', 0, 3, 0, 1, 1)`,
+    ).bind(payload).run();
+    const calls: Array<{ body: string; headers: Headers }> = [];
+    const originalFetch = globalThis.fetch;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    globalThis.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ body: String(init?.body ?? ""), headers: new Headers(init?.headers) });
+      return new Response("retry", { status: 500 });
+    }) as typeof fetch;
+    try {
+      const { handleReapDeliveries } = await import("../src/routes/webhooks");
+      const context = {
+        env,
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+      } as any;
+      await handleReapDeliveries(context);
+      await env.DB.prepare(
+        "UPDATE webhook_deliveries SET next_attempt_at = 0 WHERE id = 'delivery-retry'",
+      ).run();
+      nowSpy.mockReturnValue(2_000);
+      await handleReapDeliveries(context);
+    } finally {
+      globalThis.fetch = originalFetch;
+      nowSpy.mockRestore();
+    }
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.body).toBe(payload);
+    expect(calls[1]!.body).toBe(payload);
+    for (const call of calls) {
+      expect(call.headers.get("X-Hands-Event-Id")).toBe("event-retry");
+      expect(call.headers.get("X-Hands-Delivery-Id")).toBe("delivery-retry");
+    }
+    expect(calls[0]!.headers.get("X-Hands-Signature"))
+      .toBe(calls[1]!.headers.get("X-Hands-Signature"));
+    const ledger = await env.DB.prepare(
+      `SELECT attempts, last_attempt_at, payload_json FROM webhook_deliveries
+       WHERE id = 'delivery-retry'`,
+    ).first() as { attempts: number; last_attempt_at: number; payload_json: string } | null;
+    expect(ledger).toMatchObject({ attempts: 2, payload_json: payload });
+    expect(ledger?.last_attempt_at).toBe(2_000);
   });
 });
 
@@ -6201,6 +6353,39 @@ describe("quiver public API v2 — scope resolution", () => {
 
     // active app -> 409
     expect((await handlePurgeApp(ctx({ confirm_slug: "scope-app" }))).status).toBe(409);
+    await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES ('purge-integration', 'app-scope', 'Purge fixture', 1, 1)`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets
+       (id, app_id, kind, status, message, metadata_json, reporter_id,
+        reporter_integration_id, created_at, updated_at)
+       VALUES ('99999999-9999-4999-8999-999999999999', 'app-scope',
+               'feedback', 'open', 'purge', '{}', ?1, 'purge-integration', 1, 1)`,
+    ).bind("p".repeat(32)).run();
+    await env.DB.prepare(
+      `INSERT INTO feedback_events
+       (id, event_type, app_id, ticket_id, reporter_integration_id,
+        reporter_id, payload_json, created_at)
+       VALUES ('purge-event', 'feedback:status_changed', 'app-scope',
+               '99999999-9999-4999-8999-999999999999', 'purge-integration',
+               ?1, '{}', 1)`,
+    ).bind("p".repeat(32)).run();
+    await env.DB.prepare(
+      `INSERT INTO webhooks
+       (id, org_id, app_id, url, secret, events_json, enabled, created_at, updated_at)
+       VALUES ('purge-hook', 'default', 'app-scope', 'https://example.test/purge',
+               'secret', '[]', 1, 1, 1)`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO webhook_deliveries
+       (id, webhook_id, event_type, event_id, payload_json, status,
+        attempts, max_attempts, created_at, updated_at)
+       VALUES ('purge-delivery', 'purge-hook', 'feedback:status_changed',
+               'purge-event', '{}', 'pending', 0, 3, 1, 1)`,
+    ).run();
     await env.DB.prepare("UPDATE apps SET archived = 1 WHERE id = ?1").bind("app-scope").run();
     // wrong confirm -> 400
     expect((await handlePurgeApp(ctx({ confirm_slug: "nope" }))).status).toBe(400);
@@ -6210,6 +6395,8 @@ describe("quiver public API v2 — scope resolution", () => {
     expect(deleted).toContain("apps/app-scope/stray.apk");
     const row = await env.DB.prepare("SELECT id FROM apps WHERE id = ?1").bind("app-scope").first();
     expect(row).toBeNull();
+    expect(await env.DB.prepare("SELECT id FROM feedback_events WHERE id = 'purge-event'").first()).toBeNull();
+    expect(await env.DB.prepare("SELECT id FROM webhook_deliveries WHERE id = 'purge-delivery'").first()).toBeNull();
     // restore for later tests in this suite
     await env.DB.prepare(
       "INSERT INTO apps (id, org_id, slug, name, platform, client_key, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
@@ -6687,12 +6874,20 @@ describe("quiver public API v2 — scope resolution", () => {
     const { handlePublicFeedbackSubmit } = await import("../src/routes/feedback");
     const { generateDeployToken, hashDeployToken } = await import("../src/lib/deploy_tokens");
     const credential = generateDeployToken();
+    const secondCredential = generateDeployToken();
     const publisherCredential = generateDeployToken();
     const broadCredential = generateDeployToken();
     await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?4),
+              ('integration-proxy-2', ?2, 'Feedback proxy 2', ?4, ?4)`,
+    ).bind("integration-proxy", "app-scope", "Feedback proxy", Date.now()).run();
+    await env.DB.prepare(
       `INSERT INTO app_deploy_tokens
-       (id, app_id, name, token_prefix, token_hash, app_role, scopes_json, created_by_actor, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, NULL, '["feedback:write"]', ?6, ?7)`,
+       (id, app_id, name, token_prefix, token_hash, app_role, scopes_json,
+        created_by_actor, created_at, reporter_integration_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, NULL, '["feedback:write"]', ?6, ?7, ?8)`,
     ).bind(
       "proxy-token",
       "app-scope",
@@ -6700,6 +6895,18 @@ describe("quiver public API v2 — scope resolution", () => {
       credential.token_prefix,
       await hashDeployToken(credential.token),
       "test",
+      Date.now(),
+      "integration-proxy",
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO app_deploy_tokens
+       (id, app_id, name, token_prefix, token_hash, app_role, scopes_json,
+        created_by_actor, created_at, reporter_integration_id)
+       VALUES ('proxy-token-2', 'app-scope', 'feedback proxy 2', ?1, ?2, NULL,
+               '["feedback:write"]', 'test', ?3, 'integration-proxy-2')`,
+    ).bind(
+      secondCredential.token_prefix,
+      await hashDeployToken(secondCredential.token),
       Date.now(),
     ).run();
     await env.DB.prepare(
@@ -6766,6 +6973,7 @@ describe("quiver public API v2 — scope resolution", () => {
     const limited = await submit(reporterA);
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect((await submit(reporterA, secondCredential.token)).status).toBe(201);
     expect((await submit("b".repeat(64))).status).toBe(201);
     expect((await submit("c".repeat(64), "")).status).toBe(401);
     expect((await submit("d".repeat(64), publisherCredential.token)).status).toBe(401);
@@ -6796,6 +7004,8 @@ describe("quiver public API v2 — scope resolution", () => {
        WHERE webhook_id = ?1 AND event_type = 'feedback:new'`,
     ).bind("trusted-feedback-webhook").first()) as { payload_json: string };
     expect(JSON.parse(trustedDelivery.payload_json).payload.reporter_id).toBe("g".repeat(64));
+    expect(JSON.parse(trustedDelivery.payload_json).payload.reporter_integration_id)
+      .toBe("integration-proxy");
 
     const reporterRows = await env.DB.prepare(
       `SELECT DISTINCT reporter_id
@@ -7935,5 +8145,303 @@ describe("Hands iOS simulator QA artifacts", () => {
     });
     expect(byName["create-release"].parameters.scopes).toMatchObject({ type: "array", in: "body" });
     expect(byName["update-release"].parameters.scopes).toMatchObject({ type: "array", in: "body" });
+  });
+
+  it("reporter feedback bearer routes isolate integrations and converge comment replay", async () => {
+    const { env } = makeEnv() as any;
+    env.FEEDBACK_AUDIT_HMAC_KEY = "test-audit-key-with-enough-entropy";
+    env.FEEDBACK_AUDIT_KEY_VERSION = "test-v1";
+    const { generateDeployToken, hashDeployToken } = await import("../src/lib/deploy_tokens");
+    const { handleAddReporterComment, handleGetReporterFeedback, handleListReporterFeedback } =
+      await import("../src/routes/reporter_feedback");
+    const now = Date.now();
+    const reporterId = "r".repeat(64);
+    const integrationA = "11111111-1111-4111-8111-111111111111";
+    const integrationB = "22222222-2222-4222-8222-222222222222";
+    const ticketA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const ticketB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const credentialA = generateDeployToken();
+    const credentialB = generateDeployToken();
+    await env.DB.prepare(
+      `INSERT INTO app_reporter_integrations
+       (id, app_id, name, created_at, updated_at)
+       VALUES (?1, 'app-ios', 'A', ?3, ?3), (?2, 'app-ios', 'B', ?3, ?3)`,
+    ).bind(integrationA, integrationB, now).run();
+    const insertToken = async (id: string, credential: { token: string; token_prefix: string }, integrationId: string) => {
+      await env.DB.prepare(
+        `INSERT INTO app_deploy_tokens
+         (id, app_id, name, token_prefix, token_hash, app_role, scopes_json,
+          created_by_actor, created_at, reporter_integration_id)
+         VALUES (?1, 'app-ios', ?1, ?2, ?3, NULL,
+                 '["feedback:write","feedback:read","feedback:comment"]',
+                 'test', ?4, ?5)`,
+      ).bind(id, credential.token_prefix, await hashDeployToken(credential.token), now, integrationId).run();
+    };
+    await insertToken("token-a", credentialA, integrationA);
+    await insertToken("token-b", credentialB, integrationB);
+    await env.DB.prepare(
+      `INSERT INTO feedback_tickets
+       (id, app_id, kind, status, message, metadata_json, reporter_id,
+        reporter_integration_id, created_at, updated_at)
+       VALUES (?1, 'app-ios', 'feedback', 'open', 'A ticket', '{}', ?3, ?4, ?5, ?5),
+              (?2, 'app-ios', 'feedback', 'open', 'B ticket', '{}', ?3, ?6, ?5, ?5)`,
+    ).bind(ticketA, ticketB, reporterId, integrationA, now, integrationB).run();
+    await env.DB.prepare(
+      `INSERT INTO webhooks
+       (id, org_id, app_id, url, secret, events_json, enabled, created_at, updated_at)
+       VALUES ('reporter-hook', 'default', 'app-ios', 'https://example.test/hook',
+               'secret', '["feedback:comment_created","feedback:status_changed"]', 1, ?1, ?1)`,
+    ).bind(now).run();
+
+    const context = (
+      handler: "list" | "detail" | "comment",
+      credential: string | null,
+      ticketId?: string,
+      commentBody?: { body: string; submission_id: string },
+      headerReporter = reporterId,
+      queries: Record<string, string> = {},
+    ) => {
+      const responseHeaders = new Headers();
+      return {
+        env,
+        header: (name: string, value: string) => responseHeaders.set(name, value),
+        req: {
+          param: (name: string) => name === "appId" ? "app-ios" : name === "ticketId" ? ticketId : undefined,
+          header: (name: string) => name === "X-Hands-Reporter-Id"
+            ? headerReporter
+            : name === "authorization" && credential
+              ? `Bearer ${credential}`
+              : undefined,
+          query: (name: string) => queries[name] ?? (handler === "list" && name === "limit" ? "50" : undefined),
+          json: async () => commentBody ?? {},
+        },
+        json: (data: unknown, status = 200) => new Response(JSON.stringify(data), {
+          status,
+          headers: responseHeaders,
+        }),
+      } as any;
+    };
+
+    const listA = await handleListReporterFeedback(context("list", credentialA.token));
+    expect(listA.status).toBe(200);
+    const listABody = await listA.json() as any;
+    expect(listABody.tickets.map((ticket: any) => ticket.id)).toEqual([ticketA]);
+    expect(listABody.tickets[0]).toMatchObject({
+      attachment_count: 0,
+      comment_count: 0,
+      latest_comment_at: null,
+    });
+    expect((await handleGetReporterFeedback(context("detail", credentialA.token, ticketB))).status).toBe(404);
+    expect((await handleListReporterFeedback(context("list", credentialA.token, undefined, undefined, ""))).status).toBe(400);
+    expect((await handleListReporterFeedback(context("list", null))).status).toBe(401);
+
+    const submissionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const makeComment = () => handleAddReporterComment(context(
+      "comment",
+      credentialA.token,
+      ticketA,
+      { body: "  hello reporter loop  ", submission_id: submissionId },
+    ));
+    const concurrent = await Promise.all([makeComment(), makeComment()]);
+    expect(concurrent.map((response) => response.status).sort()).toEqual([200, 201]);
+    const conflict = await handleAddReporterComment(context(
+      "comment",
+      credentialA.token,
+      ticketA,
+      { body: "different", submission_id: submissionId },
+    ));
+    expect(conflict.status).toBe(409);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_comments WHERE ticket_id = ?1 AND author_type = 'reporter'",
+    ).bind(ticketA).first() as any).count).toBe(1);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_events WHERE ticket_id = ?1",
+    ).bind(ticketA).first() as any).count).toBe(1);
+    const reporterEvent = await env.DB.prepare(
+      `SELECT payload_json FROM feedback_events
+       WHERE ticket_id = ?1 AND event_type = 'feedback:comment_created'`,
+    ).bind(ticketA).first() as { payload_json: string } | null;
+    expect(JSON.parse(reporterEvent!.payload_json).payload.comment).toMatchObject({
+      author_type: "reporter",
+      body: "hello reporter loop",
+    });
+    expect(JSON.parse(reporterEvent!.payload_json).payload.comment).toHaveProperty("id");
+    expect(JSON.parse(reporterEvent!.payload_json).payload.comment).toHaveProperty("created_at");
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM webhook_deliveries WHERE webhook_id = 'reporter-hook' AND event_id IS NOT NULL",
+    ).first() as any).count).toBe(1);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'feedback.reporter_comment'",
+    ).first() as any).count).toBe(1);
+
+    const { computeReporterAuditHash } = await import("../src/lib/reporter_audit");
+    await expect(computeReporterAuditHash({
+      key: "0123456789abcdef0123456789abcdef",
+      appId: "app-1",
+      integrationId: "integration-1",
+      reporterId: "reporter-1",
+    })).resolves.toBe("593d979085c606e7898b6e3a5cfc3eb9f26e9b3ca1a7e75c61ae8e370cdc5e25");
+    await expect(computeReporterAuditHash({
+      key: "too-short",
+      appId: "app-1",
+      integrationId: "integration-1",
+      reporterId: "reporter-1",
+    })).resolves.toBeNull();
+
+    for (const id of [
+      "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    ]) {
+      await env.DB.prepare(
+        `INSERT INTO feedback_comments
+         (id, ticket_id, author_actor, author_type, body, internal, created_at)
+         VALUES (?1, ?2, 'system', 'system', ?1, 0, ?3)`,
+      ).bind(id, ticketA, now + 100).run();
+    }
+    const page1 = await handleGetReporterFeedback(context(
+      "detail", credentialA.token, ticketA, undefined, reporterId,
+      { comment_limit: "2" },
+    ));
+    const page1Body = await page1.json() as any;
+    const page2 = await handleGetReporterFeedback(context(
+      "detail", credentialA.token, ticketA, undefined, reporterId,
+      { comment_limit: "2", comment_cursor: page1Body.next_comment_cursor },
+    ));
+    const page2Body = await page2.json() as any;
+    const firstFour = [...page1Body.comments, ...page2Body.comments].map((comment: any) => comment.id);
+    const expectedFirstFour = (await env.DB.prepare(
+      `SELECT id FROM feedback_comments WHERE ticket_id = ?1 AND internal = 0
+       ORDER BY created_at ASC, id ASC LIMIT 4`,
+    ).bind(ticketA).all() as any).results.map((comment: any) => comment.id);
+    expect(firstFour).toEqual(expectedFirstFour);
+
+    const emojiSubmission = "12121212-1212-4212-8212-121212121212";
+    expect((await handleAddReporterComment(context(
+      "comment", credentialA.token, ticketA,
+      { body: "😀".repeat(10_000), submission_id: emojiSubmission },
+    ))).status).toBe(201);
+    expect((await handleAddReporterComment(context(
+      "comment", credentialA.token, ticketA,
+      { body: "😀".repeat(10_001), submission_id: "13131313-1313-4313-8313-131313131313" },
+    ))).status).toBe(400);
+
+    const { handleAddFeedbackComment, handleUpdateFeedback } = await import("../src/routes/feedback");
+    const adminContext = (body: unknown) => ({
+      env,
+      req: {
+        param: (name: string) => name === "appId" ? "app-ios" : name === "ticketId" ? ticketA : undefined,
+        json: async () => body,
+      },
+      get: (name: string) => name === "admin_actor" ? "staff:test" : undefined,
+      json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+    }) as any;
+    expect((await handleAddFeedbackComment(adminContext({ body: "staff reply", internal: false }))).status).toBe(201);
+    expect((await handleAddFeedbackComment(adminContext({ body: "internal note", internal: true }))).status).toBe(201);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_events WHERE ticket_id = ?1 AND event_type = 'feedback:comment_created'",
+    ).bind(ticketA).first() as any).count).toBe(3);
+    const staffEvent = await env.DB.prepare(
+      `SELECT payload_json FROM feedback_events
+       WHERE ticket_id = ?1 AND event_type = 'feedback:comment_created'
+       ORDER BY rowid DESC LIMIT 1`,
+    ).bind(ticketA).first() as { payload_json: string } | null;
+    expect(JSON.parse(staffEvent!.payload_json).payload.comment).toMatchObject({
+      author_type: "staff",
+      body: "staff reply",
+    });
+    const update = await handleUpdateFeedback(adminContext({ status: "resolved", assignee: "staff:test" }));
+    expect(update.status).toBe(200);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_events WHERE ticket_id = ?1 AND event_type = 'feedback:status_changed'",
+    ).bind(ticketA).first() as any).count).toBe(1);
+    const auditBeforeNoop = (await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'feedback.update'",
+    ).first() as any).count;
+    const noop = await handleUpdateFeedback(adminContext({ status: "resolved", assignee: "staff:test" }));
+    expect((await noop.json() as any).changed).toBe(false);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE action = 'feedback.update'",
+    ).first() as any).count).toBe(auditBeforeNoop);
+
+    await env.DB.prepare(
+      "DELETE FROM feedback_events WHERE ticket_id = ?1 AND event_type = 'feedback:status_changed'",
+    ).bind(ticketA).run();
+    await env.DB.prepare(
+      "DELETE FROM audit_logs WHERE app_id = 'app-ios' AND action = 'feedback.update'",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE feedback_tickets SET status = 'open', assignee = NULL WHERE id = ?1",
+    ).bind(ticketA).run();
+    const sameTarget = await Promise.all([
+      handleUpdateFeedback(adminContext({ status: "resolved", assignee: "owner" })),
+      handleUpdateFeedback(adminContext({ status: "resolved", assignee: "owner" })),
+    ]);
+    const sameTargetBodies = await Promise.all(sameTarget.map((response) => response.json() as Promise<any>));
+    expect(sameTargetBodies.filter((body) => body.changed).length).toBe(1);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM audit_logs WHERE app_id = 'app-ios' AND action = 'feedback.update'",
+    ).first() as any).count).toBe(1);
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM feedback_events WHERE ticket_id = ?1 AND event_type = 'feedback:status_changed'",
+    ).bind(ticketA).first() as any).count).toBe(1);
+
+    await env.DB.prepare(
+      "DELETE FROM feedback_events WHERE ticket_id = ?1 AND event_type = 'feedback:status_changed'",
+    ).bind(ticketA).run();
+    await env.DB.prepare(
+      "DELETE FROM audit_logs WHERE app_id = 'app-ios' AND action = 'feedback.update'",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE feedback_tickets SET status = 'open', assignee = NULL WHERE id = ?1",
+    ).bind(ticketA).run();
+    await Promise.all([
+      handleUpdateFeedback(adminContext({ status: "in_progress", assignee: "first" })),
+      handleUpdateFeedback(adminContext({ status: "resolved", assignee: "second" })),
+    ]);
+    const transitions = (await env.DB.prepare(
+      `SELECT payload_json FROM feedback_events
+       WHERE ticket_id = ?1 AND event_type = 'feedback:status_changed'
+       ORDER BY rowid ASC`,
+    ).bind(ticketA).all() as any).results.map((row: any) => JSON.parse(row.payload_json).payload);
+    expect(transitions).toHaveLength(2);
+    let cursorStatus = "open";
+    for (const transition of transitions) {
+      expect(transition.previous_status).toBe(cursorStatus);
+      cursorStatus = transition.status;
+    }
+    const finalMutation = await env.DB.prepare(
+      "SELECT status, assignee FROM feedback_tickets WHERE id = ?1",
+    ).bind(ticketA).first() as { status: string; assignee: string | null } | null;
+    expect(finalMutation?.status).toBe(cursorStatus);
+    expect(finalMutation?.assignee).toBe(cursorStatus === "resolved" ? "second" : "first");
+
+    const { handleUpdateReporterIntegration } = await import("../src/routes/reporter_integrations");
+    const integrationContext = (archived: boolean) => ({
+      env,
+      req: {
+        param: (name: string) => name === "appId" ? "app-ios" : integrationA,
+        json: async () => ({ archived }),
+      },
+      get: (name: string) => name === "admin_actor" ? "staff:test" : undefined,
+      json: (data: unknown, status = 200) => new Response(JSON.stringify(data), { status }),
+    }) as any;
+    expect((await handleUpdateReporterIntegration(integrationContext(true))).status).toBe(200);
+    expect((await env.DB.prepare(
+      "SELECT revoked_at FROM app_deploy_tokens WHERE id = 'token-a'",
+    ).first() as any).revoked_at).toBeTypeOf("number");
+    expect((await handleUpdateReporterIntegration(integrationContext(false))).status).toBe(200);
+    expect((await env.DB.prepare(
+      "SELECT revoked_at FROM app_deploy_tokens WHERE id = 'token-a'",
+    ).first() as any).revoked_at).toBeTypeOf("number");
+    const lifecycleActions = (await env.DB.prepare(
+      `SELECT action FROM audit_logs
+       WHERE app_id = 'app-ios' AND action LIKE 'reporter_integration.%'
+       ORDER BY created_at, rowid`,
+    ).all() as any).results.map((row: any) => row.action);
+    expect(lifecycleActions).toEqual([
+      "reporter_integration.archive",
+      "reporter_integration.unarchive",
+    ]);
   });
 });
